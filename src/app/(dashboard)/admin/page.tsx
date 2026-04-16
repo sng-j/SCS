@@ -29,7 +29,7 @@ interface FaqRow     { id: number; question: string; answer: string; category: s
 interface SettingRow { key: string; value: string; description: string | null; }
 interface LogRow     { id: string; event: string; userEmail: string | null; level: string; detail: string | null; createdAt: string; }
 
-const TABS = ["users", "signups", "shipyards", "projects", "submissions", "faq", "qna", "settings", "logs", "dataset"] as const;
+const TABS = ["users", "signups", "shipyards", "projects", "submissions", "faq", "qna", "settings", "logs", "dataset", "data-health", "doc-formats"] as const;
 type Tab = typeof TABS[number];
 
 // ─── Page ────────────────────────────────────────────────────────────────────
@@ -74,6 +74,8 @@ export default function AdminPage() {
     settings: tx(locale, "Settings", "설정", "設定"),
     logs: tx(locale, "Security Logs", "보안 이력", "セキュリティログ"),
     dataset: tx(locale, "AI Dataset", "AI 데이터셋", "AIデータセット"),
+    "data-health": tx(locale, "Data Health", "데이터 정합성", "データ整合性"),
+    "doc-formats": tx(locale, "Doc Formats", "문서 포맷", "ドキュメント形式"),
   };
 
   return (
@@ -110,6 +112,8 @@ export default function AdminPage() {
       {activeTab === "settings"    && <SettingsTab locale={locale} />}
       {activeTab === "logs"        && <LogsTab locale={locale} />}
       {activeTab === "dataset"     && <DatasetTab locale={locale} />}
+      {activeTab === "data-health" && <DataHealthTab locale={locale} />}
+      {activeTab === "doc-formats" && <DocFormatsTab locale={locale} />}
     </motion.div>
   );
 }
@@ -2089,5 +2093,321 @@ function ProjectsTab({ locale }: { locale: string }) {
   );
 }
 
-// ─── Advisories Tab ──────────────────────────────────────────────────────────
+// ─── Data Health Tab ─────────────────────────────────────────────────────────
 
+interface HealthIssue { type: string; [key: string]: unknown; }
+interface FixItem { type: string; description: string; reason?: string; }
+
+function DataHealthTab({ locale }: { locale: string }) {
+  const [issues, setIssues] = useState<HealthIssue[]>([]);
+  const [summary, setSummary] = useState<{ total: number; byType: Record<string, number> }>({ total: 0, byType: {} });
+  const [loading, setLoading] = useState(false);
+  const [scanned, setScanned] = useState(false);
+  const [fixing, setFixing] = useState(false);
+  const [fixResult, setFixResult] = useState<{ applied: FixItem[]; skipped: FixItem[] } | null>(null);
+  const [aggressive, setAggressive] = useState(false);
+
+  const scan = useCallback(async () => {
+    setLoading(true);
+    setFixResult(null);
+    try {
+      const res = await fetch("/api/admin/data-health");
+      if (res.ok) {
+        const data = await res.json();
+        setIssues(data.issues || []);
+        setSummary(data.summary || { total: 0, byType: {} });
+        setScanned(true);
+      } else {
+        showToast.error(tx(locale, "Scan failed", "진단 실패", "診断失敗"));
+      }
+    } finally { setLoading(false); }
+  }, [locale]);
+
+  const fix = async () => {
+    setFixing(true);
+    try {
+      const res = await fetch("/api/admin/data-health", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "auto-fix", aggressive }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFixResult(data);
+        showToast.success(tx(locale, `Fixed ${data.applied?.length || 0} issues`, `${data.applied?.length || 0}건 수정 완료`, `${data.applied?.length || 0}件修正完了`));
+        scan();
+      } else {
+        showToast.error(tx(locale, "Fix failed", "수정 실패", "修正失敗"));
+      }
+    } finally { setFixing(false); }
+  };
+
+  const TYPE_LABELS: Record<string, { en: string; ko: string }> = {
+    orphan_shipyard: { en: "Orphan Shipyard", ko: "고아 조선소" },
+    duplicate_shipyards: { en: "Duplicate Shipyards", ko: "중복 조선소" },
+    empty_shipyard_user: { en: "User Without Shipyard", ko: "조선소 미배정 사용자" },
+    vendor_equipment_mismatch: { en: "Vendor-Equipment Mismatch", ko: "벤더-기자재 불일치" },
+    orphan_project: { en: "Orphan Project", ko: "고아 프로젝트" },
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-body-sm font-bold text-text">
+          {tx(locale, "Data Health Diagnosis", "데이터 정합성 진단", "データ整合性診断")}
+        </h2>
+        <div className="flex items-center gap-2">
+          {scanned && summary.total > 0 && (
+            <>
+              <label className="flex items-center gap-1.5 text-[11px] text-text-tertiary cursor-pointer">
+                <input type="checkbox" checked={aggressive} onChange={(e) => setAggressive(e.target.checked)} className="rounded" />
+                {tx(locale, "Aggressive", "적극 수정", "積極修正")}
+              </label>
+              <Button size="sm" variant="outline" onClick={fix} loading={fixing}>
+                {tx(locale, "Auto Fix", "자동 수정", "自動修正")}
+              </Button>
+            </>
+          )}
+          <Button size="sm" onClick={scan} loading={loading}>
+            <Activity size={14} /> {tx(locale, "Scan", "진단", "診断")}
+          </Button>
+        </div>
+      </div>
+
+      {!scanned ? (
+        <Card>
+          <CardBody>
+            <EmptyState icon={Activity} title={tx(locale, "Run a scan to check data health", "진단을 실행하여 데이터 정합성을 확인하세요", "診断を実行してデータ整合性を確認してください")} />
+          </CardBody>
+        </Card>
+      ) : summary.total === 0 ? (
+        <Card>
+          <CardBody>
+            <EmptyState icon={CheckCircle} title={tx(locale, "All data is healthy", "모든 데이터가 정상입니다", "すべてのデータは正常です")} />
+          </CardBody>
+        </Card>
+      ) : (
+        <>
+          {/* Summary badges */}
+          <div className="flex flex-wrap gap-2">
+            <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-risk-bg text-safety-high">
+              {tx(locale, `${summary.total} issues found`, `${summary.total}건 발견`, `${summary.total}件発見`)}
+            </span>
+            {Object.entries(summary.byType).map(([type, count]) => (
+              <span key={type} className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-surface-secondary text-text-secondary">
+                {(locale === "ko" ? TYPE_LABELS[type]?.ko : TYPE_LABELS[type]?.en) || type} ({count})
+              </span>
+            ))}
+          </div>
+
+          {/* Issues list */}
+          <Card padding="none">
+            <div className="divide-y divide-border max-h-[480px] overflow-y-auto">
+              {issues.map((issue, i) => (
+                <div key={i} className="px-5 py-3.5 text-body-sm">
+                  <div className="flex items-center gap-2 mb-1">
+                    <AlertCircle size={14} className="text-safety-high shrink-0" />
+                    <span className="font-semibold text-text">
+                      {(locale === "ko" ? TYPE_LABELS[issue.type]?.ko : TYPE_LABELS[issue.type]?.en) || issue.type}
+                    </span>
+                  </div>
+                  <pre className="text-[11px] text-text-tertiary whitespace-pre-wrap ml-5">
+                    {JSON.stringify(Object.fromEntries(Object.entries(issue).filter(([k]) => k !== "type")), null, 2)}
+                  </pre>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </>
+      )}
+
+      {/* Fix results */}
+      {fixResult && (
+        <div className="space-y-3">
+          {fixResult.applied.length > 0 && (
+            <Card>
+              <CardHeader title={tx(locale, `Applied (${fixResult.applied.length})`, `수정됨 (${fixResult.applied.length})`, `適用済み (${fixResult.applied.length})`)} />
+              <CardBody>
+                <ul className="space-y-1">
+                  {fixResult.applied.map((item, i) => (
+                    <li key={i} className="flex items-start gap-2 text-body-sm">
+                      <CheckCircle size={14} className="text-safety-low shrink-0 mt-0.5" />
+                      <span className="text-text-secondary">{item.description}</span>
+                    </li>
+                  ))}
+                </ul>
+              </CardBody>
+            </Card>
+          )}
+          {fixResult.skipped.length > 0 && (
+            <Card>
+              <CardHeader title={tx(locale, `Skipped (${fixResult.skipped.length})`, `건너뜀 (${fixResult.skipped.length})`, `スキップ (${fixResult.skipped.length})`)} />
+              <CardBody>
+                <ul className="space-y-1">
+                  {fixResult.skipped.map((item, i) => (
+                    <li key={i} className="flex items-start gap-2 text-body-sm">
+                      <AlertCircle size={14} className="text-text-tertiary shrink-0 mt-0.5" />
+                      <span className="text-text-tertiary">{item.description} — {item.reason}</span>
+                    </li>
+                  ))}
+                </ul>
+              </CardBody>
+            </Card>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Doc Formats Tab ─────────────────────────────────────────────────────────
+
+interface DocFormatRow { id: number; code: string; standard: string; title: string; titleKo: string | null; sections: string; isActive: boolean; }
+
+function DocFormatsTab({ locale }: { locale: string }) {
+  const [formats, setFormats] = useState<DocFormatRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editItem, setEditItem] = useState<DocFormatRow | null>(null);
+  const [form, setForm] = useState({ code: "", standard: "E27", title: "", titleKo: "", sections: "[]", isActive: true });
+  const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<DocFormatRow | null>(null);
+
+  const fetchFormats = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/doc-formats");
+      if (res.ok) setFormats(await res.json());
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchFormats(); }, [fetchFormats]);
+
+  const openCreate = () => {
+    setEditItem(null);
+    setForm({ code: "", standard: "E27", title: "", titleKo: "", sections: "[]", isActive: true });
+    setDialogOpen(true);
+  };
+
+  const openEdit = (item: DocFormatRow) => {
+    setEditItem(item);
+    const sec = typeof item.sections === "string" ? item.sections : JSON.stringify(item.sections, null, 2);
+    setForm({ code: item.code, standard: item.standard, title: item.title, titleKo: item.titleKo || "", sections: sec, isActive: item.isActive });
+    setDialogOpen(true);
+  };
+
+  const handleSave = async () => {
+    if (!form.code || !form.standard || !form.title) {
+      showToast.error(tx(locale, "Code, standard, title are required", "코드, 표준, 제목은 필수입니다", "コード、標準、タイトルは必須です"));
+      return;
+    }
+    try { JSON.parse(form.sections); } catch { showToast.error("sections JSON invalid"); return; }
+
+    setSaving(true);
+    try {
+      const body = editItem
+        ? { id: editItem.id, ...form, sections: JSON.parse(form.sections) }
+        : { ...form, sections: JSON.parse(form.sections) };
+      const res = await fetch("/api/admin/doc-formats", {
+        method: editItem ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        showToast.success(tx(locale, "Saved", "저장되었습니다", "保存されました"));
+        setDialogOpen(false);
+        fetchFormats();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        showToast.error((d as { error?: string }).error || "Failed");
+      }
+    } finally { setSaving(false); }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    const res = await fetch(`/api/admin/doc-formats?id=${deleteTarget.id}`, { method: "DELETE" });
+    if (res.ok) {
+      showToast.success(tx(locale, "Deleted", "삭제되었습니다", "削除されました"));
+      fetchFormats();
+    }
+    setDeleteTarget(null);
+  };
+
+  const handleToggle = async (item: DocFormatRow) => {
+    await fetch("/api/admin/doc-formats", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: item.id, isActive: !item.isActive }),
+    });
+    setFormats((prev) => prev.map((f) => f.id === item.id ? { ...f, isActive: !f.isActive } : f));
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-body-sm font-bold text-text">
+          {tx(locale, `Document Formats (${formats.length})`, `문서 포맷 (${formats.length})`, `ドキュメント形式 (${formats.length})`)}
+        </h2>
+        <Button size="sm" onClick={openCreate}><Plus size={14} /> {tx(locale, "Add Format", "포맷 추가", "形式追加")}</Button>
+      </div>
+
+      {loading ? <SkeletonTable rows={4} /> : formats.length === 0 ? (
+        <Card><CardBody><EmptyState icon={FileText} title={tx(locale, "No document formats", "문서 포맷이 없습니다", "ドキュメント形式がありません")} /></CardBody></Card>
+      ) : (
+        <Card padding="none">
+          <div className="divide-y divide-border">
+            {formats.map((f) => (
+              <div key={f.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-surface-secondary/20 transition-colors">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-body-sm font-semibold text-text">{f.code}</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-brand-lighter text-brand">{f.standard}</span>
+                    {!f.isActive && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-surface-secondary text-text-tertiary">{tx(locale, "Inactive", "비활성", "無効")}</span>}
+                  </div>
+                  <p className="text-body-xs text-text-tertiary mt-0.5">{f.title}{f.titleKo ? ` / ${f.titleKo}` : ""}</p>
+                </div>
+                <button onClick={() => handleToggle(f)}
+                  className={cn("relative w-10 h-6 rounded-full transition-colors duration-200 shrink-0", f.isActive ? "bg-safety-low" : "bg-border-strong")}>
+                  <span className={cn("absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200", f.isActive && "translate-x-4")} />
+                </button>
+                <button onClick={() => openEdit(f)} className="p-1.5 rounded-md text-text-tertiary hover:text-brand hover:bg-brand-lighter transition-colors"><Pencil size={13} /></button>
+                <button onClick={() => setDeleteTarget(f)} className="p-1.5 rounded-md text-text-tertiary hover:text-safety-high hover:bg-risk-bg transition-colors"><Trash2 size={13} /></button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)}
+        title={editItem ? tx(locale, "Edit Format", "포맷 수정", "形式編集") : tx(locale, "Add Format", "포맷 추가", "形式追加")}
+        maxWidth="max-w-lg">
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Code *" placeholder="E27-CBS" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} disabled={!!editItem} />
+            <Input label="Standard *" placeholder="E27" value={form.standard} onChange={(e) => setForm({ ...form, standard: e.target.value })} />
+          </div>
+          <Input label="Title (EN) *" placeholder="CBS Report" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+          <Input label={tx(locale, "Title (KO)", "제목 (한국어)", "タイトル (韓国語)")} placeholder="" value={form.titleKo} onChange={(e) => setForm({ ...form, titleKo: e.target.value })} />
+          <div>
+            <label className="block text-[11px] font-bold text-text-tertiary mb-1">Sections (JSON)</label>
+            <textarea
+              value={form.sections}
+              onChange={(e) => setForm({ ...form, sections: e.target.value })}
+              rows={8}
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-[12px] font-mono text-text placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand transition-all"
+            />
+          </div>
+          <div className="flex justify-end gap-3 pt-2 border-t border-border">
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>{tx(locale, "Cancel", "취소", "キャンセル")}</Button>
+            <Button onClick={handleSave} loading={saving}>{tx(locale, "Save", "저장", "保存")}</Button>
+          </div>
+        </div>
+      </Dialog>
+
+      <ConfirmDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete}
+        title={tx(locale, "Delete Format", "포맷 삭제", "形式削除")}
+        description={tx(locale, `Delete "${deleteTarget?.code}"? This cannot be undone.`, `"${deleteTarget?.code}" 포맷을 삭제하시겠습니까?`, `「${deleteTarget?.code}」を削除しますか？`)} />
+    </div>
+  );
+}
