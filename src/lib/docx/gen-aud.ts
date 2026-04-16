@@ -30,6 +30,8 @@ export function generateAUD(data: DocumentData): Document {
   const unchecked = assessments.filter((a) => a.result === "NOT_CHECKED").length;
   const complianceRate = total > 0 ? Math.round(((pass + na) / total) * 100) : 0;
 
+  const verdict = complianceRate >= 90 ? "Satisfactory" : complianceRate >= 70 ? "Conditional" : "Unsatisfactory";
+
   const executiveSummary = [
     heading1("1. Executive Summary"),
     bodyText(
@@ -37,7 +39,7 @@ export function generateAUD(data: DocumentData): Document {
       `for vessel "${project.vesselName}". The assessment covers ${hardware.length} hardware asset(s) ` +
       `across ${E27_SC_CHECKS.length} security configuration checks (SC).`,
     ),
-    bodyText(`Overall Compliance Rate: ${complianceRate}%`),
+    bodyText(`Overall Compliance Rate: ${complianceRate}% — Assessment Verdict: ${verdict}`),
     buildTable(
       ["Result", "Count", "Percentage"],
       [
@@ -105,10 +107,66 @@ export function generateAUD(data: DocumentData): Document {
     });
   }
 
+  // 4. Failure Distribution by SC Category
+  const categoryDist: (Paragraph | Table)[] = [heading1("4. Failure Distribution by Category")];
+  const scCategories = new Map<string, { pass: number; fail: number; total: number }>();
+  assessments.forEach((a) => {
+    const cat = a.checkId.split("-").slice(0, 2).join("-"); // e.g., "SC-1"
+    const entry = scCategories.get(cat) || { pass: 0, fail: 0, total: 0 };
+    entry.total++;
+    if (a.result === "PASS") entry.pass++;
+    if (a.result === "FAIL" || a.result === "PARTIAL") entry.fail++;
+    scCategories.set(cat, entry);
+  });
+  if (scCategories.size > 0) {
+    categoryDist.push(buildTable(
+      ["SC Category", "Total Checks", "Pass", "Fail/Partial", "Compliance %"],
+      Array.from(scCategories.entries()).sort().map(([cat, c]) => [
+        cat, String(c.total), String(c.pass), String(c.fail),
+        c.total > 0 ? `${Math.round((c.pass / c.total) * 100)}%` : "N/A",
+      ]),
+    ));
+  } else {
+    categoryDist.push(bodyText("No assessment data available for distribution analysis."));
+  }
+
+  // 5. Remediation Recommendations
+  const E27_REMEDIATION: Record<string, { priority: string; recommendation: string; ref: string }> = {
+    "SC-1": { priority: "HIGH", recommendation: "Enforce password complexity via Group Policy (secpol.msc → Account Policies). Min 8 characters, complexity enabled, lockout threshold ≤5.", ref: "E27 SC-1" },
+    "SC-2": { priority: "HIGH", recommendation: "Review and disable unused accounts. Run: Get-LocalUser | Where-Object {$_.Enabled} to list active accounts. Disable Guest: Disable-LocalUser -Name Guest.", ref: "E27 SC-2" },
+    "SC-3": { priority: "MEDIUM", recommendation: "Restrict user privileges to minimum required. Remove users from local Administrators group. Implement application whitelisting.", ref: "E27 SC-3" },
+    "SC-5": { priority: "CRITICAL", recommendation: "Disable SMBv1: Set-SmbServerConfiguration -EnableSMB1Protocol $false. Disable AutoRun via GPO. Block unused USB ports.", ref: "E27 SC-5" },
+    "SC-6": { priority: "CRITICAL", recommendation: "Enable Windows Firewall on all profiles. Enable RDP NLA: Set-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp' -Name UserAuthentication -Value 1.", ref: "E27 SC-6" },
+    "SC-7": { priority: "HIGH", recommendation: "Enable audit logging for all categories (Success+Failure). Set Security log size ≥196 MB, Application ≥32 MB. Retain logs ≥90 days.", ref: "E27 SC-7" },
+    "SC-8": { priority: "MEDIUM", recommendation: "Implement data integrity controls. Enable drive encryption (BitLocker) for removable media.", ref: "E27 SC-8" },
+    "SC-9": { priority: "MEDIUM", recommendation: "Encrypt all remote administration and inter-zone communications. Use TLS 1.2+ for all network services.", ref: "E27 SC-9" },
+    "SC-10": { priority: "HIGH", recommendation: "Configure screen lock timeout ≤15 minutes via GPO. Require Ctrl+Alt+Del for logon.", ref: "E27 SC-10" },
+    "SC-11": { priority: "HIGH", recommendation: "Enable Windows Defender with real-time protection: Set-MpPreference -DisableRealtimeMonitoring $false. Update definitions daily.", ref: "E27 SC-11" },
+    "SC-12": { priority: "MEDIUM", recommendation: "Restrict removable media usage. Block USB storage: Set-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\USBSTOR' -Name Start -Value 4.", ref: "E27 SC-12" },
+    "SC-13": { priority: "HIGH", recommendation: "Establish patch management schedule. CAT I/II: vendor-approved patches annually. CAT III: automatic updates monthly. Critical patches (CVSS ≥9.0) within 30 days.", ref: "E27 SC-13" },
+  };
+
+  const remediations: (Paragraph | Table)[] = [heading1("5. Remediation Recommendations")];
+  if (failItems.length === 0) {
+    remediations.push(bodyText("No remediation actions required — all items passed."));
+  } else {
+    remediations.push(buildTable(
+      ["Device", "Check ID", "Priority", "Remediation", "E27 Reference"],
+      failItems.map((a) => {
+        const hw = hardware.find((h) => h.id === a.hardwareId);
+        const scKey = a.checkId.split("-").slice(0, 2).join("-");
+        const rem = E27_REMEDIATION[scKey] || { priority: "MEDIUM", recommendation: "Review and address finding.", ref: a.checkId };
+        return [hw?.name || "Unknown", a.checkId, rem.priority, rem.recommendation, rem.ref];
+      }),
+    ));
+  }
+
   return wrapDocument("E27-AUD: Security Audit Report", project, [
     ...cover,
     ...executiveSummary,
     ...detailSections,
     ...findings,
+    ...categoryDist,
+    ...remediations,
   ]);
 }

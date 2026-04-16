@@ -3,7 +3,7 @@
  */
 import { Packer } from "docx";
 import { prisma } from "@/lib/prisma";
-import type { ProjectContext, HardwareRow, SoftwareRow, AssessmentRow } from "./shared";
+import type { ProjectContext, HardwareRow, SoftwareRow, AssessmentRow, ConnectionRow, AuditRunRow } from "./shared";
 import { generateCBS } from "./gen-cbs";
 import { generateSBOM } from "./gen-sbom";
 import { generateAUD } from "./gen-aud";
@@ -17,6 +17,8 @@ export interface DocumentData {
   hardware: HardwareRow[];
   software: SoftwareRow[];
   assessments: AssessmentRow[];
+  connections: ConnectionRow[];
+  auditRuns: AuditRunRow[];
 }
 
 async function fetchDocumentData(projectId: string, equipmentId?: string): Promise<DocumentData> {
@@ -32,7 +34,7 @@ async function fetchDocumentData(projectId: string, equipmentId?: string): Promi
     ? { hardware: { projectId, equipmentId } }
     : { hardware: { projectId } };
 
-  const [project, hardware, software, assessments] = await Promise.all([
+  const [project, hardware, software, assessments, connections, auditRuns] = await Promise.all([
     prisma.project.findUnique({ where: { id: projectId } }),
     prisma.hardware.findMany({
       where: hwFilter,
@@ -55,6 +57,17 @@ async function fetchDocumentData(projectId: string, equipmentId?: string): Promi
       include: { hardware: { select: { id: true, name: true, type: true } } },
       orderBy: [{ hardware: { name: "asc" } }, { checkId: "asc" }],
     }),
+    prisma.networkConnection.findMany({
+      where: { projectId },
+      include: {
+        fromHw: { select: { id: true, name: true } },
+        toHw: { select: { id: true, name: true } },
+      },
+    }),
+    prisma.auditRun.findMany({
+      where: equipmentId ? { equipmentId } : { projectId },
+      select: { id: true, hardwareId: true, platform: true, results: true, sbomData: true },
+    }),
   ]);
 
   if (!project) throw new Error("Project not found");
@@ -70,6 +83,8 @@ async function fetchDocumentData(projectId: string, equipmentId?: string): Promi
     hardware: hardware as HardwareRow[],
     software: software as SoftwareRow[],
     assessments: assessments as AssessmentRow[],
+    connections: connections as ConnectionRow[],
+    auditRuns: auditRuns as AuditRunRow[],
   };
 }
 
@@ -95,13 +110,15 @@ const TEMPLATE_DOCS: Record<string, { title: string; focus: string }> = {
   "E27-MNT": { title: "Maintenance & Verification Plan", focus: "maintenance" },
   "E27-INC": { title: "Incident Response & Recovery Plan", focus: "incident" },
   "E27-MOC": { title: "Management of Change Plan", focus: "change" },
+  "E27-SEC": { title: "Description of Security Capabilities", focus: "security-capabilities" },
+  "E27-PAT": { title: "Patch Management Procedure", focus: "patch-management" },
   // E26 — Ship-level aggregation of CBS data (호선 단위, 승인된 기자재 종합)
   "E26-ZCD": { title: "Zones & Conduits Diagram", focus: "zone-design" },
   "E26-INV": { title: "Vessel Asset Inventory", focus: "e26-inventory" },
   "E26-CRA": { title: "Cyber Risk Assessment", focus: "risk-assessment" },
   "E26-CSD": { title: "Cyber Security Design Description", focus: "e26-design" },
   "E26-CRP": { title: "Cyber Resilience Test Procedure", focus: "e26-test" },
-  "E26-CMP": { title: "Cyber Security Management Plan", focus: "e26-management-plan" },
+  "E26-CMP": { title: "Cyber Security Management Plan", focus: "e26-management" },
   "E26-RAP": { title: "Remote Access Policy", focus: "e26-remote-access" },
   "E26-SSL": { title: "Approved Service Supplier List", focus: "supply" },
   "E26-TRA": { title: "Crew Cyber Security Training Record", focus: "e26-training" },
@@ -113,7 +130,7 @@ const TEMPLATE_DOCS: Record<string, { title: string; focus: string }> = {
   "IEC-ZNC": { title: "Zone & Conduit Record", focus: "iec-zone-conduit" },
   // NIST SP 800
   "NIST-CFG": { title: "Baseline Configuration Document", focus: "nist-baseline-config" },
-  "NIST-IAM": { title: "Identity & Access Management Policy", focus: "nist-identity-access" },
+  "NIST-IAM": { title: "Identity & Access Management Policy", focus: "nist-iam" },
   "NIST-SUP": { title: "Supply Chain Risk Management Plan", focus: "nist-supply-chain" },
   "NIST-SSA": { title: "System Security Assessment", focus: "nist-system-assessment" },
   // ISO 27001

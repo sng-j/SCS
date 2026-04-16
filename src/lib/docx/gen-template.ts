@@ -2676,6 +2676,31 @@ function getSections(focus: string, data: DocumentData): TemplateSection[] {
         },
       ];
 
+    case "security-capabilities":
+      return [
+        { title: "1. Purpose", body: `This document describes the security capabilities implemented on CBS aboard vessel "${project.vesselName}" in accordance with IACS UR E27 §4.` },
+        { title: "2. Regulatory Reference", body: "IACS UR E27 Rev.2 Section 4 — Security Capabilities Description\nIEC 62443-3-3 — System Security Requirements" },
+        { title: "3. Access Control (SC-1, SC-2)", body: "Role-based access control (RBAC) is implemented on all CBS. Default and guest accounts are disabled at commissioning. Password policy enforces minimum 8 characters with complexity requirements. Account lockout threshold is set to ≤5 failed attempts." },
+        { title: "4. Authentication (SC-1)", body: "Strong authentication is required for all local access. Multi-factor authentication (MFA) is enforced for remote access sessions. Session timeout is configured to lock after 15 minutes of inactivity." },
+        { title: "5. Network Security (SC-5, SC-6)", body: "Network segmentation is implemented per IEC 62443 zone/conduit model. Legacy protocols (SMBv1, NetBIOS) are disabled. Windows Firewall is enabled on all profiles. RDP Network Level Authentication (NLA) is required for remote desktop connections." },
+        { title: "6. Endpoint Protection (SC-10, SC-11)", body: "Anti-malware protection (Windows Defender) is enabled with real-time scanning. Automatic definition updates are configured. Screen lock timeout is set to ≤15 minutes. Ctrl+Alt+Del is required for logon." },
+        { title: "7. Audit & Monitoring (SC-7)", body: "Security audit logging is enabled for all critical event categories (Success + Failure). Log retention period is ≥90 days. Security log minimum size is 196 MB. Monthly log review is conducted by IT Officer." },
+        { title: "8. Update Management (SC-13)", body: "Patch management follows the procedure defined in E27-PAT. CAT I/II systems receive vendor-approved patches annually. CAT III systems receive automatic updates monthly. Critical vulnerabilities (CVSS ≥9.0) are patched within 30 days." },
+        { title: "9. Capability Summary", body: "The table below maps implemented security capabilities to E27 Security Configuration (SC) requirements." },
+      ];
+
+    case "patch-management":
+      return [
+        { title: "1. Policy Statement", body: `This document defines the patch management procedure for all Computer Based Systems (CBS) aboard vessel "${project.vesselName}" in accordance with IACS UR E27 SC-13.` },
+        { title: "2. Regulatory Reference", body: "IACS UR E27 Rev.2 — SC-13 (Software/Firmware Integrity)\nNIST SP 800-40 Rev.4 — Guide to Enterprise Patch Management\nCIS Controls v8 — Control 7 (Continuous Vulnerability Management)" },
+        { title: "3. Scope", body: `This procedure applies to all ${hardware.length} CBS component(s) registered in the asset inventory. Systems are categorized per E26 Table 1 (CAT I, CAT II, CAT III) with different patch frequencies.` },
+        { title: "4. Patch Schedule", body: "CAT I (Critical Navigation/Safety): Annually, vendor-approved media only, Chief Engineer responsible, Master + CSO approval required.\nCAT II (Essential Operations): Semi-annually, IT Officer responsible, CSO approval required.\nCAT III (Non-critical IT): Monthly automatic updates via WSUS/Windows Update, IT Officer responsible, CSO notification." },
+        { title: "5. Patch Testing Process", body: "All patches for CAT I and CAT II systems must be tested in a controlled environment before deployment. Test results must be documented including system behavior verification and rollback capability confirmation. CAT III systems may receive automatic updates with post-deployment verification." },
+        { title: "6. Emergency Patch Procedure", body: "For critical vulnerabilities (CVSS ≥9.0), emergency patching must be completed within 30 days. Emergency patches require CSO + Master approval. Post-implementation review must be conducted within 7 days. All emergency patches are logged in the Patch Log." },
+        { title: "7. Patch Log", body: "All patch activities must be recorded in the following log format:\n(Date | System | Patch/KB ID | Version Before | Version After | Tested By | Applied By | Verified)" },
+        { title: "8. Exceptions", body: "Systems that cannot be patched due to vendor restrictions, certification requirements, or operational constraints must be documented with compensating controls (network isolation, enhanced monitoring, additional access restrictions)." },
+      ];
+
     default:
       return [
         {
@@ -2956,6 +2981,68 @@ export function generateTemplate(
         ),
       );
     }
+
+    // ── Risk Register with 12 pre-defined threats (from old E26-CSR) ──
+    const preDefinedRisks: { id: string; cat: string; threat: string; l: number; i: number }[] = [
+      { id: "R1", cat: "Network", threat: "Unauthorized Network Access", l: 4, i: 5 },
+      { id: "R2", cat: "Malware", threat: "Malware Infection", l: 3, i: 5 },
+      { id: "R3", cat: "Patch", threat: "Unpatched Software", l: 4, i: 4 },
+      { id: "R4", cat: "Physical", threat: "USB-borne Malware", l: 3, i: 4 },
+      { id: "R5", cat: "Insider", threat: "Insider Threat", l: 2, i: 4 },
+      { id: "R6", cat: "Supply Chain", threat: "Supply Chain Compromise", l: 2, i: 5 },
+      { id: "R7", cat: "DoS", threat: "DoS Attack", l: 3, i: 4 },
+      { id: "R8", cat: "Spoofing", threat: "GPS/AIS Spoofing", l: 3, i: 5 },
+      { id: "R9", cat: "Malware", threat: "Ransomware", l: 3, i: 5 },
+      { id: "R10", cat: "Auth", threat: "Weak Authentication", l: 4, i: 3 },
+      { id: "R11", cat: "Crypto", threat: "Unencrypted Communication", l: 3, i: 3 },
+      { id: "R12", cat: "Physical", threat: "Physical Access Breach", l: 2, i: 3 },
+    ];
+    // Dynamic risks from assessment failures
+    const failsByHw = new Map<string, string[]>();
+    assessments.filter((a) => a.result === "FAIL").forEach((a) => {
+      const hwName = a.hardware.name;
+      if (!failsByHw.has(hwName)) failsByHw.set(hwName, []);
+      failsByHw.get(hwName)!.push(a.checkId);
+    });
+    const dynamicRisks = [...failsByHw.entries()].map(([hwName, checks], idx) => ({
+      id: `R${13 + idx}`,
+      cat: "Assessment",
+      threat: `${hwName}: FAIL on ${checks.join(", ")}`,
+      l: checks.length >= 5 ? 4 : checks.length >= 3 ? 3 : 2,
+      i: 4,
+    }));
+    const allRisks = [...preDefinedRisks, ...dynamicRisks];
+    const getRiskLevel = (score: number) => score >= 20 ? "CRITICAL" : score >= 12 ? "HIGH" : score >= 6 ? "MEDIUM" : "LOW";
+    const riskRows = allRisks.map((r) => {
+      const score = r.l * r.i;
+      return [r.id, r.cat, r.threat, String(r.l), String(r.i), String(score), getRiskLevel(score)];
+    });
+    content.push(heading2("Risk Register"));
+    content.push(bodyText(`Risk assessment using 5×5 Likelihood × Impact matrix per IACS UR E26 §3.3. Scores: CRITICAL (≥20), HIGH (≥12), MEDIUM (≥6), LOW (<6). Total risks: ${allRisks.length} (${preDefinedRisks.length} baseline + ${dynamicRisks.length} from assessment findings).`));
+    content.push(
+      buildTable(
+        ["ID", "Category", "Risk Description", "L", "I", "Score", "Level"],
+        riskRows,
+      ),
+    );
+
+    // Risk Summary
+    const criticalCount = allRisks.filter((r) => r.l * r.i >= 20).length;
+    const highCount = allRisks.filter((r) => { const s = r.l * r.i; return s >= 12 && s < 20; }).length;
+    const mediumCount = allRisks.filter((r) => { const s = r.l * r.i; return s >= 6 && s < 12; }).length;
+    const lowCount = allRisks.filter((r) => r.l * r.i < 6).length;
+    content.push(heading2("Risk Summary"));
+    content.push(
+      buildTable(
+        ["Level", "Count", "Required Action"],
+        [
+          ["CRITICAL", String(criticalCount), "Immediate action required — escalate to CSO within 48h"],
+          ["HIGH", String(highCount), "Remediation plan required within 30 days"],
+          ["MEDIUM", String(mediumCount), "Monitor and address in next maintenance cycle"],
+          ["LOW", String(lowCount), "Accept or address as resources allow"],
+        ],
+      ),
+    );
   }
 
   if (focus === "maintenance") {
@@ -3080,6 +3167,57 @@ export function generateTemplate(
         hardware.map((hw) => [hw.name, hw.type, hw.zone || "—", "[Date]", "[Date]", "[Date]", "[Date]"]),
       ),
     );
+  }
+
+  // ─── Security Capabilities table ──────────────────────────
+  if (focus === "security-capabilities") {
+    const scGroups: [string, string, string][] = [
+      ["SC-1", "Identification & Authentication", "Password policy, account management"],
+      ["SC-2", "Use Control / Least Privilege", "RBAC, admin restriction"],
+      ["SC-3", "System Integrity", "Application whitelisting, integrity checks"],
+      ["SC-5", "Communication Integrity", "SMBv1 disabled, protocol hardening"],
+      ["SC-6", "Network Security", "Firewall, RDP NLA, port control"],
+      ["SC-7", "Audit & Accountability", "Event logging, log retention ≥90 days"],
+      ["SC-10", "Resource Availability", "Screen lock ≤15 min, session control"],
+      ["SC-11", "Malware Protection", "Windows Defender, real-time scanning"],
+      ["SC-12", "Physical Security", "USB storage blocked, removable media policy"],
+      ["SC-13", "Software Integrity", "Patch management, update verification"],
+    ];
+    const capRows = scGroups.map(([sc, cap, impl]) => {
+      const scAssess = assessments.filter((a) => a.checkId.startsWith(sc));
+      const passCount = scAssess.filter((a) => a.result === "PASS").length;
+      const status = scAssess.length === 0 ? "Not Assessed" : passCount === scAssess.length ? "✅ Implemented" : passCount > 0 ? "⚠ Partial" : "❌ Not Implemented";
+      return [cap, sc, impl, status];
+    });
+    elements.push(heading2("Security Capability Summary"), buildTable(
+      ["Capability", "E27 SC Ref", "Implementation", "Status"], capRows,
+    ));
+  }
+
+  // ─── Patch Management tables ────────────────────────────
+  if (focus === "patch-management") {
+    // Scope — list devices
+    if (hardware.length > 0) {
+      elements.push(heading2("CBS Components in Scope"), buildTable(
+        ["#", "Device", "Type", "Zone", "Category"],
+        hardware.map((hw, i) => [String(i + 1), hw.name, hw.type, hw.zone || "—", "CAT III"]),
+      ));
+    }
+    // Patch Schedule table
+    elements.push(heading2("Patch Schedule Summary"), buildTable(
+      ["Category", "Frequency", "Method", "Responsible", "Approval"],
+      [
+        ["CAT I (Navigation/Safety)", "Annually", "Vendor-approved media", "Chief Engineer", "Master + CSO"],
+        ["CAT II (Essential Ops)", "Semi-annually", "Tested update package", "IT Officer", "CSO"],
+        ["CAT III (Non-critical IT)", "Monthly", "Windows Update / WSUS", "IT Officer", "CSO notification"],
+        ["Emergency (CVSS ≥9.0)", "Within 30 days", "Emergency procedure", "IT Officer", "CSO + Master"],
+      ],
+    ));
+    // Patch Log template
+    elements.push(heading2("Patch Log Template"), buildTable(
+      ["Date", "System", "Patch / KB ID", "Version Before", "Version After", "Tested By", "Applied By"],
+      [["", "", "", "", "", "", ""], ["", "", "", "", "", "", ""], ["", "", "", "", "", "", ""]],
+    ));
   }
 
   // ─── E26 Management Plan tables ────────────────────────────

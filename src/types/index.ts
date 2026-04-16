@@ -59,6 +59,8 @@ export const E27_DOC_TYPES: DocType[] = [
   { code: "E27-MNT", standard: "E27", title: "Maintenance & Verification Plan", titleKo: "유지보수 및 검증 계획서" },
   { code: "E27-INC", standard: "E27", title: "Incident Response & Recovery Plan", titleKo: "사고 대응 및 복구 계획서" },
   { code: "E27-MOC", standard: "E27", title: "Management of Change Plan", titleKo: "변경 관리 계획서" },
+  { code: "E27-SEC", standard: "E27", title: "Description of Security Capabilities", titleKo: "보안 능력 기술서" },
+  { code: "E27-PAT", standard: "E27", title: "Patch Management Procedure", titleKo: "패치 관리 절차서" },
 ];
 
 export const E26_DOC_TYPES: DocType[] = [
