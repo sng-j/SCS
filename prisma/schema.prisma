@@ -1,0 +1,790 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+generator docs {
+  provider = "node node_modules/prisma-docs-generator"
+  output   = "../docs/prisma"
+}
+
+generator markdown {
+  provider = "prisma-markdown"
+  output   = "../docs/ERD.md"
+  title    = "Ship Cyber Security (SCS) ERD"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Shipyard {
+  id            String         @id @default(cuid())
+  name          String
+  address       String?
+  phone         String?
+  contact       String?
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  deletedAt     DateTime?
+  projects      Project[]
+  projectGroups ProjectGroup[]
+  users         User[]
+
+  @@index([deletedAt])
+}
+
+model User {
+  id                 String              @id @default(cuid())
+  email              String              @unique
+  password           String
+  name               String
+  company            String?
+  phone              String?
+  role               String              @default("VENDOR")
+  shipyardId         String?
+  isActive           Boolean             @default(true)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  deletedAt          DateTime?
+  aiConversations    AiConversation[]
+  aiFeedback         AiFeedback[]
+  certDocuments      CertDocument[]
+  vendorEquipments   Equipment[]         @relation("VendorEquipments") // Old single-vendor relation
+  assignedEquipments Equipment[]         @relation("EquipmentVendors") // New multi-vendor relation
+  equipmentTemplates EquipmentTemplate[]
+  ipWhitelist        IpWhitelist[]
+  loginAttempts      LoginAttempt[]
+  loginLogs          LoginLog[]
+  notifications      Notification[]
+  qna                Qna[]
+  securityLogs       SecurityLog[]
+  needsPasswordChange Boolean  @default(true)
+  shipyard           Shipyard?           @relation(fields: [shipyardId], references: [id])
+  actionLogs         UserActionLog[]
+  vendorAuditResults VendorAuditResult[] @relation("VendorAuditResults")
+
+  @@index([deletedAt])
+  @@index([shipyardId], map: "User_shipyardId_fkey")
+}
+
+model LoginAttempt {
+  id        Int      @id @default(autoincrement())
+  userId    String?
+  email     String
+  ip        String
+  success   Boolean
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([email, createdAt])
+  @@index([userId], map: "LoginAttempt_userId_fkey")
+}
+
+model LoginLog {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  ip        String
+  userAgent String?  @db.Text
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId], map: "LoginLog_userId_fkey")
+}
+
+model IpWhitelist {
+  id     Int    @id @default(autoincrement())
+  userId String
+  cidr   String
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([userId], map: "IpWhitelist_userId_fkey")
+}
+
+model SignupRequest {
+  id        Int      @id @default(autoincrement())
+  email     String
+  name      String
+  password  String?
+  company   String?
+  phone     String?
+  status    String   @default("PENDING")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  message   String?  @db.Text
+  link      String?
+  read      Boolean  @default(false)
+  dismissed Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, dismissed])
+}
+
+model ProjectGroup {
+  id          String    @id @default(cuid())
+  shipyardId  String?
+  name        String
+  shipowner   String?
+  description String?   @db.Text
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  projects    Project[]
+  shipyard    Shipyard? @relation(fields: [shipyardId], references: [id])
+
+  @@index([shipyardId])
+  @@index([deletedAt])
+}
+
+model Project {
+  id              String              @id @default(cuid())
+  shipyardId      String?
+  projectGroupId  String?
+  vesselName      String
+  shipowner       String?
+  classification  String?
+  systemName      String?
+  status          String              @default("ACTIVE")
+  complianceScore Float?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  deletedAt       DateTime?
+  auditRuns       AuditRun[]
+  changeEvents    ChangeEvent[]
+  dfdDiagrams     DfdDiagram[]
+  equipments      Equipment[]
+  hardware        Hardware[]
+  connections     NetworkConnection[]
+  projectGroup    ProjectGroup?       @relation(fields: [projectGroupId], references: [id])
+  shipyard        Shipyard?           @relation(fields: [shipyardId], references: [id])
+  riskEntries     RiskEntry[]
+  software        Software[]
+  submissions     Submission[]
+
+  @@index([shipyardId])
+  @@index([projectGroupId])
+  @@index([deletedAt])
+}
+
+model Equipment {
+  id                String              @id @default(cuid())
+  projectId         String
+  vendorId          String
+  name              String
+  description       String?             @db.Text
+  status            String              @default("PENDING")
+  certificationInfo String?             @db.Text
+  shipSystemId      String?
+  securityCategory  Int?
+  cidr              String?
+  isTypeApproved    Boolean             @default(false)
+  manufacturerName  String?
+  productModelName  String?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  deletedAt         DateTime?
+  auditRuns         AuditRun[]
+  certDocuments     CertDocument[]
+  dfdDiagram        DfdDiagram?
+  project           Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  vendor            User                @relation("VendorEquipments", fields: [vendorId], references: [id])
+  vendors           User[]              @relation("EquipmentVendors")
+  hardware          Hardware[]
+  software          Software[]
+  auditResults      VendorAuditResult[]
+
+  @@index([projectId])
+  @@index([vendorId])
+  @@index([deletedAt])
+}
+
+model EquipmentTemplate {
+  id        String    @id @default(cuid())
+  vendorId  String
+  name      String
+  data      String    @db.LongText
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+  vendor    User      @relation(fields: [vendorId], references: [id])
+
+  @@index([vendorId])
+  @@index([deletedAt])
+}
+
+model Hardware {
+  id                  String              @id @default(cuid())
+  projectId           String
+  equipmentId         String?
+  name                String
+  type                String
+  subType             String?
+  manufacturer        String?
+  model               String?
+  ipAddress           String?
+  macAddress          String?
+  zone                String?
+  nodeId              String?
+  location            String?
+  brand               String?
+  identifier          String?
+  category            String?
+  physicalInterface   String?
+  commProtocols       String?             @db.Text
+  logicalLocation     String?
+  purpose             String?
+  protectionMethod    String?             @db.Text
+  sysSoftwareCategory String?
+  sysSoftwareVersion  String?
+  additionalIps       String?             @db.Text
+  resetPeriodDay      Int?
+  typeApprovalCert    String?             @db.Text
+  updateLog           String?             @db.Text
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  deletedAt           DateTime?
+  assessments         Assessment[]
+  assetFiles          AssetFile[]
+  auditRuns           AuditRun[]
+  cveMatches          CveMatch[]
+  equipment           Equipment?          @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  project             Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  connFrom            NetworkConnection[] @relation("ConnFrom")
+  connTo              NetworkConnection[] @relation("ConnTo")
+  software            Software[]
+
+  @@index([projectId])
+  @@index([equipmentId])
+  @@index([deletedAt])
+}
+
+model Software {
+  id               String      @id @default(cuid())
+  projectId        String
+  equipmentId      String?
+  hardwareId       String?
+  name             String
+  version          String?
+  vendor           String?
+  swType           String      @default("APPLICATION")
+  nodeId           String?
+  cpe              String?
+  brand            String?
+  listeningPort    String?
+  purpose          String?
+  modelName        String?
+  uniqueIdentifier String?
+  osVersion        String?
+  firmwareVersion  String?
+  resetPeriodDay   Int?
+  updateLog        String?     @db.Text
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  deletedAt        DateTime?
+  assetFiles       AssetFile[]
+  cveMatches       CveMatch[]
+  equipment        Equipment?  @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  hardware         Hardware?   @relation(fields: [hardwareId], references: [id])
+  project          Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([equipmentId])
+  @@index([cpe])
+  @@index([deletedAt])
+  @@index([hardwareId], map: "Software_hardwareId_fkey")
+}
+
+model DfdDiagram {
+  id          String     @id @default(cuid())
+  projectId   String?
+  equipmentId String?    @unique
+  data        String     @db.LongText
+  source      String     @default("MANUAL")
+  version     Int        @default(1)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  deletedAt   DateTime?
+  equipment   Equipment? @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  project     Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  logs        DfdLog[]
+
+  @@index([projectId])
+  @@index([deletedAt])
+}
+
+model DfdLog {
+  id        Int        @id @default(autoincrement())
+  diagramId String
+  action    String
+  source    String
+  snapshot  String?    @db.LongText
+  createdAt DateTime   @default(now())
+  deletedAt DateTime?
+  diagram   DfdDiagram @relation(fields: [diagramId], references: [id], onDelete: Cascade)
+
+  @@index([deletedAt])
+  @@index([diagramId], map: "DfdLog_diagramId_fkey")
+}
+
+model Assessment {
+  id         String    @id @default(cuid())
+  hardwareId String
+  checkId    String
+  standard   String
+  result     String    @default("NOT_CHECKED")
+  evidence   String?   @db.Text
+  note       String?   @db.Text
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+  hardware   Hardware  @relation(fields: [hardwareId], references: [id], onDelete: Cascade)
+
+  @@unique([hardwareId, checkId])
+  @@index([result])
+  @@index([deletedAt])
+}
+
+model RiskEntry {
+  id         String    @id @default(cuid())
+  projectId  String
+  threatId   String
+  assetRef   String?
+  likelihood Int
+  impact     Int
+  riskLevel  Int
+  mitigation String?   @db.Text
+  status     String    @default("OPEN")
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([deletedAt])
+}
+
+model CveLocal {
+  id           Int       @id @default(autoincrement())
+  cveId        String    @unique
+  description  String    @db.Text
+  baseScore    Float?
+  baseSeverity String?
+  vendor       String?
+  product      String?
+  versionStart String?
+  versionEnd   String?
+  publishedAt  DateTime?
+  modifiedAt   DateTime?
+  rawJson      String?   @db.LongText
+  createdAt    DateTime  @default(now())
+
+  @@index([vendor, product])
+}
+
+model CveCache {
+  id        Int      @id @default(autoincrement())
+  query     String   @unique
+  result    String   @db.LongText
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model CveMatch {
+  id         Int       @id @default(autoincrement())
+  hardwareId String?
+  softwareId String?
+  cveId      String
+  matchType  String
+  createdAt  DateTime  @default(now())
+  deletedAt  DateTime?
+  hardware   Hardware? @relation(fields: [hardwareId], references: [id])
+  software   Software? @relation(fields: [softwareId], references: [id])
+
+  @@index([deletedAt])
+  @@index([hardwareId], map: "CveMatch_hardwareId_fkey")
+  @@index([softwareId], map: "CveMatch_softwareId_fkey")
+}
+
+model CveSyncState {
+  id           Int       @id @default(1)
+  lastSync     DateTime?
+  lastIndex    Int       @default(0)
+  totalResults Int       @default(0)
+  status       String    @default("idle")
+  updatedAt    DateTime  @updatedAt
+}
+
+model Submission {
+  id          String           @id @default(cuid())
+  projectId   String
+  phase       String           @default("INVENTORY")
+  status      String           @default("DRAFT")
+  dfdSnapshot String?          @db.LongText
+  submittedAt DateTime?
+  reviewedBy  String?
+  reviewNote  String?          @db.Text
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  deletedAt   DateTime?
+  documents   Document[]
+  project     Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  files       SubmissionFile[]
+
+  @@index([deletedAt])
+  @@index([projectId], map: "Submission_projectId_fkey")
+}
+
+model Document {
+  id           String     @id @default(cuid())
+  submissionId String
+  docType      String
+  title        String
+  content      String?    @db.LongText
+  format       String     @default("docx")
+  version      Int        @default(1)
+  status       String     @default("DRAFT")
+  generatedAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  deletedAt    DateTime?
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([deletedAt])
+  @@index([submissionId], map: "Document_submissionId_fkey")
+}
+
+model DocFormat {
+  id       Int     @id @default(autoincrement())
+  code     String  @unique
+  standard String
+  title    String
+  titleKo  String?
+  sections String  @db.LongText
+  isActive Boolean @default(true)
+}
+
+model SubmissionFile {
+  id           Int        @id @default(autoincrement())
+  submissionId String
+  filename     String
+  path         String
+  mimeType     String
+  size         Int
+  category     String?
+  deletedAt    DateTime?
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([deletedAt])
+  @@index([submissionId], map: "SubmissionFile_submissionId_fkey")
+}
+
+model AuditRun {
+  id          String     @id @default(cuid())
+  projectId   String
+  equipmentId String?
+  hardwareId  String?
+  platform    String
+  device      String?
+  os          String?
+  results     String     @db.LongText
+  sbomData    String?    @db.LongText
+  createdAt   DateTime   @default(now())
+  deletedAt   DateTime?
+  equipment   Equipment? @relation(fields: [equipmentId], references: [id])
+  hardware    Hardware?  @relation(fields: [hardwareId], references: [id])
+  project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([equipmentId])
+  @@index([hardwareId])
+  @@index([deletedAt])
+  @@index([projectId], map: "AuditRun_projectId_fkey")
+}
+
+model AuditPassword {
+  id        Int       @id @default(autoincrement())
+  projectId String
+  pin       String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model AiConversation {
+  id         String   @id @default(cuid())
+  userId     String
+  projectId  String?
+  role       String
+  content    String   @db.Text
+  intent     String?
+  confidence Float?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@index([userId], map: "AiConversation_userId_fkey")
+}
+
+model AiFeedback {
+  id             Int      @id @default(autoincrement())
+  conversationId String
+  userId         String
+  rating         Int
+  createdAt      DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id])
+
+  @@unique([conversationId, userId])
+  @@index([userId], map: "AiFeedback_userId_fkey")
+}
+
+model AiNlpLog {
+  id         Int      @id @default(autoincrement())
+  input      String
+  intent     String
+  confidence Float
+  latencyMs  Int
+  createdAt  DateTime @default(now())
+}
+
+model NetworkConnection {
+  id        String    @id @default(cuid())
+  projectId String
+  fromHwId  String
+  toHwId    String
+  medium    String    @default("ethernet")
+  protocol  String?
+  encrypted Boolean   @default(false)
+  port      String?
+  label     String?
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+  fromHw    Hardware  @relation("ConnFrom", fields: [fromHwId], references: [id], onDelete: Cascade)
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  toHw      Hardware  @relation("ConnTo", fields: [toHwId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([fromHwId])
+  @@index([toHwId])
+  @@index([deletedAt])
+}
+
+model UserActionLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String
+  entity    String?
+  entityId  String?
+  projectId String?
+  data      String?  @db.Text
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId], map: "UserActionLog_userId_fkey")
+}
+
+model ChangeEvent {
+  id              String   @id @default(cuid())
+  projectId       String
+  entityType      String
+  entityId        String
+  changeType      String
+  severity        String   @default("LOW")
+  reauditRequired Boolean  @default(false)
+  diff            String?  @db.Text
+  changedBy       String
+  createdAt       DateTime @default(now())
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([entityId])
+  @@index([projectId], map: "ChangeEvent_projectId_fkey")
+}
+
+model CompliancePackage {
+  id           String    @id @default(cuid())
+  projectId    String
+  standard     String
+  score        Float
+  checksPassed Int
+  checksTotal  Int
+  signature    String?
+  signedBy     String?
+  signedByOrg  String?
+  generatedAt  DateTime  @default(now())
+  deletedAt    DateTime?
+
+  @@index([deletedAt])
+}
+
+model SocietyChecklist {
+  id             Int     @id @default(autoincrement())
+  classification String
+  checkId        String
+  category       String
+  question       String
+  questionKo     String?
+  guidance       String?
+  isRequired     Boolean @default(true)
+}
+
+model Faq {
+  id        Int      @id @default(autoincrement())
+  category  String
+  question  String
+  answer    String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model Qna {
+  id         String    @id @default(cuid())
+  userId     String
+  projectId  String?
+  targetType String    @default("TO_ADMIN")
+  title      String
+  content    String    @db.Text
+  status     String    @default("OPEN")
+  answeredBy String?
+  answer     String?   @db.Text
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+  user       User      @relation(fields: [userId], references: [id])
+  files      QnaFile[]
+
+  @@index([deletedAt])
+  @@index([userId], map: "Qna_userId_fkey")
+}
+
+model QnaFile {
+  id        Int       @id @default(autoincrement())
+  qnaId     String
+  filename  String
+  path      String
+  mimeType  String
+  size      Int
+  deletedAt DateTime?
+  qna       Qna       @relation(fields: [qnaId], references: [id], onDelete: Cascade)
+
+  @@index([deletedAt])
+  @@index([qnaId], map: "QnaFile_qnaId_fkey")
+}
+
+model Setting {
+  id    Int    @id @default(autoincrement())
+  key   String @unique
+  value String
+}
+
+model SecurityLog {
+  id        Int      @id @default(autoincrement())
+  event     String
+  detail    String?  @db.Text
+  level     String   @default("INFO")
+  ip        String?
+  userId    String?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([level, createdAt])
+  @@index([userId], map: "SecurityLog_userId_fkey")
+}
+
+model ImgTemplate {
+  id        Int      @id @default(autoincrement())
+  name      String
+  category  String
+  data      String   @db.LongText
+  phash     String?
+  createdAt DateTime @default(now())
+}
+
+model CertDocument {
+  id           String    @id @default(cuid())
+  equipmentId  String
+  docType      String
+  filename     String
+  originalName String
+  mimeType     String
+  size         Int
+  uploadedBy   String
+  note         String?
+  createdAt    DateTime  @default(now())
+  deletedAt    DateTime?
+  equipment    Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  uploader     User      @relation(fields: [uploadedBy], references: [id])
+
+  @@index([equipmentId])
+  @@index([deletedAt])
+  @@index([uploadedBy], map: "CertDocument_uploadedBy_fkey")
+}
+
+model AssetFile {
+  id         Int       @id @default(autoincrement())
+  hardwareId String?
+  softwareId String?
+  filename   String
+  path       String
+  mimeType   String
+  size       Int
+  createdAt  DateTime  @default(now())
+  deletedAt  DateTime?
+  hardware   Hardware? @relation(fields: [hardwareId], references: [id], onDelete: Cascade)
+  software   Software? @relation(fields: [softwareId], references: [id], onDelete: Cascade)
+
+  @@index([deletedAt])
+  @@index([hardwareId], map: "AssetFile_hardwareId_fkey")
+  @@index([softwareId], map: "AssetFile_softwareId_fkey")
+}
+
+model VendorAdvisory {
+  id          Int       @id @default(autoincrement())
+  vendor      String
+  product     String?
+  title       String
+  description String    @db.Text
+  url         String?
+  severity    String?
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([vendor])
+}
+
+model ExploitRef {
+  id          Int      @id @default(autoincrement())
+  cveId       String?
+  edbId       String?  @unique
+  title       String
+  description String?  @db.Text
+  platform    String?
+  type        String?
+  url         String?
+  createdAt   DateTime @default(now())
+
+  @@index([cveId])
+}
+
+model VendorAuditResult {
+  id          String    @id @default(cuid())
+  vendorId    String
+  equipmentId String
+  deviceName  String?
+  filename    String
+  filePath    String
+  mimeType    String
+  size        Int
+  createdAt   DateTime  @default(now())
+  deletedAt   DateTime?
+  equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  vendor      User      @relation("VendorAuditResults", fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@index([vendorId])
+  @@index([equipmentId])
+  @@index([deletedAt])
+}

@@ -1,0 +1,317 @@
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css");
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+@import "tailwindcss";
+
+/* ── CYTUR Design System Tokens ── */
+@theme inline {
+  /* Font families */
+  --font-sans: "Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* Brand colors */
+  --color-brand: #4589FF;
+  --color-brand-hover: #0F62FE;
+  --color-brand-active: #0043CE;
+  --color-brand-light: #D0E2FF;
+  --color-brand-lighter: #EDF5FF;
+
+  /* Surface / Background */
+  --color-surface: #FFFFFF;
+  --color-surface-page: #F5F4F1;
+  --color-surface-sidebar: #FAFAF8;
+  --color-surface-secondary: #F4F4F4;
+  --color-surface-tertiary: #E0E0E0;
+  --color-surface-dark: #393939;
+  --color-surface-dark-hover: #262626;
+  --color-surface-overlay: rgba(0, 0, 0, 0.5);
+
+  /* Text */
+  --color-text: #0C0C0D;
+  --color-text-secondary: #343A3F;
+  --color-text-tertiary: #8D8D8D;
+  --color-text-on-dark: #FFFFFF;
+  --color-text-link: #78A9FF;
+  --color-text-link-hover: #A6C8FF;
+
+  /* Border */
+  --color-border: #DDE1E6;
+  --color-border-strong: #C6C6C6;
+  --color-border-focus: #0F62FE;
+  --color-border-error: #DA1E28;
+
+  /* Safety / Risk levels */
+  --color-safety-high: #DA1E28;
+  --color-safety-elevated: #EB6200;
+  --color-safety-moderate: #F1C21B;
+  --color-safety-low: #24A148;
+
+  /* Risk backgrounds */
+  --color-risk-bg: #FFF1F1;
+  --color-risk-bg-alt: #FFD7D9;
+
+  /* Avatar */
+  --color-avatar: #EB6200;
+
+  /* Radius */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.12);
+  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.16);
+  --shadow-btn: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* ── Base Styles ── */
+body {
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Focus ring utility ── */
+.focus-ring {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+/* ── Scrollbar styling ── */
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+/* WebKit scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-strong);
+}
+
+/* ── Typography helpers ── */
+.text-h1 { font-size: 3rem; line-height: 1.2; font-weight: 800; }
+.text-h2 { font-size: 2.25rem; line-height: 1.2; font-weight: 800; }
+.text-h3 { font-size: 1.875rem; line-height: 1.3; font-weight: 800; }
+.text-h4 { font-size: 1.5rem; line-height: 1.3; font-weight: 700; }
+.text-h5 { font-size: 1.25rem; line-height: 1.4; font-weight: 700; }
+.text-body-lg { font-size: 1.125rem; line-height: 1.6; }
+.text-body-md { font-size: 1rem; line-height: 1.6; }
+.text-body-sm { font-size: 0.875rem; line-height: 1.5; }
+.text-body-xs { font-size: 0.75rem; line-height: 1.5; }
+.text-caption { font-size: 0.625rem; line-height: 1.4; }
+.text-label { font-size: 0.75rem; line-height: 1.4; font-family: var(--font-mono); }
+
+/* ── Animation keyframes ── */
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  15% { transform: translateX(-4px); }
+  30% { transform: translateX(4px); }
+  45% { transform: translateX(-3px); }
+  60% { transform: translateX(3px); }
+  75% { transform: translateX(-1px); }
+}
+
+/* ── Enhanced Animation Keyframes ── */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgba(15, 98, 254, 0.4); }
+  70% { box-shadow: 0 0 0 6px rgba(15, 98, 254, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(15, 98, 254, 0); }
+}
+
+@keyframes ripple {
+  to { transform: scale(4); opacity: 0; }
+}
+
+/* ── Stagger animation utility ── */
+.animate-stagger > * {
+  animation: fadeSlideUp 0.4s ease-out both;
+}
+.animate-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.animate-stagger > *:nth-child(2) { animation-delay: 50ms; }
+.animate-stagger > *:nth-child(3) { animation-delay: 100ms; }
+.animate-stagger > *:nth-child(4) { animation-delay: 150ms; }
+.animate-stagger > *:nth-child(5) { animation-delay: 200ms; }
+.animate-stagger > *:nth-child(6) { animation-delay: 250ms; }
+.animate-stagger > *:nth-child(7) { animation-delay: 300ms; }
+.animate-stagger > *:nth-child(8) { animation-delay: 350ms; }
+
+/* ── Glass morphism utility ── */
+.glass {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+/* ── Improved dialog animation ── */
+dialog[open] {
+  animation: scaleIn 0.2s ease-out;
+}
+dialog[open]::backdrop {
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* ── Smooth page transitions ── */
+.page-enter {
+  animation: fadeSlideUp 0.3s ease-out;
+}
+
+/* ── Table design utilities ── */
+.table-striped tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--color-surface-secondary) 50%, transparent);
+}
+
+/* ── Improved card hover lift ── */
+.card-hover {
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+.card-hover:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+/* ── Status badge utilities ── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+/* ── Gradient text ── */
+.text-gradient-brand {
+  background: linear-gradient(135deg, var(--color-brand), var(--color-brand-active));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Improved progress bar animation ── */
+@keyframes progressFill {
+  from { width: 0; }
+}
+
+/* ── Loading skeleton pulse ── */
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.skeleton {
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+  background: var(--color-surface-secondary);
+  border-radius: var(--radius-sm);
+}
+
+/* ── Custom checkbox ── */
+input[type="checkbox"].checkbox-cytur {
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  appearance: none !important;
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px;
+  border: 1.5px solid var(--color-border-strong) !important;
+  border-radius: var(--radius-xs) !important;
+  background: var(--color-surface) !important;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+input[type="checkbox"].checkbox-cytur:hover {
+  border-color: var(--color-brand) !important;
+  background: var(--color-brand-lighter) !important;
+  box-shadow: 0 0 0 3px rgba(69, 137, 255, 0.08);
+}
+input[type="checkbox"].checkbox-cytur:checked {
+  background: var(--color-brand) !important;
+  border-color: var(--color-brand) !important;
+  box-shadow: 0 1px 2px rgba(15, 98, 254, 0.2);
+}
+input[type="checkbox"].checkbox-cytur:checked::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid white;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+input[type="checkbox"].checkbox-cytur:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+input[type="checkbox"].checkbox-cytur.indeterminate {
+  background: var(--color-brand) !important;
+  border-color: var(--color-brand) !important;
+}
+input[type="checkbox"].checkbox-cytur.indeterminate::after {
+  content: "";
+  position: absolute;
+  left: 2.5px;
+  top: 5.5px;
+  width: 9px;
+  height: 1.5px;
+  background: white;
+  border: none;
+  transform: none;
+  border-radius: 1px;
+}

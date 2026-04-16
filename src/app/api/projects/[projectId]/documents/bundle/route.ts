@@ -1,0 +1,81 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getSessionUser, verifyProjectAccess, apiError } from "@/lib/auth-helpers";
+import { generateDocx } from "@/lib/docx";
+import archiver from "archiver";
+import { PassThrough } from "stream";
+
+export const dynamic = "force-dynamic";
+
+interface Params {
+  params: Promise<{ projectId: string }>;
+}
+
+/** GET /api/projects/[projectId]/documents/bundle?submissionId=xxx — download all docs as ZIP */
+export async function GET(request: Request, { params }: Params) {
+  const user = await getSessionUser();
+  if (!user) return apiError("Unauthorized", 401);
+
+  const { projectId } = await params;
+  const hasAccess = await verifyProjectAccess(user.id, projectId, user.role, user.shipyardId);
+  if (!hasAccess) return apiError("Forbidden", 403);
+
+  const { searchParams } = new URL(request.url);
+  const submissionId = searchParams.get("submissionId");
+  const equipmentId = searchParams.get("equipmentId") || undefined;
+
+  if (!submissionId) return apiError("submissionId is required", 400);
+
+  // Get all generated documents for this submission
+  const documents = await prisma.document.findMany({
+    where: { submissionId, status: { not: "DRAFT" } },
+    orderBy: { docType: "asc" },
+  });
+
+  if (documents.length === 0) {
+    return apiError("No generated documents to bundle", 400);
+  }
+
+  // Get project info for filename
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { vesselName: true },
+  });
+
+  const vesselSlug = (project?.vesselName ?? "project")
+    .replace(/[^a-zA-Z0-9가-힣_-]/g, "_")
+    .substring(0, 40);
+
+  // Create ZIP archive
+  const archive = archiver("zip", { zlib: { level: 9 } });
+  const passThrough = new PassThrough();
+  archive.pipe(passThrough);
+
+  // Generate each document and add to archive
+  for (const doc of documents) {
+    try {
+      const buffer = await generateDocx(projectId, doc.docType, equipmentId);
+      const filename = `${doc.docType}_${doc.title.replace(/[^a-zA-Z0-9가-힣_-\s]/g, "").replace(/\s+/g, "_")}.docx`;
+      archive.append(buffer, { name: filename });
+    } catch {
+      // Skip failed documents
+    }
+  }
+
+  await archive.finalize();
+
+  // Collect all chunks
+  const chunks: Buffer[] = [];
+  for await (const chunk of passThrough) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  const zipBuffer = Buffer.concat(chunks);
+
+  return new NextResponse(zipBuffer, {
+    headers: {
+      "Content-Type": "application/zip",
+      "Content-Disposition": `attachment; filename="${vesselSlug}_documents.zip"`,
+      "Content-Length": String(zipBuffer.length),
+    },
+  });
+}

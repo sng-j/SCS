@@ -1,0 +1,39 @@
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+
+# env
+.env
+.env.local
+.env.*.local
+
+# uploads
+uploads/
+
+# prisma (legacy sqlite)
+prisma/dev.db
+prisma/dev.db-journal
+
+# os
+.DS_Store
+Thumbs.db
+
+# ide
+.vscode/
+.idea/
+
+# debug
+npm-debug.log*
+
+# documentation
+public/openapi.json
+docs/
+
+# ignoring local tools
+.serena/
+.openapi-gen/
+scratch/
+tsconfig.tsbuildinfo
