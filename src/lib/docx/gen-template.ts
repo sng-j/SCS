@@ -2771,6 +2771,17 @@ export function generateTemplate(
         ),
       );
     }
+    // CVSS Priority Timeline
+    content.push(heading2("Risk Prioritization Timeline"));
+    content.push(buildTable(
+      ["Severity", "CVSS Range", "Remediation Timeline", "Action Required"],
+      [
+        ["CRITICAL", "9.0 — 10.0", "Within 7 days", "Emergency patch, CSO + Master approval"],
+        ["HIGH", "7.0 — 8.9", "Within 30 days", "Scheduled patch, CSO approval"],
+        ["MEDIUM", "4.0 — 6.9", "Within 90 days", "Next maintenance window"],
+        ["LOW", "0.1 — 3.9", "Quarterly review", "Monitor and assess during routine maintenance"],
+      ],
+    ));
   }
 
   if (focus === "access") {
@@ -2930,7 +2941,72 @@ export function generateTemplate(
     );
   }
 
+  if (focus === "incident") {
+    // Incident Classification with maritime examples
+    content.push(heading2("Incident Classification"));
+    content.push(buildTable(
+      ["Level", "Description", "Maritime Example", "Response Time"],
+      [
+        ["CRITICAL", "Safety-critical system compromise", "Ransomware on ECDIS, GPS spoofing affecting navigation", "Immediate (< 1 hour)"],
+        ["HIGH", "Essential system compromise", "Engine control system unauthorized access, AIS manipulation", "< 4 hours"],
+        ["MEDIUM", "Non-critical system incident", "Unauthorized USB device connected, unauthorized access attempt", "< 24 hours"],
+        ["LOW", "Minor security event", "Failed login attempts, policy violation, phishing email received", "< 72 hours"],
+      ],
+    ));
+    // RPO/RTO by CAT
+    content.push(heading2("Recovery Point/Time Objectives"));
+    content.push(buildTable(
+      ["System Category", "RPO (Max Data Loss)", "RTO (Max Downtime)", "Backup Location"],
+      [
+        ["CAT I (Navigation/Safety)", "24 hours", "4 hours", "Local encrypted backup + shore backup"],
+        ["CAT II (Essential Operations)", "24 hours", "8 hours", "Local encrypted backup"],
+        ["CAT III (Non-critical IT)", "48 hours", "24 hours", "Standard backup procedure"],
+      ],
+    ));
+    // Emergency Contacts
+    content.push(heading2("Emergency Contact List"));
+    content.push(buildTable(
+      ["Role", "Contact", "Availability", "Notes"],
+      [
+        ["IT Officer (Primary)", "[Name to be specified]", "24/7 onboard", "First responder for all cyber incidents"],
+        ["CSO (Company)", "[Company CSO]", "Business hours + emergency", "Escalation contact for HIGH/CRITICAL"],
+        ["Classification Society", project.classification || "[To be specified]", "Business hours", "Notify for class-relevant incidents"],
+        ["National CERT / ISAC", "[Maritime CERT]", "24/7", "For critical incidents with national security implications"],
+      ],
+    ));
+    // Incident Log template
+    content.push(heading2("Incident Log Template"));
+    content.push(buildTable(
+      ["Date/Time", "Incident Type", "Level", "Systems Affected", "Actions Taken", "Resolution"],
+      [["", "", "", "", "", ""], ["", "", "", "", "", ""], ["", "", "", "", "", ""]],
+    ));
+  }
+
   if (focus === "change") {
+    // Change Categories table (from old system)
+    content.push(heading2("Change Categories"));
+    content.push(buildTable(
+      ["Category", "Description", "Approval Required", "Lead Time", "Responsible"],
+      [
+        ["Standard", "Pre-approved routine changes (AV update, log rotation)", "IT Officer only", "N/A (pre-approved)", "IT Officer"],
+        ["Normal", "Planned changes requiring review (HW replacement, SW upgrade)", "CSO + Chief Engineer", "≥ 5 working days", "IT Officer + Chief Engineer"],
+        ["Emergency", "Urgent changes for safety/security (critical patch, containment)", "Master + CSO", "ASAP", "IT Officer"],
+        ["Major", "Significant system changes (architecture, new CBS, zone redesign)", "Company IT + Classification Society", "≥ 30 days", "Company + Shipyard"],
+      ],
+    ));
+    // Change Process table
+    content.push(heading2("Change Process Steps"));
+    content.push(buildTable(
+      ["Step", "Activity", "Responsible", "Documentation"],
+      [
+        ["1", "Submit Change Request", "Requester", "Change Request Form (CR-XXX)"],
+        ["2", "Impact Assessment", "IT Officer", "Impact Assessment Report"],
+        ["3", "Approval", "As per category", "Change Approval Record"],
+        ["4", "Implementation Plan", "IT Officer", "Implementation Plan + Rollback Plan"],
+        ["5", "Testing & Verification", "IT Officer + Requester", "Test Report"],
+        ["6", "Close & Document", "IT Officer", "Change Completion Record"],
+      ],
+    ));
     // Current CBS scope table
     content.push(heading2("Current CBS Hardware Scope"));
     content.push(
@@ -2943,10 +3019,10 @@ export function generateTemplate(
       ),
     );
     // Change log template
-    content.push(heading2("Change Log"));
+    content.push(heading2("Change Log Template"));
     content.push(
       buildTable(
-        ["Date", "Change ID", "Description", "Affected Asset(s)", "Category", "Approver", "Status"],
+        ["CR No", "Date", "System", "Description", "Category", "Approved By", "Status"],
         [["", "", "", "", "", "", ""], ["", "", "", "", "", "", ""], ["", "", "", "", "", "", ""]],
       ),
     );
@@ -3056,6 +3132,27 @@ export function generateTemplate(
         ]),
       ),
     );
+    // Structured Maintenance Schedule (matching old system)
+    content.push(heading2("Maintenance Schedule"));
+    content.push(buildTable(
+      ["Activity", "Frequency", "Responsible", "Method", "Record"],
+      [
+        ["E27 SC Check (Hardening Audit)", "Annually", "IT Officer / CSO", "SCS Audit Tool", "E27-AUD Report"],
+        ["Vulnerability Scan", "Semi-annually", "IT Officer", "CVE/NVD Scan", "E27-VUL Report"],
+        ["CAT III Patch Deployment", "Monthly", "IT Officer", "Windows Update / WSUS", "Patch Log"],
+        ["CAT I/II Patch Deployment", "Annually", "Chief Engineer", "Vendor-approved media", "Patch Log"],
+        ["AV Definition Update", "Daily (automatic)", "IT Officer", "Windows Defender Update", "Auto-log"],
+        ["Backup Verification", "Quarterly", "IT Officer", "Restore test on spare", "Backup Log"],
+        ["User Account Review", "Quarterly", "IT Officer + CSO", "lusrmgr.msc review", "Account Audit"],
+        ["Security Awareness Training", "Annually", "CSO", "Training module", "E26-TRA Record"],
+      ],
+    ));
+    // Maintenance Log template
+    content.push(heading2("Maintenance Log Template"));
+    content.push(buildTable(
+      ["Date", "Activity", "System", "Performed By", "Result", "Next Due"],
+      [["", "", "", "", "", ""], ["", "", "", "", "", ""], ["", "", "", "", "", ""]],
+    ));
   }
 
   if (focus === "system-test") {
@@ -3066,6 +3163,28 @@ export function generateTemplate(
         hardware.map((hw) => [hw.name, hw.type, hw.zone || "—", "Yes", "Yes", "[Pending]"]),
       ),
     );
+    // 9 Specific Test Cases from old system
+    content.push(heading2("Security Configuration Test Procedures"));
+    content.push(buildTable(
+      ["Test ID", "Test Item", "E27 Ref", "Test Method", "Pass Criteria"],
+      [
+        ["T-01", "Password complexity", "SC-1", "Attempt to set password 'abc123' (no complexity)", "Password rejected; min 8 chars + complexity enforced"],
+        ["T-02", "Guest account disabled", "SC-2", "Run: Get-LocalUser -Name Guest | Select Enabled", "Enabled = False"],
+        ["T-03", "SMBv1 disabled", "SC-5", "Run: Get-SmbServerConfiguration | Select EnableSMB1Protocol", "EnableSMB1Protocol = False"],
+        ["T-04", "USB AutoRun disabled", "SC-5", "Insert USB drive with autorun.inf, verify no auto-execution", "No automatic execution occurs"],
+        ["T-05", "RDP NLA enabled", "SC-6", "Check: HKLM\\...\\WinStations\\RDP-Tcp\\UserAuthentication", "UserAuthentication = 1"],
+        ["T-06", "Audit logging active", "SC-7", "Run: auditpol /get /category:*", "Success and Failure enabled for all categories"],
+        ["T-07", "Screen lock ≤15 min", "SC-10", "Check screen saver timeout GPO setting", "Timeout ≤ 900 seconds (15 min)"],
+        ["T-08", "Antivirus active", "SC-11", "Run: Get-MpComputerStatus | Select RealTimeProtectionEnabled", "RealTimeProtectionEnabled = True"],
+        ["T-09", "Windows Update configured", "SC-13", "Run: Get-WindowsUpdate or check WSUS configuration", "Updates configured per patch policy (CAT I/II/III)"],
+      ],
+    ));
+    // Sign-off table
+    content.push(heading2("Test Sign-off"));
+    content.push(buildTable(
+      ["Role", "Name", "Signature", "Date"],
+      [["Tester / IT Officer", "", "", ""], ["Reviewer / CSO", "", "", ""], ["Master", "", "", ""]],
+    ));
   }
 
   if (focus === "hardening") {
@@ -3088,6 +3207,40 @@ export function generateTemplate(
         }),
       ),
     );
+    // SC-by-SC detailed requirements
+    content.push(heading2("SC Configuration Requirements"));
+    content.push(buildTable(
+      ["SC", "Requirement", "Configuration", "Method / Command"],
+      [
+        ["SC-1", "Password complexity", "Min 8 chars, uppercase+lowercase+digit+special, lockout ≤5", "secpol.msc → Account Policies → Password Policy"],
+        ["SC-2", "Least privilege", "Disable Guest, restrict Administrators group", "lusrmgr.msc → Users; Disable-LocalUser -Name Guest"],
+        ["SC-5", "SMBv1 disabled", "Disable legacy SMB protocol", "Set-SmbServerConfiguration -EnableSMB1Protocol $false"],
+        ["SC-5", "AutoRun disabled", "Prevent automatic execution from removable media", "GPO: Computer Config → Admin Templates → Windows Components → AutoPlay"],
+        ["SC-5", "USB storage blocked", "Block USB mass storage devices", "Set-ItemProperty HKLM:\\SYSTEM\\CurrentControlSet\\Services\\USBSTOR -Name Start -Value 4"],
+        ["SC-6", "Firewall enabled", "Windows Firewall on all profiles (Domain/Private/Public)", "Set-NetFirewallProfile -All -Enabled True"],
+        ["SC-6", "RDP NLA required", "Network Level Authentication for Remote Desktop", "UserAuthentication registry = 1"],
+        ["SC-7", "Audit logging", "Success+Failure for all categories, Security log ≥196 MB, App ≥32 MB", "auditpol /set /category:* /success:enable /failure:enable"],
+        ["SC-10", "Screen lock", "Idle timeout ≤15 minutes", "GPO: Screen saver timeout 900 seconds"],
+        ["SC-11", "AV real-time", "Windows Defender real-time protection enabled", "Set-MpPreference -DisableRealtimeMonitoring $false"],
+        ["SC-12", "Removable media", "Encrypt removable drives, restrict write access", "BitLocker To Go, GPO removable storage access"],
+        ["SC-13", "Patch policy", "CAT I/II annually, CAT III monthly, CVSS≥9.0 within 30 days", "See E27-PAT document"],
+      ],
+    ));
+    // Per-device SC status
+    if (hardware.length > 0) {
+      content.push(heading2("Per-Device Hardening Status"));
+      const scIds = ["SC-1", "SC-2", "SC-5", "SC-6", "SC-7", "SC-10", "SC-11", "SC-13"];
+      content.push(buildTable(
+        ["Device", "Type", "Zone", ...scIds],
+        hardware.map((hw) => {
+          const vals = scIds.map((sc) => {
+            const a = assessments.find((x) => x.hardwareId === hw.id && x.checkId === sc);
+            return a ? resultLabel(a.result) : "—";
+          });
+          return [hw.name, hw.type, hw.zone || "—", ...vals];
+        }),
+      ));
+    }
   }
 
   if (focus === "e26-inventory") {
