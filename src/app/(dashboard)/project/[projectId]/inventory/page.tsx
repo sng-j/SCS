@@ -6,7 +6,7 @@ import { useSession } from "next-auth/react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Cpu, Monitor, Plus, Pencil, Trash2, Network, Package,
-  Upload, Download, LayoutTemplate, ArrowLeft, ArrowRight, FileText, Shield, ChevronDown,
+  Upload, Download, ArrowLeft, ArrowRight, FileText, Shield, ChevronDown,
   Server, Radio, HardDrive, AlertCircle, Eye, Radar, CheckSquare, ListPlus, X, CheckCircle, Save,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -95,7 +95,6 @@ export default function InventoryPage() {
 
   const [hwDialogOpen, setHwDialogOpen] = useState(false);
   const [swDialogOpen, setSwDialogOpen] = useState(false);
-  // const [templateDialogOpen, setTemplateDialogOpen] = useState(false); // TODO: rebuild template
   const [editHw, setEditHw] = useState<Hardware | null>(null);
   const [editSw, setEditSw] = useState<Software | null>(null);
   const [preSelectedHwId, setPreSelectedHwId] = useState<string>("");

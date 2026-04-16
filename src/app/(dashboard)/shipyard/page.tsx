@@ -4,18 +4,16 @@ import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { motion } from "framer-motion";
 import {
-  Users, Inbox, FolderOpen, Plus, CheckCircle, XCircle, Trash2,
-  Mail, Phone, Building2, Package, ChevronRight, UserPlus,
-  Ship, Cpu, Clock, AlertCircle, Send,
+  Users, Plus, Trash2,
+  Mail, Phone, Building2, Package, UserPlus,
+  Ship, Cpu,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardBody } from "@/components/ui/card";
+import { Card, CardBody } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { useLocaleStore } from "@/stores/locale-store";
@@ -42,17 +40,6 @@ interface Vendor {
   phone: string | null;
   isActive: boolean;
   _count?: { vendorEquipments: number };
-}
-
-interface ReviewItem {
-  id: string;
-  equipmentName: string;
-  vendorName: string;
-  projectName: string;
-  status: string;
-  submittedAt: string;
-  hwCount: number;
-  swCount: number;
 }
 
 const TABS = ["vendors"] as const;
@@ -125,103 +112,6 @@ export default function ShipyardPage() {
       {/* Tab Content */}
       <VendorsTab locale={locale} />
     </motion.div>
-  );
-}
-
-// ─── Types for Projects Tab ───────────────────────────────────────────────────
-
-interface ShipyardProject {
-  id: string;
-  vesselName: string;
-  classification: string | null;
-  shipowner: string | null;
-  status: string;
-  updatedAt: string;
-  _count: { hardware: number; software: number; equipments: number };
-}
-
-const PROJECT_STATUS: Record<string, { label: string; labelEn: string; labelJa: string; color: string; bg: string }> = {
-  PENDING:            { label: "대기",     labelEn: "Pending",      labelJa: "保留中",    color: "#8D8D8D", bg: "#F4F4F4" },
-  IN_PROGRESS:        { label: "진행 중",  labelEn: "In Progress",  labelJa: "進行中",   color: "#0F62FE", bg: "#EDF5FF" },
-  SUBMITTED:          { label: "제출됨",   labelEn: "Submitted",    labelJa: "提出済み",  color: "#EB6200", bg: "#FFF3E0" },
-  UNDER_REVIEW:       { label: "검토 중",  labelEn: "Under Review", labelJa: "審査中",   color: "#EB6200", bg: "#FFF3E0" },
-  APPROVED:           { label: "승인됨",   labelEn: "Approved",     labelJa: "承認済み",  color: "#24A148", bg: "#E6F7EF" },
-};
-
-// ─── Projects Tab ─────────────────────────────────────────────────────────────
-
-function ProjectsTab({ locale }: { locale: string }) {
-  const [projects, setProjects] = useState<ShipyardProject[]>([]);
-  const [loading, setLoading] = useState(true);
-  const router = useRouter();
-
-  useEffect(() => {
-    fetch("/api/projects")
-      .then(async (r) => {
-        if (r.ok) {
-          const data = await r.json();
-          setProjects(Array.isArray(data) ? data : []);
-        }
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-body-sm font-bold text-text">
-          {locale === "ko" ? `프로젝트 (${projects.length})` : locale === "ja" ? `プロジェクト (${projects.length})` : `Projects (${projects.length})`}
-        </h2>
-        <Link href="/project/new">
-          <Button size="sm"><Plus size={14} /> {tx(locale, "New Project", "새 프로젝트", "新規プロジェクト")}</Button>
-        </Link>
-      </div>
-
-      {loading ? (
-        <SkeletonTable rows={4} />
-      ) : projects.length === 0 ? (
-        <EmptyState
-          icon={FolderOpen}
-          title={tx(locale, "No projects", "프로젝트가 없습니다", "プロジェクトがありません")}
-          subtitle={tx(locale, "Create a new project to get started", "새 프로젝트를 생성하여 시작하세요", "新規プロジェクトを作成して始めましょう")}
-        />
-      ) : (
-        <Card padding="none">
-          <div className="divide-y divide-border">
-            {projects.map((p) => {
-              const st = PROJECT_STATUS[p.status] || PROJECT_STATUS.PENDING;
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => router.push(`/project/${p.id}`)}
-                  className="w-full flex items-center gap-4 px-5 py-4 hover:bg-surface-secondary/20 transition-colors text-left group"
-                >
-                  <div className="h-10 w-10 rounded-xl bg-brand-lighter flex items-center justify-center shrink-0">
-                    <Ship size={18} className="text-brand" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-body-sm font-semibold text-text truncate">{p.vesselName}</p>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0" style={{ background: st.bg, color: st.color }}>
-                        {locale === "ko" ? st.label : locale === "ja" ? st.labelJa : st.labelEn}
-                      </span>
-                    </div>
-                    <p className="text-body-xs text-text-tertiary mt-0.5">
-                      {p.shipowner || "—"} · {p.classification || "—"}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-4 shrink-0 text-body-xs text-text-tertiary">
-                    <span className="flex items-center gap-1"><Package size={12} /> {p._count?.equipments ?? 0}</span>
-                    <span className="flex items-center gap-1"><Cpu size={12} /> {p._count?.hardware ?? 0}</span>
-                    <ChevronRight size={14} className="text-text-tertiary group-hover:text-brand transition-colors" />
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </Card>
-      )}
-    </div>
   );
 }
 
@@ -515,115 +405,6 @@ function VendorsTab({ locale }: { locale: string }) {
         title={tx(locale, "Delete Vendor", "벤더 삭제", "ベンダー削除")}
         description={locale === "ko" ? `"${deleteVendor?.name}" 벤더를 삭제하시겠습니까? 해당 벤더에 할당된 기자재도 영향을 받을 수 있습니다.` : locale === "ja" ? `ベンダー「${deleteVendor?.name}」を削除しますか？このベンダーに割り当てられた機器にも影響が出る場合があります。` : `Delete vendor "${deleteVendor?.name}"? Equipment assigned to this vendor may be affected.`}
       />
-    </div>
-  );
-}
-
-// ─── Review Tab ───────────────────────────────────────────────────────────────
-
-function ReviewTab({ locale }: { locale: string }) {
-  const [items, setItems] = useState<ReviewItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [notes, setNotes] = useState<Record<string, string>>({});
-  const [processing, setProcessing] = useState<string | null>(null);
-
-  const fetchReview = useCallback(() => {
-    setLoading(true);
-    fetch("/api/shipyard/review")
-      .then(async (r) => { if (r.ok) { const d = await r.json(); setItems(Array.isArray(d) ? d : []); }; })
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => { fetchReview(); }, [fetchReview]);
-
-  async function handleAction(id: string, action: "APPROVED" | "REVISION_REQUESTED") {
-    setProcessing(id);
-    try {
-      const res = await fetch("/api/shipyard/review", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ submissionId: id, action, reviewNote: notes[id] || "" }),
-      });
-      if (res.ok) {
-        showToast.success(action === "APPROVED" ? (tx(locale, "Approved", "승인되었습니다", "承認されました")) : (tx(locale, "Revision requested", "수정 요청을 보냈습니다", "修正依頼を送信しました")));
-        fetchReview();
-      } else {
-        showToast.error(tx(locale, "Action failed", "처리 실패", "処理失敗"));
-      }
-    } finally {
-      setProcessing(null);
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-body-sm font-bold text-text">
-          {locale === "ko" ? `검토 대기 (${items.length})` : locale === "ja" ? `審査待ち (${items.length})` : `Pending Review (${items.length})`}
-        </h2>
-      </div>
-
-      {loading ? (
-        <SkeletonTable rows={3} />
-      ) : items.length === 0 ? (
-        <EmptyState icon={Inbox} title={tx(locale, "No submissions to review", "검토할 제출물이 없습니다", "審査する提出物がありません")} subtitle={tx(locale, "Submissions will appear here when vendors submit", "벤더가 기자재를 제출하면 여기에 표시됩니다", "ベンダーが機器を提出するとここに表示されます")} />
-      ) : (
-        <div className="space-y-4">
-          {items.map((item) => (
-            <Card key={item.id} padding="none">
-              <CardBody>
-                <div className="flex items-start justify-between gap-4 mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-lg bg-brand-lighter flex items-center justify-center shrink-0">
-                      <Package size={18} className="text-brand" />
-                    </div>
-                    <div>
-                      <p className="text-body-sm font-bold text-text">{item.equipmentName}</p>
-                      <p className="text-body-xs text-text-tertiary">
-                        {item.vendorName} · {item.projectName}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-body-xs text-text-tertiary">{tx(locale, "HW", "HW", "HW")} {item.hwCount} · SW {item.swCount}</p>
-                    <p className="text-[11px] text-text-tertiary mt-0.5">
-                      {new Date(item.submittedAt).toLocaleDateString(locale === "ko" ? "ko-KR" : locale === "ja" ? "ja-JP" : "en-US")}
-                    </p>
-                  </div>
-                </div>
-
-                <Textarea
-                  label={tx(locale, "Review Notes", "검토 의견", "審査コメント")}
-                  placeholder={tx(locale, "Enter review notes (optional)", "검토 의견을 입력하세요 (선택사항)", "審査コメントを入力してください（任意）")}
-                  rows={3}
-                  value={notes[item.id] || ""}
-                  onChange={(e) => setNotes({ ...notes, [item.id]: e.target.value })}
-                />
-
-                <div className="flex gap-3 mt-4 justify-end">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    loading={processing === item.id}
-                    onClick={() => handleAction(item.id, "REVISION_REQUESTED")}
-                    className="text-safety-high border-safety-high/30 hover:bg-risk-bg"
-                  >
-                    <XCircle size={14} /> {tx(locale, "Request Revision", "수정 요청", "修正依頼")}
-                  </Button>
-                  <Button
-                    size="sm"
-                    loading={processing === item.id}
-                    onClick={() => handleAction(item.id, "APPROVED")}
-                    className="bg-safety-low hover:opacity-90"
-                  >
-                    <CheckCircle size={14} /> {tx(locale, "Approve", "승인", "承認")}
-                  </Button>
-                </div>
-              </CardBody>
-            </Card>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
