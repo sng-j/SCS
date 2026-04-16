@@ -141,16 +141,20 @@ async function isLockedOut(email: string): Promise<boolean> {
   return failedCount >= maxAttempts;
 }
 
+// In dev (HTTP), secure cookies can't be set/read, which breaks CSRF and session.
+// Enable `secure` only in production so HTTPS is required there.
+const SECURE_COOKIES = process.env.NODE_ENV === "production";
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   cookies: {
     sessionToken: {
-      options: { httpOnly: true, sameSite: "strict", secure: true, path: "/" }
+      options: { httpOnly: true, sameSite: "strict", secure: SECURE_COOKIES, path: "/" }
     },
     csrfToken: {
-      options: { httpOnly: true, sameSite: "strict", secure: true, path: "/" }
+      options: { httpOnly: true, sameSite: "strict", secure: SECURE_COOKIES, path: "/" }
     },
     callbackUrl: {
-      options: { httpOnly: true, sameSite: "strict", secure: true, path: "/" }
+      options: { httpOnly: true, sameSite: "strict", secure: SECURE_COOKIES, path: "/" }
     },
   },
   providers: [

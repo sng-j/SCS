@@ -2,13 +2,23 @@ import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
 function buildCSP() {
+  // React dev mode needs `unsafe-eval` (HMR, error overlays) and Next.js Turbopack/HMR
+  // opens a WebSocket to the dev server. Only loosen CSP in development.
+  const isDev = process.env.NODE_ENV !== "production";
+  const scriptSrc = isDev
+    ? `script-src 'self' 'unsafe-inline' 'unsafe-eval'`
+    : `script-src 'self' 'unsafe-inline'`;
+  const connectSrc = isDev
+    ? `connect-src 'self' ws: wss:`
+    : `connect-src 'self' wss://scs.cytur.net`;
+
   return [
     `default-src 'self'`,
-    `script-src 'self' 'unsafe-inline'`,
+    scriptSrc,
     `style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com`,
     `img-src 'self' data: blob:`,
     `font-src 'self' data: https://cdn.jsdelivr.net https://fonts.gstatic.com`,
-    `connect-src 'self' wss://scs.cytur.net`,
+    connectSrc,
     `frame-ancestors 'none'`,
     `frame-src 'none'`,
     `object-src 'none'`,
