@@ -101,7 +101,7 @@ const TEMPLATE_DOCS: Record<string, { title: string; focus: string }> = {
   "E26-CRA": { title: "Cyber Risk Assessment", focus: "risk-assessment" },
   "E26-CSD": { title: "Cyber Security Design Description", focus: "e26-design" },
   "E26-CRP": { title: "Cyber Resilience Test Procedure", focus: "e26-test" },
-  "E26-CMP": { title: "Cyber Security Management Plan", focus: "e26-management" },
+  "E26-CMP": { title: "Cyber Security Management Plan", focus: "e26-management-plan" },
   "E26-RAP": { title: "Remote Access Policy", focus: "e26-remote-access" },
   "E26-SSL": { title: "Approved Service Supplier List", focus: "supply" },
   "E26-TRA": { title: "Crew Cyber Security Training Record", focus: "e26-training" },
@@ -113,7 +113,7 @@ const TEMPLATE_DOCS: Record<string, { title: string; focus: string }> = {
   "IEC-ZNC": { title: "Zone & Conduit Record", focus: "iec-zone-conduit" },
   // NIST SP 800
   "NIST-CFG": { title: "Baseline Configuration Document", focus: "nist-baseline-config" },
-  "NIST-IAM": { title: "Identity & Access Management Policy", focus: "nist-iam" },
+  "NIST-IAM": { title: "Identity & Access Management Policy", focus: "nist-identity-access" },
   "NIST-SUP": { title: "Supply Chain Risk Management Plan", focus: "nist-supply-chain" },
   "NIST-SSA": { title: "System Security Assessment", focus: "nist-system-assessment" },
   // ISO 27001
@@ -148,8 +148,8 @@ export async function generateDocx(
   docType: string,
   equipmentId?: string,
 ): Promise<Buffer> {
-  // E27 문서는 기자재(equipmentId)로 필터, 나머지는 전체 프로젝트
-  const isEquipmentLevel = docType.startsWith("E27");
+  // E27 + IEC 장비 레벨(SCR/CSR)은 기자재(equipmentId)로 필터, 나머지는 전체 프로젝트
+  const isEquipmentLevel = docType.startsWith("E27") || ["IEC-SCR", "IEC-CSR"].includes(docType);
   const data = await fetchDocumentData(projectId, isEquipmentLevel ? equipmentId : undefined);
 
   const specificGenerator = GENERATORS[docType];

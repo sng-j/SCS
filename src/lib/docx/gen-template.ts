@@ -3082,6 +3082,603 @@ export function generateTemplate(
     );
   }
 
+  // ─── E26 Management Plan tables ────────────────────────────
+  if (focus === "e26-management") {
+    const zones = groupByZone(hardware);
+    content.push(heading2("CBS Asset Summary"));
+    content.push(
+      buildTable(
+        ["Zone", "HW Count", "SW Count", "Key Assets"],
+        [...zones.entries()].map(([zone, assets]) => [
+          zone, String(assets.length),
+          String(assets.reduce((n, hw) => n + hw.software.length, 0)),
+          assets.slice(0, 3).map((a) => a.name).join(", ") + (assets.length > 3 ? ` (+${assets.length - 3})` : ""),
+        ]),
+      ),
+    );
+    if (assessments.length > 0) {
+      const counts = countResults(assessments);
+      content.push(heading2("Current KPI Snapshot"));
+      content.push(
+        buildTable(
+          ["KPI", "Value", "Target"],
+          [
+            ["Assessment PASS rate", counts.total > 0 ? `${Math.round((counts.pass / counts.total) * 100)}%` : "—", "> 80%"],
+            ["FAIL items", String(counts.fail), "0"],
+            ["PARTIAL items", String(counts.partial), "0"],
+            ["Total checks", String(counts.total), "—"],
+          ],
+        ),
+      );
+    }
+  }
+
+  // ─── E26 Remote Access tables ─────────────────────────────
+  if (focus === "e26-remote-access") {
+    content.push(heading2("Approved Remote Access Methods"));
+    content.push(
+      buildTable(
+        ["Method", "Protocol", "Authentication", "Encryption", "Status"],
+        [
+          ["VPN (IPsec)", "IKEv2 / ESP", "Certificate + MFA", "AES-256", "[Approved / Pending]"],
+          ["VPN (SSL/TLS)", "TLS 1.2+", "Username + MFA", "AES-128+", "[Approved / Pending]"],
+          ["SSH", "SSH-2", "Key-based + MFA", "AES-256-CTR", "[Approved / Pending]"],
+          ["RDP (with NLA)", "TLS 1.2+", "NLA + MFA", "AES-128+", "[Approved / Pending]"],
+        ],
+      ),
+    );
+    content.push(heading2("CBS Assets with Remote Access Capability"));
+    content.push(
+      buildTable(
+        ["Asset", "Type", "Zone", "IP Address", "Remote Capable", "Access Method"],
+        hardware.map((hw) => [
+          hw.name, hw.type, hw.zone || "—", hw.ipAddress || "—",
+          hw.ipAddress ? "Yes" : "No", "[To be specified]",
+        ]),
+      ),
+    );
+  }
+
+  // ─── IEC Risk Assessment tables ───────────────────────────
+  if (focus === "iec-risk-assessment") {
+    if (assessments.length > 0) {
+      content.push(heading2("Risk Results by Zone"));
+      const zones = groupByZone(hardware);
+      content.push(
+        buildTable(
+          ["Zone", "Assets", "Checks", "PASS", "FAIL", "PARTIAL", "Risk Level"],
+          [...zones.entries()].map(([zone, assets]) => {
+            const ids = new Set(assets.map((a) => a.id));
+            const za = assessments.filter((a) => ids.has(a.hardwareId));
+            const zc = countResults(za);
+            const risk = zc.fail > 0 ? "HIGH" : zc.partial > 0 ? "MEDIUM" : "LOW";
+            return [zone, String(assets.length), String(zc.total), String(zc.pass), String(zc.fail), String(zc.partial), risk];
+          }),
+        ),
+      );
+    }
+    content.push(heading2("Threat Category Summary"));
+    content.push(
+      buildTable(
+        ["Threat Category", "Description", "Likelihood", "Impact", "Risk"],
+        [
+          ["Malware", "Ransomware, worms, trojans targeting OT", "Medium", "High", "High"],
+          ["Unauthorized Access", "Weak credentials, network exploitation", "Medium", "High", "High"],
+          ["Insider Threat", "Accidental or malicious personnel actions", "Low", "Medium", "Medium"],
+          ["Supply Chain", "Malicious code in updates, counterfeit HW", "Low", "High", "Medium"],
+          ["Physical Attack", "Unauthorized physical access to CBS", "Low", "Medium", "Low"],
+          ["Denial of Service", "Resource exhaustion targeting CBS", "Medium", "Medium", "Medium"],
+        ],
+      ),
+    );
+  }
+
+  // ─── IEC Security Level tables ────────────────────────────
+  if (focus === "iec-security-level") {
+    // FR1-FR7 compliance table
+    const frChecks: [string, string, string[]][] = [
+      ["FR 1", "Identification & Authentication (IAC)", ["SC-1", "SC-2", "SC-3"]],
+      ["FR 2", "Use Control (UC)", ["SC-2", "SC-3", "SC-10"]],
+      ["FR 3", "System Integrity (SI)", ["SC-11", "SC-12", "SC-13"]],
+      ["FR 4", "Data Confidentiality (DC)", ["SC-6"]],
+      ["FR 5", "Restricted Data Flow (RDF)", ["SC-3", "SC-5"]],
+      ["FR 6", "Timely Response to Events (TRE)", ["SC-7"]],
+      ["FR 7", "Resource Availability (RA)", ["SC-4", "SC-8", "SC-9"]],
+    ];
+    content.push(heading2("FR 1–7 Compliance Summary"));
+    content.push(
+      buildTable(
+        ["FR", "Name", "Assessed", "PASS", "FAIL", "SL-T", "SL-A"],
+        frChecks.map(([fr, name, scIds]) => {
+          const rel = assessments.filter((a) => scIds.includes(a.checkId));
+          const rc = countResults(rel);
+          return [fr, name, String(rc.total), String(rc.pass), String(rc.fail), "[TBD]", rc.fail > 0 ? "Not met" : rc.total > 0 ? "Met" : "—"];
+        }),
+      ),
+    );
+    // Device-level status
+    content.push(heading2("Device Security Level Status"));
+    content.push(
+      buildTable(
+        ["Device", "Type", "Zone", "Checks", "PASS", "FAIL", "Gap"],
+        hardware.map((hw) => {
+          const ha = assessments.filter((a) => a.hardwareId === hw.id);
+          const hc = countResults(ha);
+          return [hw.name, hw.type, hw.zone || "—", String(hc.total), String(hc.pass), String(hc.fail), hc.fail > 0 ? "Yes" : "No"];
+        }),
+      ),
+    );
+  }
+
+  // ─── IEC Capability Requirements tables ───────────────────
+  if (focus === "iec-capability-req") {
+    if (assessments.length > 0) {
+      content.push(heading2("Requirement Compliance Status by Device"));
+      content.push(
+        buildTable(
+          ["Device", "Type", "Zone", "Assessed", "PASS", "FAIL", "PARTIAL"],
+          hardware.map((hw) => {
+            const ha = assessments.filter((a) => a.hardwareId === hw.id);
+            const hc = countResults(ha);
+            return [hw.name, hw.type, hw.zone || "—", String(hc.total), String(hc.pass), String(hc.fail), String(hc.partial)];
+          }),
+        ),
+      );
+    }
+  }
+
+  // ─── IEC Component Security Requirements tables ───────────
+  if (focus === "iec-component-req") {
+    content.push(heading2("Component Inventory and Compliance"));
+    content.push(
+      buildTable(
+        ["Component", "Type", "IEC 62443-4-2 Type", "Zone", "Assessed", "PASS", "FAIL", "Conformance"],
+        hardware.map((hw) => {
+          const iecType = hw.type === "NETWORK_DEVICE" ? "ND" : hw.type === "SERVER" || hw.type === "PC" ? "HD" : hw.type === "PLC" || hw.type === "SENSOR" ? "ED" : "SA";
+          const ha = assessments.filter((a) => a.hardwareId === hw.id);
+          const hc = countResults(ha);
+          return [hw.name, hw.type, iecType, hw.zone || "—", String(hc.total), String(hc.pass), String(hc.fail), hc.fail > 0 ? "Non-conformant" : hc.total > 0 ? "Conformant" : "Not assessed"];
+        }),
+      ),
+    );
+    // CR requirement status
+    const crChecks = ["SC-1", "SC-2", "SC-3", "SC-5", "SC-6", "SC-7", "SC-11", "SC-13"];
+    content.push(heading2("Component Requirement (CR) Baseline Status"));
+    content.push(
+      buildTable(
+        ["CR Requirement", "SC Check", "Devices Assessed", "PASS", "FAIL"],
+        crChecks.map((sc) => {
+          const rel = assessments.filter((a) => a.checkId === sc);
+          const rc = countResults(rel);
+          return [sc === "SC-1" ? "CR 1.1 — Authentication" : sc === "SC-2" ? "CR 1.3 — Account Mgmt" : sc === "SC-3" ? "CR 2.1 — Authorization" : sc === "SC-5" ? "CR 7.7 — Least Functionality" : sc === "SC-6" ? "CR 4.1 — Confidentiality" : sc === "SC-7" ? "CR 2.8 — Auditable Events" : sc === "SC-11" ? "CR 3.1 — Malware Protection" : "CR 7.6 — Patch Mgmt", sc, String(rc.total), String(rc.pass), String(rc.fail)];
+        }),
+      ),
+    );
+  }
+
+  // ─── IEC Zone & Conduit tables ────────────────────────────
+  if (focus === "iec-zone-conduit") {
+    const zones = groupByZone(hardware);
+    content.push(heading2("Zone Summary"));
+    content.push(
+      buildTable(
+        ["Zone", "Asset Count", "Asset Types", "SL-T", "Key Assets"],
+        [...zones.entries()].map(([zone, assets]) => [
+          zone, String(assets.length),
+          [...new Set(assets.map((a) => a.type))].join(", "),
+          "[TBD]",
+          assets.slice(0, 3).map((a) => a.name).join(", ") + (assets.length > 3 ? ` (+${assets.length - 3})` : ""),
+        ]),
+      ),
+    );
+    // Conduit registry — derive from DFD connections or show cross-zone assets
+    const zoneNames = [...zones.keys()];
+    const conduits: string[][] = [];
+    for (let i = 0; i < zoneNames.length; i++) {
+      for (let j = i + 1; j < zoneNames.length; j++) {
+        conduits.push([`C-${i + 1}${j + 1}`, zoneNames[i], zoneNames[j], "Bidirectional", "Firewall", "[To be specified]"]);
+      }
+    }
+    if (conduits.length > 0) {
+      content.push(heading2("Conduit Registry"));
+      content.push(
+        buildTable(
+          ["Conduit ID", "Source Zone", "Dest Zone", "Direction", "Boundary Device", "Protocols"],
+          conduits,
+        ),
+      );
+    }
+    // SR requirements per zone
+    content.push(heading2("System Requirement (SR) Applicability by Zone"));
+    content.push(
+      buildTable(
+        ["Zone", "FR 5 (RDF) Applicable", "Boundary Control Required", "External Connection"],
+        [...zones.entries()].map(([zone]) => [
+          zone, "Yes", "Yes", zone.toLowerCase().includes("external") || zone.toLowerCase().includes("shore") ? "Yes" : "No",
+        ]),
+      ),
+    );
+  }
+
+  // ─── NIST Baseline Config tables ──────────────────────────
+  if (focus === "nist-baseline-config") {
+    content.push(heading2("Device Baseline Status"));
+    content.push(
+      buildTable(
+        ["Device", "Type", "Zone", "SC-5 (Least Func.)", "SC-13 (Patch)", "Baseline Documented"],
+        hardware.map((hw) => {
+          const sc5 = assessments.find((a) => a.hardwareId === hw.id && a.checkId === "SC-5");
+          const sc13 = assessments.find((a) => a.hardwareId === hw.id && a.checkId === "SC-13");
+          return [hw.name, hw.type, hw.zone || "—", sc5 ? resultLabel(sc5.result) : "—", sc13 ? resultLabel(sc13.result) : "—", "[Date]"];
+        }),
+      ),
+    );
+    content.push(heading2("Hardening Standards Reference"));
+    content.push(
+      buildTable(
+        ["CM Control", "Description", "Status"],
+        [
+          ["CM-1", "Configuration Management Policy", "Documented"],
+          ["CM-2", "Baseline Configuration", "Per asset (see above)"],
+          ["CM-3", "Configuration Change Control", "Ref: E27-MOC"],
+          ["CM-4", "Impact Analyses", "Per change request"],
+          ["CM-5", "Access Restrictions for Change", "Role-based"],
+          ["CM-6", "Configuration Settings", "Per hardening guide"],
+          ["CM-7", "Least Functionality", "Ref: SC-5"],
+          ["CM-8", "System Component Inventory", "Ref: E26-INV"],
+        ],
+      ),
+    );
+  }
+
+  // ─── NIST IAM tables ──────────────────────────────────────
+  if (focus === "nist-iam") {
+    content.push(heading2("Authentication Requirements Matrix"));
+    content.push(
+      buildTable(
+        ["Role", "Auth Level", "Min Password", "Max Age", "MFA Required", "Cert-based"],
+        [
+          ["Administrator", "Level 2", "12 chars", "90 days", "Yes", "Recommended"],
+          ["Operator", "Level 1", "8 chars", "180 days", "Remote only", "No"],
+          ["Service Technician", "Level 2", "12 chars", "Session-only", "Yes", "Recommended"],
+          ["Auditor", "Level 1", "8 chars", "180 days", "Remote only", "No"],
+        ],
+      ),
+    );
+    // Current account status from HW inventory
+    content.push(heading2("Current Account Status by Device"));
+    content.push(
+      buildTable(
+        ["Device", "Type", "Zone", "SC-1 (Password)", "SC-2 (Account)", "SC-3 (Network)"],
+        hardware.map((hw) => {
+          const sc1 = assessments.find((a) => a.hardwareId === hw.id && a.checkId === "SC-1");
+          const sc2 = assessments.find((a) => a.hardwareId === hw.id && a.checkId === "SC-2");
+          const sc3 = assessments.find((a) => a.hardwareId === hw.id && a.checkId === "SC-3");
+          return [hw.name, hw.type, hw.zone || "—", sc1 ? resultLabel(sc1.result) : "—", sc2 ? resultLabel(sc2.result) : "—", sc3 ? resultLabel(sc3.result) : "—"];
+        }),
+      ),
+    );
+  }
+
+  // ─── NIST Supply Chain tables ─────────────────────────────
+  if (focus === "nist-supply-chain") {
+    // Group software by vendor
+    const swVendors = new Map<string, typeof software>();
+    software.forEach((sw) => {
+      const v = sw.vendor || "Unknown";
+      if (!swVendors.has(v)) swVendors.set(v, []);
+      swVendors.get(v)!.push(sw);
+    });
+    content.push(heading2("Software Vendor Analysis"));
+    content.push(
+      buildTable(
+        ["Vendor", "SW Count", "Products", "CPE Coverage", "CVE Matches"],
+        [...swVendors.entries()].map(([vendor, sws]) => [
+          vendor, String(sws.length),
+          sws.map((s) => `${s.name} v${s.version || "?"}`).join("; "),
+          `${sws.filter((s) => s.cpe).length}/${sws.length}`,
+          String(sws.reduce((n, s) => n + s._count.cveMatches, 0)),
+        ]),
+      ),
+    );
+    // HW manufacturer summary
+    const hwMfrs = new Map<string, typeof hardware>();
+    hardware.forEach((hw) => {
+      const m = hw.manufacturer || "Unknown";
+      if (!hwMfrs.has(m)) hwMfrs.set(m, []);
+      hwMfrs.get(m)!.push(hw);
+    });
+    content.push(heading2("Hardware Manufacturer Summary"));
+    content.push(
+      buildTable(
+        ["Manufacturer", "Device Count", "Types", "Key Products"],
+        [...hwMfrs.entries()].map(([mfr, hws]) => [
+          mfr, String(hws.length),
+          [...new Set(hws.map((h) => h.type))].join(", "),
+          hws.slice(0, 3).map((h) => h.name).join(", ") + (hws.length > 3 ? ` (+${hws.length - 3})` : ""),
+        ]),
+      ),
+    );
+  }
+
+  // ─── NIST System Assessment tables ────────────────────────
+  if (focus === "nist-system-assessment") {
+    // CSF scores
+    const csfMapping: [string, string, string[]][] = [
+      ["IDENTIFY", "Asset Mgmt, Risk Assessment", ["SC-5"]],
+      ["PROTECT", "Access Control, Awareness, Data Security", ["SC-1", "SC-2", "SC-3", "SC-6", "SC-10", "SC-11"]],
+      ["DETECT", "Anomalies, Monitoring, Detection", ["SC-7", "SC-12"]],
+      ["RESPOND", "Response, Communication, Mitigation", ["SC-8"]],
+      ["RECOVER", "Recovery, Improvements, Communication", ["SC-9", "SC-4"]],
+    ];
+    content.push(heading2("NIST CSF Function Scores"));
+    content.push(
+      buildTable(
+        ["Function", "Focus Areas", "Checks", "PASS", "FAIL", "Score"],
+        csfMapping.map(([fn, areas, scIds]) => {
+          const rel = assessments.filter((a) => scIds.includes(a.checkId));
+          const rc = countResults(rel);
+          const score = rc.total > 0 ? `${Math.round((rc.pass / rc.total) * 100)}%` : "N/A";
+          return [fn, areas, String(rc.total), String(rc.pass), String(rc.fail), score];
+        }),
+      ),
+    );
+    // Full system inventory
+    content.push(heading2("System Inventory"));
+    content.push(
+      buildTable(
+        ["#", "Asset", "Type", "Zone", "Manufacturer", "IP Address", "Assessed"],
+        hardware.map((hw, i) => {
+          const ha = assessments.filter((a) => a.hardwareId === hw.id);
+          return [String(i + 1), hw.name, hw.type, hw.zone || "—", hw.manufacturer || "—", hw.ipAddress || "—", ha.length > 0 ? "Yes" : "No"];
+        }),
+      ),
+    );
+    // Conditional findings
+    const fails = assessments.filter((a) => a.result === "FAIL");
+    const partials = assessments.filter((a) => a.result === "PARTIAL");
+    if (fails.length > 0 || partials.length > 0) {
+      content.push(heading2("Findings & Recommendations"));
+      content.push(
+        buildTable(
+          ["Finding", "Device", "Check", "Result", "Recommendation"],
+          [...fails, ...partials].map((a, i) => [
+            `F-${String(i + 1).padStart(3, "0")}`, a.hardware.name, a.checkId, resultLabel(a.result),
+            a.result === "FAIL" ? "Immediate remediation required" : "Plan remediation within 90 days",
+          ]),
+        ),
+      );
+    }
+    if (hardware.length > 0 && assessments.length === 0) {
+      content.push(heading2("Data Gap Notice"));
+      content.push(bodyText(`${hardware.length} hardware assets are registered but no security assessments have been performed. Complete SC-1 through SC-13 assessments before finalizing the system security assessment.`));
+    }
+  }
+
+  // ─── ISO SoA tables ───────────────────────────────────────
+  if (focus === "iso-soa") {
+    content.push(heading2("Annex A Controls — Applicability Register"));
+    const annexAControls: [string, string, string, string][] = [
+      ["A.5.1", "Policies for information security", "Applicable", "E27-ACC, ISMS Policy"],
+      ["A.5.2", "Information security roles and responsibilities", "Applicable", "ISMS Roles"],
+      ["A.5.3", "Segregation of duties", "Applicable", "E27-ACC"],
+      ["A.5.7", "Threat intelligence", "Applicable", "CVE monitoring"],
+      ["A.5.8", "Security in project management", "Applicable", "E27-MOC"],
+      ["A.5.19", "Supplier relationships", "Applicable", "E26-SSL"],
+      ["A.5.20", "Supplier agreements", "Applicable", "E26-SSL"],
+      ["A.5.21", "ICT supply chain", "Applicable", "NIST-SUP"],
+      ["A.5.23", "Cloud services", "Applicable", "ISO-CLOUD"],
+      ["A.5.24", "Incident planning", "Applicable", "E27-INC"],
+      ["A.5.25", "Incident assessment", "Applicable", "E27-INC"],
+      ["A.5.26", "Incident response", "Applicable", "E27-INC, E26 IRP"],
+      ["A.5.29", "Business continuity", "Applicable", "E27-MNT"],
+      ["A.5.30", "ICT readiness", "Applicable", "E27-MNT"],
+      ["A.6.1", "Screening", "Applicable", "ISO-A7"],
+      ["A.6.3", "Awareness training", "Applicable", "E26-TRA"],
+      ["A.7.1", "Physical security perimeters", "Applicable", "Physical security"],
+      ["A.7.4", "Physical security monitoring", "Applicable", "Physical security"],
+      ["A.8.1", "User endpoint devices", "Applicable", "E27-CFG"],
+      ["A.8.2", "Privileged access rights", "Applicable", "E27-ACC, NIST-IAM"],
+      ["A.8.5", "Secure authentication", "Applicable", "SC-1, SC-2"],
+      ["A.8.7", "Malware protection", "Applicable", "SC-11"],
+      ["A.8.8", "Vulnerability management", "Applicable", "E27-VUL"],
+      ["A.8.9", "Configuration management", "Applicable", "NIST-CFG"],
+      ["A.8.15", "Logging", "Applicable", "SC-7, E27-MON"],
+      ["A.8.16", "Monitoring", "Applicable", "E27-MON"],
+      ["A.8.20", "Network security", "Applicable", "SC-3, E26-ZCD"],
+      ["A.8.22", "Network segregation", "Applicable", "Zone design"],
+      ["A.8.24", "Cryptography", "Applicable", "SC-6"],
+      ["A.8.25", "Secure development lifecycle", "Applicable", "E27-SDL"],
+    ];
+    content.push(
+      buildTable(
+        ["Control", "Description", "Applicability", "E27 Cross-reference"],
+        annexAControls,
+      ),
+    );
+    content.push(heading2("Excluded Controls"));
+    content.push(
+      buildTable(
+        ["Control", "Description", "Justification"],
+        [
+          ["A.5.6", "Contact with special interest groups", "Not applicable — no relevant industry SIG membership"],
+          ["A.8.4", "Access to source code", "No in-house software development on vessel"],
+          ["A.8.11", "Data masking", "Not applicable — no PII processing in CBS"],
+          ["A.8.12", "Data leakage prevention", "CBS operates in isolated OT network"],
+          ["A.8.23", "Web filtering", "No web browsing from CBS OT zone"],
+          ["A.8.28", "Secure coding", "No in-house development on vessel CBS"],
+        ],
+      ),
+    );
+  }
+
+  // ─── ISO ISMS tables ──────────────────────────────────────
+  if (focus === "iso-isms") {
+    const zones = groupByZone(hardware);
+    content.push(heading2("ISMS Scope Summary"));
+    content.push(
+      buildTable(
+        ["Metric", "Count"],
+        [
+          ["Hardware assets", String(hardware.length)],
+          ["Software components", String(software.length)],
+          ["Security zones", String(zones.size)],
+          ["Network connections", String(hardware.filter((h) => h.ipAddress).length)],
+          ["Assessment checks performed", String(assessments.length)],
+        ],
+      ),
+    );
+  }
+
+  // ─── ISO A.5 tables ───────────────────────────────────────
+  if (focus === "iso-a5") {
+    content.push(heading2("A.5 Control Implementation Status"));
+    const a5Areas: [string, string, string][] = [
+      ["A.5.1–A.5.8", "Policies, Roles, Threat Intel", "Documented"],
+      ["A.5.9–A.5.13", "Asset Management, Acceptable Use", hardware.length > 0 ? "Implemented" : "Pending"],
+      ["A.5.14–A.5.18", "Information Transfer, Access", assessments.length > 0 ? "Assessed" : "Pending"],
+      ["A.5.19–A.5.23", "Supplier Security, Cloud", software.length > 0 ? "Tracked" : "Pending"],
+      ["A.5.24–A.5.28", "Incident Management", "Documented (ref: E27-INC)"],
+      ["A.5.29–A.5.37", "Business Continuity, Compliance", "Documented"],
+    ];
+    content.push(
+      buildTable(
+        ["Control Range", "Area", "Status"],
+        a5Areas,
+      ),
+    );
+  }
+
+  // ─── ISO A.7 tables ───────────────────────────────────────
+  if (focus === "iso-a7") {
+    content.push(heading2("A.7 People Controls Implementation Matrix"));
+    content.push(
+      buildTable(
+        ["Control", "Description", "Implementation Status", "Reference"],
+        [
+          ["A.7.1", "Screening", "Procedure documented", "HR / Manning agent"],
+          ["A.7.2", "Terms and conditions", "Included in crew agreements", "Crew contracts"],
+          ["A.7.3", "Awareness and training", hardware.length > 0 ? "Active — CBS scope documented" : "Pending", "E26-TRA"],
+          ["A.7.4", "Disciplinary process", "Defined in SMS", "ISM Code"],
+          ["A.7.5", "Termination responsibilities", "Procedure documented", "Access revocation SOP"],
+          ["A.7.6", "Confidentiality agreements", "Template in use", "NDA template"],
+          ["A.7.7", "Remote working", "Policy in place", "E26-RAP"],
+          ["A.7.8", "Event reporting", "Procedure documented", "E27-INC"],
+        ],
+      ),
+    );
+  }
+
+  // ─── ISO A.8 tables ───────────────────────────────────────
+  if (focus === "iso-a8") {
+    const serverCount = hardware.filter((h) => h.type === "SERVER" || h.type === "PC").length;
+    const networkCount = hardware.filter((h) => h.type === "NETWORK_DEVICE").length;
+    const otherCount = hardware.length - serverCount - networkCount;
+    content.push(heading2("Endpoint Protection Summary"));
+    content.push(
+      buildTable(
+        ["Device Category", "Count", "SC-11 (Malware)", "SC-13 (Patch)"],
+        [
+          ["Servers / PCs", String(serverCount),
+            String(assessments.filter((a) => a.checkId === "SC-11" && hardware.find((h) => h.id === a.hardwareId && (h.type === "SERVER" || h.type === "PC"))).filter((a) => a.result === "PASS").length) + " PASS",
+            String(assessments.filter((a) => a.checkId === "SC-13" && hardware.find((h) => h.id === a.hardwareId && (h.type === "SERVER" || h.type === "PC"))).filter((a) => a.result === "PASS").length) + " PASS"],
+          ["Network Devices", String(networkCount), "N/A (typically)", "Per vendor policy"],
+          ["OT Devices", String(otherCount), "Application whitelist", "Per vendor policy"],
+        ],
+      ),
+    );
+    content.push(heading2("Software Vulnerability Management Summary"));
+    content.push(
+      buildTable(
+        ["Metric", "Value"],
+        [
+          ["Total software components", String(software.length)],
+          ["With CPE registered", String(software.filter((s) => s.cpe).length)],
+          ["Without CPE (manual review needed)", String(software.filter((s) => !s.cpe).length)],
+          ["Total CVE matches found", String(software.reduce((n, s) => n + s._count.cveMatches, 0))],
+        ],
+      ),
+    );
+  }
+
+  // ─── ISO Cloud tables ─────────────────────────────────────
+  if (focus === "iso-cloud") {
+    content.push(heading2("Cloud Service Inventory"));
+    content.push(
+      buildTable(
+        ["Service Name", "Provider", "Service Type", "Data Classification", "Encryption", "Status"],
+        [
+          ["[Service 1]", "[Provider]", "IaaS / PaaS / SaaS", "[Confidential / Internal / Public]", "TLS 1.2+ / AES-256", "[Active / Planned]"],
+          ["[Service 2]", "[Provider]", "IaaS / PaaS / SaaS", "[Confidential / Internal / Public]", "TLS 1.2+ / AES-256", "[Active / Planned]"],
+          ["SCS Platform", "SCS Provider", "SaaS", "Internal", "TLS 1.2+, AES-256", "Active"],
+        ],
+      ),
+    );
+    content.push(heading2("OT Cloud Connection Policy Matrix"));
+    content.push(
+      buildTable(
+        ["Connection Type", "Permitted", "Condition", "Zone Restriction"],
+        [
+          ["OT Zone → Cloud (direct)", "No", "Air gap required", "OT Zone"],
+          ["DMZ → Cloud", "Conditional", "Via application gateway", "DMZ Zone"],
+          ["Management → Cloud", "Yes", "VPN required, MFA", "Management Zone"],
+          ["Shore Office → Cloud", "Yes", "Standard IT controls", "N/A (shore)"],
+        ],
+      ),
+    );
+  }
+
+  // ─── ISO ICS/OT Extension tables ──────────────────────────
+  if (focus === "iso-ics") {
+    const serverWs = hardware.filter((h) => h.type === "SERVER" || h.type === "PC");
+    const plcSensor = hardware.filter((h) => h.type === "PLC" || h.type === "SENSOR");
+    const netDev = hardware.filter((h) => h.type === "NETWORK_DEVICE");
+    content.push(heading2("OT Asset Scope"));
+    content.push(
+      buildTable(
+        ["Category", "Count", "Examples"],
+        [
+          ["Servers / Workstations", String(serverWs.length), serverWs.slice(0, 3).map((h) => h.name).join(", ") || "—"],
+          ["PLCs / Sensors", String(plcSensor.length), plcSensor.slice(0, 3).map((h) => h.name).join(", ") || "—"],
+          ["Network Devices", String(netDev.length), netDev.slice(0, 3).map((h) => h.name).join(", ") || "—"],
+          ["Other OT Devices", String(hardware.length - serverWs.length - plcSensor.length - netDev.length), "—"],
+        ],
+      ),
+    );
+    // Security zones from data
+    const zones = groupByZone(hardware);
+    content.push(heading2("Security Zones — OT Context"));
+    content.push(
+      buildTable(
+        ["Zone", "Assets", "OT Devices", "IT Devices", "SL-T"],
+        [...zones.entries()].map(([zone, assets]) => {
+          const ot = assets.filter((a) => a.type === "PLC" || a.type === "SENSOR" || a.type === "OTHER_DEVICE").length;
+          return [zone, String(assets.length), String(ot), String(assets.length - ot), "[TBD]"];
+        }),
+      ),
+    );
+  }
+
+  // ─── Risk Policy tables ───────────────────────────────────
+  if (focus === "risk-policy") {
+    if (assessments.length > 0) {
+      const counts = countResults(assessments);
+      content.push(heading2("Current Security Posture"));
+      content.push(
+        buildTable(
+          ["Metric", "Value"],
+          [
+            ["Total assessments", String(counts.total)],
+            ["PASS", String(counts.pass)],
+            ["FAIL", String(counts.fail)],
+            ["PARTIAL", String(counts.partial)],
+            ["Compliance rate", counts.total > 0 ? `${Math.round((counts.pass / counts.total) * 100)}%` : "N/A"],
+          ],
+        ),
+      );
+    }
+  }
+
   // Add revision history table for all document types
   content.push(heading2("Document Revision History"));
   content.push(

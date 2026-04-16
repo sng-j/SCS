@@ -71,15 +71,16 @@ export default function DocumentPage() {
 
   const userRole = (session?.user as { role?: string })?.role || "VENDOR";
 
-  const canEdit = userRole === "VENDOR" || userRole === "ADMIN";
+  const canEdit = userRole === "VENDOR" || userRole === "SHIPYARD" || userRole === "ADMIN";
   const isShipyard = userRole === "SHIPYARD";
 
-  // Shipyard sees only E26, Vendor sees E27+IEC+NIST+ISO, Admin sees all 5
+  // VENDOR: E27 only (장비 레벨)
+  // SHIPYARD: E26 + IEC + NIST + ISO (선박/조직 레벨)
+  // ADMIN: all 5
   const visibleStandards = DOC_STANDARDS.filter((s) => {
     if (userRole === "ADMIN") return true;
-    if (isShipyard) return s.id === "E26";
-    // VENDOR: all standards except E26
-    return s.id !== "E26";
+    if (isShipyard) return s.id !== "E27";
+    return s.id === "E27";
   });
 
   const [activeTab, setActiveTab] = useState<string>(visibleStandards[0]?.id ?? "E27");
@@ -90,7 +91,6 @@ export default function DocumentPage() {
 
   // Load submissions
   useEffect(() => {
-    if (isShipyard) return;
     async function load() {
       try {
         const res = await fetch(`/api/projects/${projectId}/submissions`);
@@ -104,7 +104,7 @@ export default function DocumentPage() {
       }
     }
     load();
-  }, [projectId, isShipyard]);
+  }, [projectId]);
 
   // Find a doc record for a given docType code
   const findDoc = useCallback(
@@ -225,10 +225,7 @@ export default function DocumentPage() {
     [projectId, locale],
   );
 
-  // 조선소 → 전용 E26 문서 뷰
-  if (isShipyard) {
-    return <ShipyardDocumentView projectId={projectId} locale={locale} />;
-  }
+  // 조선소도 이제 메인 탭 뷰 사용 (E26 + IEC + NIST + ISO)
 
 
   // ─── Render ────────────────────────────────────────────────────────────────
