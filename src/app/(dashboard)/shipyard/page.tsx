@@ -4,10 +4,11 @@ import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { motion } from "framer-motion";
 import {
-  Users, Plus, Trash2,
+  Users, Plus, Trash2, Upload,
   Mail, Phone, Building2, Package, UserPlus,
   Ship, Cpu,
 } from "lucide-react";
+import { useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
@@ -123,6 +124,57 @@ function VendorsTab({ locale }: { locale: string }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ name: "", company: "", email: "", phone: "", password: "" });
   const [saving, setSaving] = useState(false);
+  const csvInputRef = useRef<HTMLInputElement>(null);
+  const [csvUploading, setCsvUploading] = useState(false);
+
+  /** Parse CSV text → vendor rows */
+  function parseCsv(text: string) {
+    const lines = text.split(/\r?\n/).filter((l) => l.trim());
+    if (lines.length < 2) return [];
+    const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
+    return lines.slice(1).map((line) => {
+      const cols = line.split(",").map((c) => c.trim());
+      const row: Record<string, string> = {};
+      headers.forEach((h, i) => { row[h] = cols[i] || ""; });
+      return { email: row.email || "", name: row.name || "", company: row.company || "", phone: row.phone || "", password: row.password || "" };
+    }).filter((r) => r.email && r.name);
+  }
+
+  async function handleCsvUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCsvUploading(true);
+    try {
+      const text = await file.text();
+      const rows = parseCsv(text);
+      if (rows.length === 0) {
+        showToast.error(tx(locale, "No valid rows in CSV", "CSV에 유효한 행이 없습니다", "CSVに有効な行がありません"));
+        return;
+      }
+      const res = await fetch("/api/shipyard/vendors/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vendors: rows }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showToast.success(
+          tx(locale, `${data.created} vendors created`, `${data.created}명 등록 완료`, `${data.created}名登録完了`)
+          + (data.errors?.length ? ` (${data.errors.length} ${tx(locale, "failed", "실패", "失敗")})` : "")
+        );
+        if (data.errors?.length) {
+          console.table(data.errors);
+        }
+        fetchVendors();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        showToast.error((d as { error?: string }).error || "Upload failed");
+      }
+    } finally {
+      setCsvUploading(false);
+      if (csvInputRef.current) csvInputRef.current.value = "";
+    }
+  }
 
   const fetchVendors = useCallback(() => {
     setLoading(true);
@@ -248,9 +300,15 @@ function VendorsTab({ locale }: { locale: string }) {
         <h2 className="text-body-sm font-bold text-text">
           {locale === "ko" ? `벤더 계정 (${vendors.length})` : locale === "ja" ? `ベンダーアカウント (${vendors.length})` : `Vendor Accounts (${vendors.length})`}
         </h2>
-        <Button size="sm" onClick={() => setDialogOpen(true)}>
-          <UserPlus size={14} /> {tx(locale, "Register Vendor", "벤더 등록", "ベンダー登録")}
-        </Button>
+        <div className="flex gap-2">
+          <input ref={csvInputRef} type="file" accept=".csv" className="hidden" onChange={handleCsvUpload} />
+          <Button size="sm" variant="outline" onClick={() => csvInputRef.current?.click()} loading={csvUploading}>
+            <Upload size={14} /> CSV
+          </Button>
+          <Button size="sm" onClick={() => setDialogOpen(true)}>
+            <UserPlus size={14} /> {tx(locale, "Register Vendor", "벤더 등록", "ベンダー登록")}
+          </Button>
+        </div>
       </div>
 
       <Card padding="none">
