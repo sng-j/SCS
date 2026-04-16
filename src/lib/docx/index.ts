@@ -89,12 +89,42 @@ const TEMPLATE_DOCS: Record<string, { title: string; focus: string }> = {
   "E27-VUL": { title: "Vulnerability Assessment", focus: "vulnerability" },
   "E27-ACC": { title: "Access Control Policy", focus: "access" },
   "E27-MON": { title: "Audit Log & Monitoring Plan", focus: "monitoring" },
+  "E27-CFG": { title: "Security Configuration Guidelines", focus: "hardening" },
+  "E27-TST": { title: "Test Procedure for Security Capabilities", focus: "system-test" },
+  "E27-SDL": { title: "Secure Development Lifecycle", focus: "sdl" },
+  "E27-MNT": { title: "Maintenance & Verification Plan", focus: "maintenance" },
+  "E27-INC": { title: "Incident Response & Recovery Plan", focus: "incident" },
+  "E27-MOC": { title: "Management of Change Plan", focus: "change" },
   // E26 — Ship-level aggregation of CBS data (호선 단위, 승인된 기자재 종합)
   "E26-ZCD": { title: "Zones & Conduits Diagram", focus: "zone-design" },
   "E26-INV": { title: "Vessel Asset Inventory", focus: "e26-inventory" },
   "E26-CRA": { title: "Cyber Risk Assessment", focus: "risk-assessment" },
-  "E26-CSD": { title: "Cyber Security Design Description", focus: "design-description" },
-  "E26-CRP": { title: "Cyber Resilience Test Procedure", focus: "test-procedure" },
+  "E26-CSD": { title: "Cyber Security Design Description", focus: "e26-design" },
+  "E26-CRP": { title: "Cyber Resilience Test Procedure", focus: "e26-test" },
+  "E26-CMP": { title: "Cyber Security Management Plan", focus: "e26-management" },
+  "E26-RAP": { title: "Remote Access Policy", focus: "e26-remote-access" },
+  "E26-SSL": { title: "Approved Service Supplier List", focus: "supply" },
+  "E26-TRA": { title: "Crew Cyber Security Training Record", focus: "e26-training" },
+  // IEC 62443
+  "IEC-SRA": { title: "Security Risk Assessment", focus: "iec-risk-assessment" },
+  "IEC-SLR": { title: "Security Level Report", focus: "iec-security-level" },
+  "IEC-SCR": { title: "Security Capability Requirements", focus: "iec-capability-req" },
+  "IEC-CSR": { title: "Component Security Requirements", focus: "iec-component-req" },
+  "IEC-ZNC": { title: "Zone & Conduit Record", focus: "iec-zone-conduit" },
+  // NIST SP 800
+  "NIST-CFG": { title: "Baseline Configuration Document", focus: "nist-baseline-config" },
+  "NIST-IAM": { title: "Identity & Access Management Policy", focus: "nist-iam" },
+  "NIST-SUP": { title: "Supply Chain Risk Management Plan", focus: "nist-supply-chain" },
+  "NIST-SSA": { title: "System Security Assessment", focus: "nist-system-assessment" },
+  // ISO 27001
+  "ISO-SOA":   { title: "Statement of Applicability", focus: "iso-soa" },
+  "ISO-RTP":   { title: "Risk Treatment Plan", focus: "risk-policy" },
+  "ISO-ISMS":  { title: "ISMS Scope and Policy", focus: "iso-isms" },
+  "ISO-A5":    { title: "Organizational Controls (A.5)", focus: "iso-a5" },
+  "ISO-A7":    { title: "People Controls (A.7)", focus: "iso-a7" },
+  "ISO-A8":    { title: "Technology Controls (A.8)", focus: "iso-a8" },
+  "ISO-CLOUD": { title: "Cloud Services Security Policy", focus: "iso-cloud" },
+  "ISO-ICS":   { title: "IEC 27019 OT/ICS Extension", focus: "iso-ics" },
 };
 
 /** All supported document types with their titles */
@@ -118,9 +148,9 @@ export async function generateDocx(
   docType: string,
   equipmentId?: string,
 ): Promise<Buffer> {
-  // E27 문서는 기자재(equipmentId)로 필터, E26은 전체 프로젝트
-  const isE27 = docType.startsWith("E27");
-  const data = await fetchDocumentData(projectId, isE27 ? equipmentId : undefined);
+  // E27 문서는 기자재(equipmentId)로 필터, 나머지는 전체 프로젝트
+  const isEquipmentLevel = docType.startsWith("E27");
+  const data = await fetchDocumentData(projectId, isEquipmentLevel ? equipmentId : undefined);
 
   const specificGenerator = GENERATORS[docType];
   if (specificGenerator) {

@@ -1450,6 +1450,1232 @@ function getSections(focus: string, data: DocumentData): TemplateSection[] {
         },
       ];
 
+    // ─── E26 additional documents ────────────────────────────
+
+    case "e26-management":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This Cyber Security Management Plan (CSMP) defines the organizational framework for managing cybersecurity on vessel "${project.vesselName}" in accordance with IACS UR E26. It establishes governance structures, responsibilities, processes, and review cycles to maintain ongoing cyber resilience throughout the vessel's operational life.`,
+        },
+        {
+          title: "2. Regulatory Reference",
+          body: "This plan is developed in compliance with:",
+          bullets: [
+            "IACS UR E26 — Cyber resilience of ships (Operational phase management requirements)",
+            "IMO MSC-FAL.1/Circ.3 — Guidelines on maritime cyber risk management",
+            "ISM Code — Safety Management System integration",
+            `${project.classification || "Classification Society"} — Cybersecurity management requirements`,
+          ],
+        },
+        {
+          title: "3. Governance and Responsibilities",
+          body: "Cybersecurity management is governed at three levels:",
+          bullets: [
+            "Company Level — Designated Person Ashore (DPA) and Company Security Officer (CSO): Overall policy, compliance oversight, resource allocation",
+            "Ship Level — Ship Security Officer (SSO) and Master: Onboard implementation, incident command, crew training coordination",
+            "System Level — IT/OT Administrator and Equipment Vendors: Technical maintenance, patch management, configuration control",
+          ],
+        },
+        {
+          title: "4. Cyber Security Management Lifecycle",
+          body: "The CSMP follows a Plan-Do-Check-Act (PDCA) lifecycle integrated with the vessel Safety Management System (SMS):",
+          bullets: [
+            "PLAN — Annual cyber risk assessment, update threat register, set improvement objectives",
+            "DO — Implement controls, deliver training, apply patches, manage changes",
+            "CHECK — Monitor and audit compliance, review incident reports, verify control effectiveness",
+            "ACT — Corrective actions, update procedures, classify lessons learned",
+          ],
+        },
+        {
+          title: "5. Scope of Management",
+          body: `The CSMP covers ${hardware.length} hardware assets and ${software.length} software components across ${zones.size} security zone(s): ${[...zones.keys()].join(", ")}. All CBS equipment listed in the vessel asset inventory falls within the scope of this plan.`,
+        },
+        {
+          title: "6. Key Management Processes",
+          body: "The following core cybersecurity processes are managed under this plan:",
+          bullets: [
+            "Risk Management — Annual cyber risk assessment aligned with IACS UR E26 (ref: E26-CRA)",
+            "Asset Management — Maintaining the Vessel Asset Inventory (ref: E26-INV)",
+            "Change Management — Formal change control for all CBS modifications (ref: E27-MOC)",
+            "Incident Management — Incident response and reporting chain (ref: E27-INC, E26 procedures)",
+            "Training Management — Crew cyber awareness and competency program (ref: E26-TRA)",
+            "Supplier Management — Vendor qualification and supply chain security (ref: E26-SSL)",
+            "Remote Access Management — Policy and authorization for remote connections (ref: E26-RAP)",
+            "Audit and Review — Internal audit of CSMP compliance and classification society surveys",
+          ],
+        },
+        {
+          title: "7. Performance Metrics",
+          body: "The effectiveness of the CSMP shall be measured through the following key performance indicators (KPIs):",
+          bullets: [
+            "Patch compliance rate — Percentage of assets with current security patches",
+            "Training completion rate — Percentage of crew completing mandatory annual training",
+            "Incident response time — Time from detection to initial response for each incident level",
+            "Assessment score — Percentage of security checks (SC-1 to SC-13) rated PASS",
+            "Change management compliance — Percentage of changes processed through formal workflow",
+            "Audit findings closure rate — Percentage of audit findings closed within target timescale",
+          ],
+        },
+        {
+          title: "8. Annual Review and Update",
+          body: `This CSMP shall be reviewed annually by the CSO with inputs from the SSO and department heads. The review shall consider: changes to the threat landscape, regulatory updates, lessons learned from incidents and drills, audit findings, and changes to the CBS asset inventory. Updated plans require DPA approval and shall be communicated to vessel "${project.vesselName}" within 30 days of approval.`,
+        },
+      ];
+
+    case "e26-remote-access":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This Remote Access Policy defines the requirements and procedures for remote access to the Computer Based Systems (CBS) of vessel "${project.vesselName}" in accordance with IACS UR E26 and E27 remote access capabilities (Capabilities 32–41). It applies to all remote connections by vendors, administrators, and service providers.`,
+        },
+        {
+          title: "2. Regulatory Reference",
+          body: "This policy is based on:",
+          bullets: [
+            "IACS UR E26 — Remote access security requirements (PROTECT function)",
+            "IACS UR E27 — Capability 32 (MFA), Capability 33 (Software/device authentication), Capability 34 (Login lockout), Capability 35 (System notification), Capability 36 (Remote session monitoring), Capability 37 (Crew approval for remote access)",
+            "IACS UR E27 — Capability 38 (Cryptographic integrity), Capability 39 (Session integrity), Capability 40 (Session ID invalidation), Capability 41 (Untrusted network protection)",
+            `${project.classification || "Classification Society"} — Remote access requirements`,
+          ],
+        },
+        {
+          title: "3. Remote Access Authorization",
+          body: "All remote access to CBS requires prior authorization:",
+          bullets: [
+            "Crew Approval (Capability 37) — Master or SSO must explicitly approve each remote session before it is enabled",
+            "Vendor Authorization — Remote vendor access requires a formal service request approved by the Ship Owner",
+            "Emergency Access — Defined emergency procedure for time-critical remote access with retrospective documentation",
+            "Access is disabled by default — Remote access capability is off unless actively enabled for an approved session",
+          ],
+        },
+        {
+          title: "4. Authentication Requirements",
+          body: "Remote access authentication must meet the following requirements:",
+          bullets: [
+            "Multi-Factor Authentication (MFA) — Required for all remote access (Capability 32); minimum two factors from: knowledge (password), possession (token/certificate), or inherence (biometric)",
+            "Individual accounts — Shared remote access credentials are prohibited",
+            "Certificate-based authentication — Preferred for machine-to-machine connections (Capability 33)",
+            "Login lockout — Account locked after 5 failed attempts; lockout duration minimum 15 minutes (Capability 34)",
+            "Credentials must be unique for remote access (separate from local accounts where technically feasible)",
+          ],
+        },
+        {
+          title: "5. Session Security Requirements",
+          body: "Active remote sessions must comply with:",
+          bullets: [
+            "Session monitoring — All remote sessions logged and monitored in real-time (Capability 36)",
+            "Session notification — CBS shall display notification of active remote session to onboard personnel (Capability 35)",
+            "Automatic timeout — Sessions terminated after maximum 30 minutes of inactivity",
+            "Session ID invalidation — Session tokens invalidated on logout (Capability 40)",
+            "Cryptographic integrity — All remote communications use TLS 1.2+ or equivalent (Capabilities 38, 39)",
+            "Encryption — Data in transit protected by current-generation cryptographic protocols",
+          ],
+        },
+        {
+          title: "6. Network Requirements for Remote Access",
+          body: "Technical network controls for remote access:",
+          bullets: [
+            "Remote access only through designated, controlled entry points (VPN gateway or equivalent)",
+            "Remote sessions isolated from other CBS zones — access restricted to specific systems required for the task",
+            "All remote traffic logged at network perimeter with timestamps and source identification",
+            "Firewall rules restrict remote access ports to authorized source IP ranges where feasible",
+            "Satellite and shore connections used for remote access must be encrypted end-to-end",
+          ],
+        },
+        {
+          title: "7. Vendor and Third-Party Remote Access",
+          body: "Third-party remote access must additionally comply with:",
+          bullets: [
+            "Non-disclosure agreement (NDA) covering CBS system details must be in place before access is granted",
+            "Scope limitation — Access restricted to specific systems required for the service task",
+            "Time limitation — Access enabled for defined period only; disabled immediately upon task completion",
+            "Supervision — An onboard representative (SSO or designated person) monitors the session",
+            "Post-service report — Vendor submits activity report within 48 hours of session completion",
+            "Post-session integrity check — Verify system integrity after each vendor remote session",
+          ],
+        },
+        {
+          title: "8. Approved Remote Access Methods",
+          body: `The following remote access methods are approved for use on vessel "${project.vesselName}":`,
+          bullets: [
+            "[Specify approved VPN solution — e.g., IPsec VPN, SSL/TLS VPN]",
+            "[Specify approved remote desktop protocol and version — e.g., RDP with NLA, SSH]",
+            "[List any vendor-specific remote access platforms approved by the Ship Owner]",
+            "All other remote access methods are prohibited without explicit written approval from the DPA",
+          ],
+        },
+        {
+          title: "9. CBS Assets in Scope",
+          body: `Remote access may be required for ${hardware.length} hardware assets across ${zones.size} security zone(s). Each asset's remote access capability shall be documented and assessed per the security capability assessment (E27-AUD).`,
+        },
+        {
+          title: "10. Record Keeping",
+          body: "Remote access records shall be maintained:",
+          bullets: [
+            "Log of all remote access sessions: date/time, duration, user/vendor, system accessed, purpose",
+            "Authorization records: Master/SSO approval for each session",
+            "Incident records: Any anomalies observed during remote sessions",
+            "Records retained for minimum 2 years and available for classification society audit",
+          ],
+        },
+      ];
+
+    // ─── IEC 62443 documents ─────────────────────────────────
+
+    case "iec-risk-assessment":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This Security Risk Assessment (SRA) is performed in accordance with IEC 62443-3-2 for the industrial automation and control system (IACS) / Computer Based System (CBS) of vessel "${project.vesselName}". It identifies threats, vulnerabilities, and risks, and establishes target security levels (SL-T) for each security zone.`,
+        },
+        {
+          title: "2. Normative References",
+          body: "This assessment is based on:",
+          bullets: [
+            "IEC 62443-3-2:2020 — Security risk assessment for system design",
+            "IEC 62443-3-3 — System security requirements and security levels",
+            "IEC 62443-2-1 — Security management system for IACS",
+            "IACS UR E26/E27 — Maritime cyber resilience requirements",
+            `${project.classification || "Classification Society"} — Applicable rules and guidelines`,
+          ],
+        },
+        {
+          title: "3. System Under Assessment",
+          body: `The system under assessment is the CBS of vessel "${project.vesselName}". It comprises ${hardware.length} hardware assets and ${software.length} software components organized into ${zones.size} security zone(s): ${[...zones.keys()].join(", ")}.`,
+        },
+        {
+          title: "4. Risk Assessment Methodology",
+          body: "The risk assessment follows the IEC 62443-3-2 process:",
+          bullets: [
+            "Step 1: Identify high-level risk (HLR) for each zone and conduit",
+            "Step 2: Identify threats using STRIDE methodology (Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege)",
+            "Step 3: Identify vulnerabilities through security capability assessment (SC-1 to SC-13)",
+            "Step 4: Determine consequence severity (safety, financial, operational, reputational)",
+            "Step 5: Determine likelihood based on threat actor capability and existing controls",
+            "Step 6: Calculate risk = Consequence × Likelihood",
+            "Step 7: Determine target security level (SL-T) based on risk",
+          ],
+        },
+        {
+          title: "5. Target Security Levels",
+          body: "Security levels (SL) are defined per IEC 62443-3-3:",
+          bullets: [
+            "SL 1 — Protection against casual or unintentional violation",
+            "SL 2 — Protection against intentional violation with simple means, low motivation/resources",
+            "SL 3 — Protection against intentional violation with sophisticated means, moderate motivation/resources",
+            "SL 4 — Protection against intentional violation with sophisticated means, high motivation/extended resources",
+          ],
+        },
+        {
+          title: "6. Assessment Summary",
+          body: `Security capability assessment results across ${hardware.length} asset(s): ${counts.pass} PASS, ${counts.fail} FAIL, ${counts.partial} PARTIAL, ${counts.na} N/A out of ${counts.total} total checks. FAIL results represent unmet security requirements that elevate risk levels.`,
+        },
+        {
+          title: "7. Risk Register",
+          body: "The risk register documents all identified risks with their treatment plans. High-risk items (derived from FAIL assessment results and zone connectivity analysis) are prioritized for immediate remediation.",
+        },
+        {
+          title: "8. Risk Treatment",
+          body: "For each identified risk, treatment options per IEC 62443-3-2:",
+          bullets: [
+            "Reduce — Apply additional countermeasures to reduce likelihood or consequence",
+            "Accept — Risk is within tolerance threshold; formally accepted and documented",
+            "Transfer — Risk transferred through contractual arrangements",
+            "Avoid — System design or operational change eliminates the risk",
+          ],
+        },
+      ];
+
+    case "iec-security-level":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This Security Level Report documents the achieved security levels (SL-A) for the CBS of vessel "${project.vesselName}" in accordance with IEC 62443-3-3. It compares achieved levels against target security levels (SL-T) established in the Security Risk Assessment and identifies gaps requiring remediation.`,
+        },
+        {
+          title: "2. Normative References",
+          body: "This report references:",
+          bullets: [
+            "IEC 62443-3-3:2013 — System security requirements and security levels",
+            "IEC 62443-3-2 — Security risk assessment (source of SL-T values)",
+            "IEC 62443-4-2 — Technical security requirements for IACS components",
+            "IACS UR E27 — Security capability assessment (SC-1 to SC-13)",
+          ],
+        },
+        {
+          title: "3. Security Level Definitions",
+          body: "Security levels are evaluated across seven foundational requirements (FR) per IEC 62443-3-3:",
+          bullets: [
+            "FR 1 — Identification and Authentication Control (IAC)",
+            "FR 2 — Use Control (UC)",
+            "FR 3 — System Integrity (SI)",
+            "FR 4 — Data Confidentiality (DC)",
+            "FR 5 — Restricted Data Flow (RDF)",
+            "FR 6 — Timely Response to Events (TRE)",
+            "FR 7 — Resource Availability (RA)",
+          ],
+        },
+        {
+          title: "4. System Security Level Assessment",
+          body: `The CBS comprises ${hardware.length} assets across ${zones.size} zone(s). Security level assessment is performed per zone based on the security capabilities implemented and verified through assessment results (${counts.pass} PASS, ${counts.fail} FAIL, ${counts.partial} PARTIAL out of ${counts.total} checks).`,
+        },
+        {
+          title: "5. Security Level Gap Analysis",
+          body: "The following gaps exist between target (SL-T) and achieved (SL-A) security levels. Items assessed as FAIL indicate capabilities not yet meeting the target security level requirements.",
+        },
+        {
+          title: "6. Remediation Plan",
+          body: "For each identified gap, a remediation plan is required:",
+          bullets: [
+            "Identify specific IEC 62443-3-3 system requirement (SR) not met",
+            "Define corrective action with responsible party and target date",
+            "Verify remediation through re-assessment",
+            "Update SL-A upon successful remediation",
+          ],
+        },
+        {
+          title: "7. Certification Readiness",
+          body: "This report supports the certification process for IEC 62443 compliance. All SL-T values must be met by SL-A before certification can be achieved. Current gap count requiring remediation: based on FAIL results in security capability assessment.",
+        },
+      ];
+
+    case "iec-capability-req":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This Security Capability Requirements document defines the system-level security requirements for the CBS of vessel "${project.vesselName}" in accordance with IEC 62443-3-3. It translates the target security levels (SL-T) from the risk assessment into specific, verifiable system requirements.`,
+        },
+        {
+          title: "2. Normative References",
+          body: "This document references:",
+          bullets: [
+            "IEC 62443-3-3:2013 — System security requirements and security levels",
+            "IEC 62443-3-2 — Security risk assessment (source of SL-T)",
+            "IEC 62443-4-2 — Component-level requirements (supplier responsibility)",
+            "IACS UR E27 — Security capabilities 1-41 (maritime implementation)",
+          ],
+        },
+        {
+          title: "3. Foundational Requirements Structure",
+          body: "System requirements are organized by IEC 62443-3-3 Foundational Requirements (FR) and System Requirements (SR). Each SR has capability levels (CR 1-4) that must be met based on the target SL-T.",
+        },
+        {
+          title: "4. FR 1 — Identification and Authentication Control",
+          body: "System requirements for identity and authentication (mapped to E27 SC-1, SC-2, SC-3):",
+          bullets: [
+            "SR 1.1 — Human user identification and authentication (maps to E27 Cap. 1)",
+            "SR 1.2 — Software process and device identification and authentication",
+            "SR 1.3 — Account management (maps to E27 Cap. 2, SC-2)",
+            "SR 1.4 — Identifier management",
+            "SR 1.5 — Authenticator management (maps to E27 Cap. 3, SC-1)",
+            "SR 1.6 — Wireless access management (maps to E27 Cap. 5)",
+            "SR 1.7 — Strength of password-based authentication (maps to E27 Cap. 6)",
+            "SR 1.8 — Public key infrastructure certificates",
+            "SR 1.9 — Strength of public key-based authentication",
+            "SR 1.10 — Authenticator feedback (maps to E27 Cap. 7)",
+            "SR 1.11 — Unsuccessful login attempts (maps to E27 Cap. 4)",
+            "SR 1.12 — System use notification (maps to E27 Cap. 35)",
+            "SR 1.13 — Access via untrusted networks (maps to E27 Cap. 32-41)",
+          ],
+        },
+        {
+          title: "5. FR 2 — Use Control",
+          body: "System requirements for authorization and use control (mapped to E27 SC-2, SC-3):",
+          bullets: [
+            "SR 2.1 — Authorization enforcement (maps to E27 Cap. 8)",
+            "SR 2.2 — Wireless use control (maps to E27 Cap. 9)",
+            "SR 2.3 — Use control for portable and mobile devices (maps to E27 Cap. 10)",
+            "SR 2.4 — Mobile code (maps to E27 Cap. 11)",
+            "SR 2.5 — Session lock (maps to E27 Cap. 12, SC-10)",
+            "SR 2.6 — Remote session termination",
+            "SR 2.7 — Concurrent session control",
+            "SR 2.8 — Auditable events (maps to E27 Cap. 13, SC-7)",
+            "SR 2.9 — Audit storage capacity (maps to E27 Cap. 14)",
+            "SR 2.10 — Response to audit processing failures (maps to E27 Cap. 15)",
+            "SR 2.11 — Timestamps (maps to E27 Cap. 16)",
+            "SR 2.12 — Non-repudiation",
+          ],
+        },
+        {
+          title: "6. FR 3–7 Summary",
+          body: "Requirements for remaining foundational requirements:",
+          bullets: [
+            "FR 3 (System Integrity) — SR 3.1 through 3.9: Communication integrity, malware protection, security verification, input validation, deterministic output",
+            "FR 4 (Data Confidentiality) — SR 4.1 through 4.3: Information confidentiality, use of cryptography, communication confidentiality",
+            "FR 5 (Restricted Data Flow) — SR 5.1 through 5.4: Network segmentation, zone boundary protection, general purpose person-to-person communication restrictions",
+            "FR 6 (Timely Response to Events) — SR 6.1 through 6.2: Audit log accessibility, continuous monitoring",
+            "FR 7 (Resource Availability) — SR 7.1 through 7.8: DoS protection, resource management, control system backup, control system recovery, emergency power, network and security configuration, least functionality",
+          ],
+        },
+        {
+          title: "7. Compliance Status",
+          body: `Current compliance status based on security capability assessment: ${counts.pass} requirements met (PASS), ${counts.fail} requirements not met (FAIL), ${counts.partial} requirements partially met (PARTIAL) out of ${counts.total} assessed. Detailed requirement-by-requirement status is available in the Security Capability Assessment Report (E27-AUD).`,
+        },
+      ];
+
+    case "iec-component-req":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This Component Security Requirements document defines the security requirements for individual CBS components of vessel "${project.vesselName}" in accordance with IEC 62443-4-2. It establishes the security requirements that each hardware and software component must meet, based on the component security level (SL-C) derived from the system security level assessment.`,
+        },
+        {
+          title: "2. Normative References",
+          body: "This document references:",
+          bullets: [
+            "IEC 62443-4-2:2019 — Technical security requirements for IACS components",
+            "IEC 62443-3-3 — System-level security requirements (source of SL-C targets)",
+            "IEC 62443-4-1 — Secure product development lifecycle",
+            "IACS UR E27 — Security capability requirements (SC-1 to SC-13)",
+          ],
+        },
+        {
+          title: "3. Component Types and Requirements",
+          body: "IEC 62443-4-2 defines four component types with specific requirements:",
+          bullets: [
+            "Software Application (SA) — Applications running on general-purpose OS",
+            "Embedded Device (ED) — Embedded systems with dedicated OS or firmware",
+            "Host Device (HD) — General-purpose computing devices (servers, workstations, PCs)",
+            "Network Device (ND) — Network infrastructure components (switches, routers, firewalls)",
+          ],
+        },
+        {
+          title: "4. Component Inventory",
+          body: `The CBS contains ${hardware.length} hardware components and ${software.length} software components. Each component is classified by type and assessed for its security capability requirements.`,
+        },
+        {
+          title: "5. Component Security Requirements by Category",
+          body: "Key component-level security requirements (Component Requirements — CR):",
+          bullets: [
+            "CR 1.1 — Human user identification and authentication: Components must support individual accounts and password enforcement",
+            "CR 1.3 — Account management: Components must support account lockout and account lifecycle management",
+            "CR 2.1 — Authorization enforcement: Components must enforce role-based access control",
+            "CR 2.8 — Auditable events: Components must generate logs for security-relevant events",
+            "CR 3.1 — Communication integrity: Components must support integrity verification for communications",
+            "CR 4.1 — Information confidentiality: Components must support encryption for sensitive data",
+            "CR 7.1 — Denial of service protection: Components must handle resource exhaustion gracefully",
+            "CR 7.6 — Network and security configuration settings: Components must provide secure default configurations",
+          ],
+        },
+        {
+          title: "6. Supplier Conformance",
+          body: "Each component supplier must provide evidence of IEC 62443-4-2 conformance:",
+          bullets: [
+            "Conformance statement specifying the achieved component security level (SL-C)",
+            "Security capability documentation for each requirement",
+            "Evidence of IEC 62443-4-1 secure development lifecycle compliance",
+            "Vulnerability disclosure and patch management policy",
+            "Security update availability timeline and delivery mechanism",
+          ],
+        },
+        {
+          title: "7. Gaps and Remediation",
+          body: "Components with security capability gaps (FAIL assessments) require:",
+          bullets: [
+            "Formal non-conformance notice to supplier",
+            "Compensating countermeasure at system level (documented and approved)",
+            "Remediation timeline agreed with supplier",
+            "Re-assessment after supplier delivers patch or update",
+          ],
+        },
+      ];
+
+    case "iec-zone-conduit":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This Zone and Conduit Record documents the security zones and conduits defined for the CBS of vessel "${project.vesselName}" in accordance with IEC 62443-3-2. Each zone groups assets with similar security requirements, and conduits define the controlled communication paths between zones.`,
+        },
+        {
+          title: "2. Normative References",
+          body: "This record references:",
+          bullets: [
+            "IEC 62443-3-2:2020 — Zone and conduit definition (Section 5)",
+            "IEC 62443-3-3 — System security requirements (FR 5: Restricted Data Flow)",
+            "IACS UR E26 — Network zone and conduit design requirements",
+            "IEC 62443-2-1 — Zone and conduit management procedures",
+          ],
+        },
+        {
+          title: "3. Zone Definitions",
+          body: `The CBS is divided into ${zones.size} security zone(s). Each zone is defined by its assets, trust level, target security level (SL-T), and boundary characteristics.`,
+        },
+        {
+          title: "4. Zone Asset Assignments",
+          body: `The following ${hardware.length} hardware assets are assigned to security zones. Zone assignment determines the security level requirements applicable to each asset and the controls that must be in place at zone boundaries.`,
+        },
+        {
+          title: "5. Conduit Definitions",
+          body: "Conduits are the controlled communication channels between zones. Each conduit is defined by:",
+          bullets: [
+            "Source zone and destination zone",
+            "Protocols permitted through the conduit",
+            "Direction of permitted data flow (unidirectional/bidirectional)",
+            "Boundary device implementing the conduit control (firewall, data diode, gateway)",
+            "Security level capability of the conduit device",
+          ],
+        },
+        {
+          title: "6. External Connections",
+          body: "External network connections (outside the vessel CBS) require dedicated conduit definitions with the highest security controls:",
+          bullets: [
+            "Shore-based network connections (satellite, LTE, port connectivity)",
+            "Vendor remote access connections",
+            "Classification society survey connections",
+            "Any connection to networks outside the vessel boundary",
+          ],
+        },
+        {
+          title: "7. Zone and Conduit Management",
+          body: "Changes to zone or conduit definitions require:",
+          bullets: [
+            "Formal change request through the Change Management process (ref: E27-MOC)",
+            "Security risk assessment of the proposed change",
+            "Update to this Zone and Conduit Record",
+            "Update to the Zones and Conduits Diagram (ref: E26-ZCD)",
+            "Notification to classification society if change affects type-approved configuration",
+          ],
+        },
+      ];
+
+    // ─── NIST SP 800 documents ────────────────────────────────
+
+    case "nist-baseline-config":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This Baseline Configuration Document establishes the approved baseline security configurations for all CBS components of vessel "${project.vesselName}" in accordance with NIST SP 800-53 (CM-2: Baseline Configuration) and NIST SP 800-128 (Guide for Security-Focused Configuration Management). It defines the approved, hardened configuration state that all components must maintain.`,
+        },
+        {
+          title: "2. Normative References",
+          body: "This document references:",
+          bullets: [
+            "NIST SP 800-53 Rev. 5 — CM-2 (Baseline Configuration), CM-6 (Configuration Settings)",
+            "NIST SP 800-128 — Guide for Security-Focused Configuration Management",
+            "NIST SP 800-70 — National Checklist Program for IT Products",
+            "IACS UR E27 — Security configuration requirements (SC-1 to SC-13)",
+            "CIS Benchmarks — Component-specific hardening guidelines",
+          ],
+        },
+        {
+          title: "3. Baseline Configuration Policy",
+          body: "The baseline configuration policy requires:",
+          bullets: [
+            "All CBS components must be configured in accordance with approved baselines before deployment",
+            "Deviations from baseline require formal approval through the change management process",
+            "Baseline configurations must be updated following every major OS or firmware upgrade",
+            "Annual review of all baselines against current security best practices",
+            "Baseline configurations stored in version-controlled secure repository",
+          ],
+        },
+        {
+          title: "4. Component Inventory and Baseline Status",
+          body: `The following ${hardware.length} hardware assets require baseline configuration documentation. Baseline status is tracked in the security capability assessment (SC-5: Least Functionality / SC-13: Patch Management).`,
+        },
+        {
+          title: "5. Baseline Configuration Elements",
+          body: "Each component baseline configuration must document:",
+          bullets: [
+            "Operating system and version, service pack/patch level",
+            "Enabled/disabled services and protocols (principle of least functionality)",
+            "Port configuration — open ports with justification for each",
+            "User accounts — active accounts with assigned roles and privileges",
+            "Password policy settings (minimum length, complexity, expiry, lockout)",
+            "Audit logging configuration — enabled event types, log size, retention",
+            "Network settings — IP address, VLAN, firewall rules",
+            "Anti-malware configuration (if applicable)",
+            "Encryption settings for data at rest and in transit",
+          ],
+        },
+        {
+          title: "6. Configuration Deviation Management",
+          body: "When a deviation from baseline is identified or required:",
+          bullets: [
+            "Document the deviation with technical justification",
+            "Perform risk assessment of the deviation",
+            "Obtain approval from designated security authority",
+            "Implement compensating control where baseline cannot be met",
+            "Set remediation timeline if deviation is temporary",
+            "Track in configuration management system",
+          ],
+        },
+        {
+          title: "7. Baseline Verification",
+          body: "Baseline compliance is verified through:",
+          bullets: [
+            "Security capability assessment (SC-1 to SC-13) at commissioning and annually",
+            "Automated configuration scanning where tools are available",
+            "Post-change verification for all approved configuration changes",
+            "Random spot-check sampling during classification society surveys",
+          ],
+        },
+      ];
+
+    case "nist-iam":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This Identity and Access Management (IAM) Policy defines the requirements for managing digital identities and controlling access to the CBS of vessel "${project.vesselName}" in accordance with NIST SP 800-53 (AC family and IA family controls). It covers user identity lifecycle management, authentication, authorization, and privileged access management.`,
+        },
+        {
+          title: "2. Normative References",
+          body: "This policy references:",
+          bullets: [
+            "NIST SP 800-53 Rev. 5 — AC (Access Control) and IA (Identification and Authentication) control families",
+            "NIST SP 800-63B — Digital Identity Guidelines (authentication)",
+            "NIST SP 800-162 — Guide to Attribute Based Access Control (ABAC)",
+            "IACS UR E27 — SC-1 (Password), SC-2 (Account Management), SC-3 (Network Access), Cap. 1-7",
+            "IEC 62443-3-3 — FR 1 (Identification and Authentication Control)",
+          ],
+        },
+        {
+          title: "3. Identity Lifecycle Management",
+          body: "User identity lifecycle procedures:",
+          bullets: [
+            "PROVISION — Identity created upon formal request with minimum information required; approval by designated security authority",
+            "ACTIVATE — Account activated only after completion of initial security training",
+            "MAINTAIN — Quarterly account review; update roles upon personnel transfers",
+            "SUSPEND — Account suspended within 24 hours of personnel departure or role change",
+            "DEPROVISION — Account deleted and credentials invalidated; access removal verified",
+          ],
+        },
+        {
+          title: "4. Authentication Requirements",
+          body: "Authentication standards for CBS access:",
+          bullets: [
+            "Password Authentication Level 1 — Standard users: minimum 8 characters, complexity required, 180-day maximum",
+            "Password Authentication Level 2 — Privileged users: minimum 12 characters, complexity required, 90-day maximum, MFA required",
+            "Certificate-based Authentication — Machine accounts and service accounts; PKI-based certificates with 1-year maximum validity",
+            "MFA — Required for privileged accounts and all remote access (two independent factors)",
+            "Biometric — Acceptable as second factor where technically available",
+          ],
+        },
+        {
+          title: "5. Authorization Framework",
+          body: "Access authorization follows least privilege principles:",
+          bullets: [
+            "Role-Based Access Control (RBAC) — Access permissions assigned to roles, not individuals",
+            "Defined roles: Administrator, Operator, Auditor, Service Technician (read-only, elevated, full access respectively)",
+            "Segregation of duties — No single account combines conflicting privileges",
+            "Time-based access — Service accounts automatically expire; temporary access has defined end date",
+            "Attribute-based controls — Network zone and time-of-day restrictions where technically feasible",
+          ],
+        },
+        {
+          title: "6. Privileged Access Management (PAM)",
+          body: "Elevated privilege controls for administrator accounts:",
+          bullets: [
+            "Dedicated privileged accounts separate from standard user accounts",
+            "Privileged sessions logged with full audit trail",
+            "Just-in-time access — Privileged access granted only for the duration of the task",
+            "Break-glass procedure — Emergency privileged access with automatic notification and full logging",
+            "Shared administration accounts prohibited — All privileged access individually assigned",
+          ],
+        },
+        {
+          title: "7. Access Review and Audit",
+          body: "IAM compliance is maintained through:",
+          bullets: [
+            "Quarterly access review — All active accounts verified against current personnel roster",
+            "Annual privilege review — Confirm appropriateness of all elevated privileges",
+            "Automated alerts for dormant accounts (>30 days inactive)",
+            "Access review results documented and retained for 2 years",
+          ],
+        },
+        {
+          title: "8. CBS IAM Status",
+          body: `IAM controls are assessed across ${hardware.length} CBS assets through security capability checks SC-1 (Password Policy), SC-2 (Account Management), and SC-3 (Network Access Control). Current status: ${counts.pass} PASS, ${counts.fail} FAIL out of ${counts.total} checks.`,
+        },
+      ];
+
+    case "nist-supply-chain":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This Supply Chain Risk Management (SCRM) Plan defines the processes for identifying, assessing, and managing cybersecurity risks in the supply chain for CBS components of vessel "${project.vesselName}" in accordance with NIST SP 800-161 Rev. 1 (Cybersecurity Supply Chain Risk Management Practices) and NIST SP 800-53 (SR family controls).`,
+        },
+        {
+          title: "2. Normative References",
+          body: "This plan references:",
+          bullets: [
+            "NIST SP 800-161 Rev. 1 — Cybersecurity Supply Chain Risk Management Practices",
+            "NIST SP 800-53 Rev. 5 — SR (Supply Chain Risk Management) control family",
+            "NIST Cybersecurity Framework — Identify / Supply Chain Risk Management",
+            "IACS UR E27 — Supply chain security requirements",
+            "IEC 62443-2-4 — Requirements for IACS solution suppliers",
+          ],
+        },
+        {
+          title: "3. Supply Chain Risk Context",
+          body: `The CBS supply chain includes ${hardware.length} hardware components from ${new Set(hardware.map((h) => h.manufacturer).filter(Boolean)).size} manufacturer(s) and ${software.length} software components from ${new Set(software.map((s) => s.vendor).filter(Boolean)).size} vendor(s). Each introduces potential supply chain risks that must be managed throughout the component lifecycle.`,
+        },
+        {
+          title: "4. Supplier Qualification",
+          body: "Suppliers of CBS components must be qualified through:",
+          bullets: [
+            "Cybersecurity questionnaire covering: development security practices, incident response capability, vulnerability disclosure policy, update/patch commitment",
+            "Review of relevant security certifications (IEC 62443-4-1/4-2, ISO 27001, CMMI)",
+            "Reference checks with other maritime operators or classification societies",
+            "OFAC/sanctions screening and country-of-origin assessment",
+            "Annual re-qualification for critical suppliers",
+          ],
+        },
+        {
+          title: "5. Procurement Controls",
+          body: "Cybersecurity requirements in procurement:",
+          bullets: [
+            "Security requirements specification included in procurement documents",
+            "Contractual obligations: vulnerability disclosure, patch support period, end-of-life notification",
+            "Authenticity requirements: tamper-evident packaging, certificate of conformity, component serial numbers",
+            "Software integrity: digital signatures or checksums provided with all software deliverables",
+            "Component provenance documentation: full supply chain documentation from origin to delivery",
+          ],
+        },
+        {
+          title: "6. Component Integrity Verification",
+          body: "Upon receipt of CBS components:",
+          bullets: [
+            "Physical inspection — Verify packaging integrity, labels, serial numbers against order",
+            "Software verification — Validate digital signatures or checksums before installation",
+            "Authenticity verification — Confirm component is genuine (contact vendor if counterfeit suspected)",
+            "Pre-installation scan — Malware scan of software media before deployment",
+            "Documentation check — Verify security capability documentation is provided",
+          ],
+        },
+        {
+          title: "7. Ongoing Supplier Management",
+          body: "Continuous supply chain risk management activities:",
+          bullets: [
+            "Monitor vendor security advisories and CVE publications for installed components",
+            "Track end-of-life dates for all hardware and software — plan replacement before support ends",
+            "Review and act on vendor vulnerability notifications within 30 days",
+            "Assess impact of vendor security incidents on CBS components",
+            "Maintain approved vendor list — remove suppliers failing to meet security obligations",
+          ],
+        },
+      ];
+
+    case "nist-system-assessment":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This System Security Assessment evaluates the security posture of the CBS of vessel "${project.vesselName}" in accordance with NIST SP 800-53A Rev. 5 (Assessing Security and Privacy Controls). It provides an independent evaluation of security control implementation and effectiveness to support authorization decisions.`,
+        },
+        {
+          title: "2. Normative References",
+          body: "This assessment references:",
+          bullets: [
+            "NIST SP 800-53A Rev. 5 — Assessing Security and Privacy Controls in Information Systems",
+            "NIST SP 800-53 Rev. 5 — Security and Privacy Controls (baseline)",
+            "NIST SP 800-37 Rev. 2 — Risk Management Framework (authorization process)",
+            "IACS UR E27 — Security capability assessment (SC-1 to SC-13)",
+            "IEC 62443-3-3 — System security requirements and security levels",
+          ],
+        },
+        {
+          title: "3. Assessment Methodology",
+          body: "The assessment uses three assessment methods per NIST SP 800-53A:",
+          bullets: [
+            "EXAMINE — Review of policies, procedures, plans, and documentation",
+            "INTERVIEW — Discussion with responsible personnel to verify implementation",
+            "TEST — Direct testing of security controls using the SCS Platform assessment tools (SC-1 to SC-13)",
+          ],
+        },
+        {
+          title: "4. System Description",
+          body: `The system under assessment is the CBS of vessel "${project.vesselName}". It includes ${hardware.length} hardware assets and ${software.length} software components across ${zones.size} security zone(s): ${[...zones.keys()].join(", ")}. The system supports vessel navigation, propulsion, cargo, and safety functions.`,
+        },
+        {
+          title: "5. Control Assessment Summary",
+          body: `Security control assessment results: ${counts.pass} controls satisfied (PASS), ${counts.fail} controls not satisfied (FAIL), ${counts.partial} controls partially satisfied (PARTIAL), ${counts.na} controls not applicable out of ${counts.total} assessed. Controls not yet assessed require assessment before authorization.`,
+        },
+        {
+          title: "6. Assessment Findings",
+          body: "Assessment findings are categorized by severity:",
+          bullets: [
+            "HIGH — FAIL results for controls protecting critical functions (propulsion, navigation, safety). Require immediate remediation before authorization.",
+            "MODERATE — FAIL results for controls protecting operational functions. Require remediation plan with 90-day target.",
+            "LOW — PARTIAL results where compensating controls are in place. Document acceptance and monitor.",
+            "INFORMATIONAL — Observations and recommendations for security improvement beyond minimum requirements.",
+          ],
+        },
+        {
+          title: "7. Authorization Recommendation",
+          body: "Based on the assessment findings, this system is recommended for:",
+          bullets: [
+            "AUTHORIZATION TO OPERATE (ATO) — If all HIGH findings are resolved and MODERATE findings have accepted plans",
+            "PROVISIONAL AUTHORIZATION — If HIGH findings exist but compensating controls are documented and accepted",
+            "DENIAL OF AUTHORIZATION — If critical HIGH findings remain unresolved with no accepted compensating controls",
+            "(Final authorization decision is made by the designated authorizing official / classification society.)",
+          ],
+        },
+        {
+          title: "8. Plan of Action and Milestones",
+          body: "Outstanding findings require a Plan of Action and Milestones (POA&M) documenting:",
+          bullets: [
+            "Finding description and reference to specific control(s) not met",
+            "Responsible party for remediation",
+            "Planned completion date",
+            "Resources required",
+            "Current status and progress",
+          ],
+        },
+      ];
+
+    // ─── ISO 27001 documents ──────────────────────────────────
+
+    case "iso-soa":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This Statement of Applicability (SoA) identifies which ISO/IEC 27001:2022 Annex A controls are applicable to the CBS of vessel "${project.vesselName}" and documents the justification for inclusion or exclusion of each control. The SoA is a mandatory document for ISO 27001 certification.`,
+        },
+        {
+          title: "2. Normative Reference",
+          body: "This document is required by:",
+          bullets: [
+            "ISO/IEC 27001:2022 — Clause 6.1.3(d): Statement of Applicability",
+            "ISO/IEC 27001:2022 — Annex A: Reference control set (93 controls in 4 themes)",
+            "ISO/IEC 27002:2022 — Implementation guidance for controls",
+          ],
+        },
+        {
+          title: "3. ISMS Scope",
+          body: `The Information Security Management System (ISMS) covers the CBS of vessel "${project.vesselName}", comprising ${hardware.length} hardware assets and ${software.length} software components across ${zones.size} security zone(s). The ISMS boundary includes all OT and IT systems that process or transmit information relevant to vessel safety and operations.`,
+        },
+        {
+          title: "4. Control Selection Process",
+          body: "Controls were selected based on:",
+          bullets: [
+            "Results of the information security risk assessment",
+            "Legal, regulatory, and contractual requirements (IACS UR E26/E27, maritime law)",
+            "Organizational objectives and existing security measures",
+            "Threat landscape specific to maritime OT/IT environments",
+          ],
+        },
+        {
+          title: "5. Annex A Control Applicability Overview",
+          body: "The 93 Annex A controls are organized in 4 themes. Applicability summary:",
+          bullets: [
+            "Theme A.5 Organizational Controls (37 controls) — APPLICABLE: Policy, roles, supplier security, incident management",
+            "Theme A.6 People Controls (8 controls) — APPLICABLE: Screening, terms, awareness, training, disciplinary, remote work",
+            "Theme A.7 Physical Controls (14 controls) — APPLICABLE: Physical security perimeters, equipment protection, media handling",
+            "Theme A.8 Technological Controls (34 controls) — APPLICABLE: Access control, cryptography, vulnerability management, configuration management",
+          ],
+        },
+        {
+          title: "6. Excluded Controls",
+          body: "The following control categories are excluded with justification:",
+          bullets: [
+            "Controls requiring internet-facing web services — Not applicable to isolated CBS OT network",
+            "Human resources controls for onshore office environments — Covered by separate company ISMS",
+            "Development environment controls — Not applicable where no in-house development occurs",
+            "(Complete exclusion justification table to be maintained as an annex to this document.)",
+          ],
+        },
+        {
+          title: "7. Implementation Status",
+          body: `Current implementation status based on security assessment: ${counts.pass} controls implemented (PASS), ${counts.fail} controls not yet implemented (FAIL), ${counts.partial} controls partially implemented (PARTIAL). Detailed status per Annex A control is maintained in the control implementation register.`,
+        },
+      ];
+
+    case "iso-isms":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This document defines the scope and policy of the Information Security Management System (ISMS) for the CBS of vessel "${project.vesselName}" in accordance with ISO/IEC 27001:2022 (Clauses 4 and 5). It establishes the organizational context, stakeholder requirements, ISMS boundary, and the information security policy.`,
+        },
+        {
+          title: "2. Normative Reference",
+          body: "This ISMS is established in accordance with:",
+          bullets: [
+            "ISO/IEC 27001:2022 — Information security management systems",
+            "ISO/IEC 27002:2022 — Information security controls (implementation guidance)",
+            "ISO/IEC 27019:2017 — OT/ICS security (applicable for maritime OT systems)",
+            "IACS UR E26/E27 — Maritime cyber resilience (complementary requirements)",
+            `${project.classification || "Classification Society"} — Applicable cybersecurity certification requirements`,
+          ],
+        },
+        {
+          title: "3. Organizational Context",
+          body: `The vessel "${project.vesselName}" operates as part of the fleet of ${project.shipowner || "[Ship Owner]"}. The CBS supports critical vessel functions including navigation, propulsion, cargo management, and safety systems. The organizational context includes:`,
+          bullets: [
+            "Internal factors — Organizational structure, roles and responsibilities, existing SMS/ISM systems, CBS architecture",
+            "External factors — Regulatory requirements (SOLAS, MARPOL, ISPS), classification society rules, flag state requirements, port state control",
+            "Interested parties — Classification society, flag state, ship owner, charterers, port authorities, service vendors",
+          ],
+        },
+        {
+          title: "4. ISMS Scope",
+          body: `The ISMS scope covers the CBS of vessel "${project.vesselName}", including: ${hardware.length} hardware assets and ${software.length} software components across ${zones.size} security zone(s): ${[...zones.keys()].join(", ")}. Shore-based systems that directly interface with the vessel CBS are included within scope. Shore office IT infrastructure is excluded (covered by separate company ISMS).`,
+        },
+        {
+          title: "5. Information Security Policy",
+          body: `The information security policy of vessel "${project.vesselName}" states:`,
+          bullets: [
+            "COMMITMENT — The Master and Ship Owner are committed to protecting the confidentiality, integrity, and availability of information processed by the CBS",
+            "OBJECTIVES — Maintain cyber resilience of all CBS systems; comply with IACS UR E26/E27 and ISO 27001; protect vessel safety through information security",
+            "RISK APPROACH — Manage information security risks systematically using a risk-based approach; define and achieve acceptable risk levels",
+            "CONTINUAL IMPROVEMENT — Continuously improve the ISMS through monitoring, measurement, audit, and management review",
+            "COMPLIANCE — Comply with all applicable legal, regulatory, and contractual requirements",
+          ],
+        },
+        {
+          title: "6. ISMS Roles and Responsibilities",
+          body: "Top management has appointed the following ISMS roles (ISO 27001 Clause 5.3):",
+          bullets: [
+            "ISMS Owner — DPA/Master: Overall ISMS accountability, policy approval, resource provision",
+            "Information Security Officer — CSO/SSO: ISMS implementation, monitoring, and reporting",
+            "Risk Owner — Department Heads: Accept and manage risks within their operational area",
+            "ISMS Coordinator — IT/OT Administrator: Day-to-day ISMS operation and maintenance",
+          ],
+        },
+        {
+          title: "7. ISMS Objectives",
+          body: "The ISMS objectives for the current period are:",
+          bullets: [
+            "Achieve and maintain >80% PASS rate on security capability assessment (SC-1 to SC-13)",
+            "Complete annual risk assessment and update risk treatment plan",
+            "Maintain 100% crew cybersecurity awareness training completion",
+            "Zero critical cyber incidents with unacceptable impact on vessel safety",
+            "Achieve ISO 27001 certification / maintain IACS UR E26/E27 compliance",
+          ],
+        },
+      ];
+
+    case "iso-a5":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This document implements ISO/IEC 27001:2022 Annex A, Theme A.5 (Organizational Controls) for the CBS of vessel "${project.vesselName}". It covers the 37 organizational controls addressing policies, information security roles, segregation of duties, supplier relationships, and incident management.`,
+        },
+        {
+          title: "2. Key A.5 Controls Implemented",
+          body: "The following organizational controls are implemented:",
+          bullets: [
+            "A.5.1 — Information security policies: Policies approved by management, communicated, reviewed annually",
+            "A.5.2 — Information security roles: Roles defined (see ISMS document); responsibilities assigned to named individuals",
+            "A.5.3 — Segregation of duties: No single person controls all aspects of CBS administration",
+            "A.5.4 — Management responsibilities: Management actively supports information security",
+            "A.5.5 — Contact with authorities: Contacts established with classification society, flag state, and CERTs",
+            "A.5.7 — Threat intelligence: Maritime threat intelligence sources monitored (classification society bulletins, BIMCO advisories)",
+            "A.5.8 — Information security in project management: CBS changes assessed for security impact before implementation",
+          ],
+        },
+        {
+          title: "3. Supplier and Third-Party Security (A.5.19–A.5.23)",
+          body: "Supplier security controls:",
+          bullets: [
+            "A.5.19 — Information security in supplier relationships: Security requirements in all vendor contracts",
+            "A.5.20 — Security in supplier agreements: Contractual security obligations for patch support, vulnerability disclosure",
+            "A.5.21 — Managing security in ICT supply chain: Supply chain risk assessment for all critical components",
+            "A.5.22 — Monitoring and review of supplier services: Annual supplier review against security obligations",
+            "A.5.23 — Security for cloud services: Cloud service security assessed before adoption",
+          ],
+        },
+        {
+          title: "4. Incident Management (A.5.24–A.5.28)",
+          body: "Incident management controls:",
+          bullets: [
+            "A.5.24 — Planning and preparation for information security incident management: Incident response plan documented (ref: E27-INC)",
+            "A.5.25 — Assessment and decision on information security events: Classification criteria defined",
+            "A.5.26 — Response to information security incidents: Step-by-step response procedures documented",
+            "A.5.27 — Learning from information security incidents: Post-incident review process established",
+            "A.5.28 — Collection of evidence: Evidence handling procedures for incidents defined",
+          ],
+        },
+        {
+          title: "5. Business Continuity and Compliance (A.5.29–A.5.37)",
+          body: "Business continuity and compliance controls:",
+          bullets: [
+            "A.5.29 — Information security during disruption: Business continuity plan includes CBS degraded operation procedures",
+            "A.5.30 — ICT readiness for business continuity: Backup and recovery procedures tested annually",
+            "A.5.31 — Legal, statutory, regulatory, and contractual requirements: Compliance register maintained",
+            "A.5.33 — Protection of records: Information security records retained per regulatory requirements",
+            "A.5.36 — Compliance with policies, rules, and standards: Regular compliance checks performed",
+            "A.5.37 — Documented operating procedures: Security operating procedures documented and accessible",
+          ],
+        },
+        {
+          title: "6. Implementation Status",
+          body: `Organizational controls implementation status: assessed through management interviews, document review, and observation. Current assessment results relevant to A.5 controls: ${counts.total} checks performed across ${hardware.length} assets.`,
+        },
+      ];
+
+    case "iso-a7":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This document implements ISO/IEC 27001:2022 Annex A, Theme A.7 (People Controls) for the CBS of vessel "${project.vesselName}". It covers the 8 people controls addressing personnel security through the employment lifecycle, from pre-employment screening through termination.`,
+        },
+        {
+          title: "2. A.7 People Controls Overview",
+          body: "The following eight people controls are implemented:",
+          bullets: [
+            "A.7.1 — Screening: Background verification for personnel in roles with CBS access",
+            "A.7.2 — Terms and conditions of employment: Security responsibilities in employment contracts and crew agreements",
+            "A.7.3 — Information security awareness, education, and training: Annual security awareness training for all crew (ref: E26-TRA)",
+            "A.7.4 — Disciplinary process: Disciplinary measures for personnel violating security policies",
+            "A.7.5 — Responsibilities after termination or change of employment: Access revocation procedure on departure or role change",
+            "A.7.6 — Confidentiality or non-disclosure agreements: NDAs for personnel with access to sensitive system information",
+            "A.7.7 — Remote working: Security controls for remote access (ref: E26-RAP)",
+            "A.7.8 — Information security event reporting: All personnel required to report suspicious events to SSO",
+          ],
+        },
+        {
+          title: "3. Personnel Screening (A.7.1)",
+          body: "Background verification requirements for CBS access roles:",
+          bullets: [
+            "Verification of identity documents and qualifications (as required for maritime certificates)",
+            "Reference checks for critical IT/OT administration roles",
+            "Criminal background check where permitted by flag state law",
+            "Vendor/contractor personnel screening verification required before system access",
+          ],
+        },
+        {
+          title: "4. Security Training Program (A.7.3)",
+          body: `The security awareness and training program covers ${hardware.length > 0 ? hardware.length : "[number]"} CBS assets and is delivered to all personnel with system access. Training content, schedule, and records are documented in the Crew Cyber Security Training Record (E26-TRA). Key training elements:`,
+          bullets: [
+            "Annual mandatory security awareness training for all crew",
+            "Role-specific training for operators and administrators",
+            "Incident response procedures training",
+            "Phishing and social engineering awareness",
+            "Password and account security best practices",
+          ],
+        },
+        {
+          title: "5. Access Revocation Process (A.7.5)",
+          body: "Upon personnel departure or role change:",
+          bullets: [
+            "SSO/HR notifies IT/OT Administrator on departure date (minimum 24 hours notice)",
+            "All CBS user accounts deactivated within 24 hours of departure",
+            "Physical access credentials (keys, badges) recovered on last day",
+            "Service accounts and shared credentials changed if shared with departing personnel",
+            "Access revocation confirmed and documented in IAM log",
+          ],
+        },
+        {
+          title: "6. Remote Working Security (A.7.7)",
+          body: "Remote working security for personnel accessing CBS from shore:",
+          bullets: [
+            "Remote access subject to Remote Access Policy (ref: E26-RAP)",
+            "Corporate-issued devices required for remote CBS access where possible",
+            "VPN required for all remote connections to CBS management systems",
+            "Clear-screen and lock policy when remote working in public spaces",
+          ],
+        },
+      ];
+
+    case "iso-a8":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This document implements ISO/IEC 27001:2022 Annex A, Theme A.8 (Technological Controls) for the CBS of vessel "${project.vesselName}". It covers the 34 technology controls addressing access rights, configuration management, cryptography, network security, and vulnerability management.`,
+        },
+        {
+          title: "2. Access Control Technology (A.8.1–A.8.6)",
+          body: "Technology controls for access management:",
+          bullets: [
+            "A.8.2 — Privileged access rights: Privileged accounts documented; usage monitored (ref: IAM Policy NIST-IAM)",
+            "A.8.3 — Information access restriction: Role-based access control implemented across CBS assets",
+            "A.8.4 — Access to source code: Source code repositories access-controlled; not applicable if no in-house development",
+            "A.8.5 — Secure authentication: MFA enforced for privileged and remote access (ref: E27-ACC, E26-RAP)",
+            "A.8.6 — Capacity management: CBS system capacity monitored; alerts configured at 80% utilization",
+          ],
+        },
+        {
+          title: "3. Cryptography and Data Protection (A.8.24–A.8.25)",
+          body: "Cryptographic controls:",
+          bullets: [
+            "A.8.24 — Use of cryptography: Cryptography policy defined; minimum TLS 1.2 for data in transit; AES-128 or better for data at rest",
+            "A.8.25 — Secure development lifecycle: Secure development practices applied to any in-house CBS software (ref: E27-SDL)",
+          ],
+        },
+        {
+          title: "4. Malware and Technical Vulnerability Management (A.8.7–A.8.8)",
+          body: "Protection against malicious code and vulnerabilities:",
+          bullets: [
+            "A.8.7 — Protection against malware: Anti-malware deployed on compatible assets; application whitelisting as alternative where AV not feasible (mapped to E27 SC-11)",
+            "A.8.8 — Management of technical vulnerabilities: Vulnerability assessment performed (ref: E27-VUL); CVE monitoring for all registered software components",
+          ],
+        },
+        {
+          title: "5. Configuration and Change Management (A.8.9–A.8.10)",
+          body: "Configuration controls:",
+          bullets: [
+            "A.8.9 — Configuration management: Baseline configurations documented (ref: NIST-CFG); deviations require approval",
+            "A.8.10 — Information deletion: Secure deletion procedures for decommissioned equipment",
+          ],
+        },
+        {
+          title: "6. Logging, Monitoring, and Network Security (A.8.13–A.8.22)",
+          body: "Security monitoring and network controls:",
+          bullets: [
+            "A.8.15 — Logging: Audit logging enabled on all CBS assets (ref: E27-MON, SC-7)",
+            "A.8.16 — Monitoring activities: Security monitoring plan implemented; alerts for anomalous events",
+            "A.8.17 — Clock synchronization: NTP time synchronization configured for audit log integrity",
+            "A.8.20 — Networks security: Network security controls implemented per zone architecture (ref: E26-ZCD)",
+            "A.8.21 — Security of network services: Network service security validated during commissioning",
+            "A.8.22 — Segregation of networks: Network segmentation into security zones implemented (ref: zone-design)",
+          ],
+        },
+        {
+          title: "7. Implementation Status",
+          body: `Technology control implementation status based on security capability assessment (SC-1 to SC-13): ${counts.pass} PASS, ${counts.fail} FAIL, ${counts.partial} PARTIAL out of ${counts.total} assessed across ${hardware.length} CBS hardware assets. Detailed control-by-control mapping to SC assessments is maintained in the control implementation register.`,
+        },
+      ];
+
+    case "iso-cloud":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This Cloud Services Security Policy defines the security requirements for cloud services used in support of the CBS management of vessel "${project.vesselName}" in accordance with ISO/IEC 27001:2022 (A.5.23 — Security for use of cloud services) and ISO/IEC 27017:2015 (Code of practice for information security controls for cloud services).`,
+        },
+        {
+          title: "2. Normative References",
+          body: "This policy references:",
+          bullets: [
+            "ISO/IEC 27001:2022 — A.5.23: Security for use of cloud services",
+            "ISO/IEC 27017:2015 — Code of practice for cloud service information security",
+            "ISO/IEC 27018:2019 — Protection of personally identifiable information in public clouds",
+            "NIST SP 800-144 — Guidelines on security and privacy in public cloud computing",
+            "IACS UR E26 — Requirements for shore-based systems interfacing with vessel CBS",
+          ],
+        },
+        {
+          title: "3. Approved Cloud Use Cases",
+          body: "The following cloud service use cases are approved for CBS-related functions:",
+          bullets: [
+            "CBS data backup — Encrypted backup storage for non-critical configuration data and logs",
+            "Remote monitoring — Cloud-based dashboards for vessel performance and security monitoring (read-only, anonymized)",
+            "Software distribution — Vendor-operated update repositories for CBS software patches",
+            "Documentation management — Secure cloud storage for compliance documents (this system — SCS Platform)",
+            "Classification society connectivity — Secure data exchange with classification society survey systems",
+          ],
+        },
+        {
+          title: "4. Prohibited Cloud Uses",
+          body: "The following cloud uses are prohibited without specific risk assessment and DPA approval:",
+          bullets: [
+            "Direct cloud connectivity from operational CBS networks (OT zone isolation must be maintained)",
+            "Processing of safety-critical control data in cloud environments",
+            "Cloud storage of unencrypted vessel operational data",
+            "Use of unsanctioned cloud services (shadow IT) by individual crew or administrators",
+          ],
+        },
+        {
+          title: "5. Cloud Service Provider Requirements",
+          body: "Cloud service providers used for CBS-related functions must meet:",
+          bullets: [
+            "ISO/IEC 27001 certification or equivalent independently verified security standard",
+            "Data residency requirements compatible with flag state and applicable law",
+            "Encryption at rest (AES-256 or equivalent) and in transit (TLS 1.2+)",
+            "Multi-factor authentication for administrative access to cloud management consoles",
+            "Incident notification within 24 hours of security breach affecting vessel data",
+            "Data portability — ability to retrieve and delete all vessel data upon contract termination",
+          ],
+        },
+        {
+          title: "6. CBS Network Isolation Requirements",
+          body: "Cloud connectivity must not compromise CBS OT network isolation:",
+          bullets: [
+            "Direct internet access from OT zone is prohibited — all cloud connectivity through dedicated DMZ or management network",
+            "Data diode or application-layer gateway used for OT-to-cloud data transfer where required",
+            "Air gap maintained for safety-critical systems regardless of cloud architecture",
+            "Cloud-connected systems classified in dedicated security zone (not within OT zone boundary)",
+          ],
+        },
+        {
+          title: "7. Cloud Service Risk Assessment",
+          body: "Before adopting any new cloud service related to CBS management:",
+          bullets: [
+            "Risk assessment performed per IEC 62443-3-2 or ISO 27001 risk framework",
+            "Data classification assessment — determine what data will be processed in the cloud",
+            "CSP security assessment using standardized questionnaire (CSA CAIQ or equivalent)",
+            "Legal review — data protection law compliance, contractual requirements",
+            "DPA and Ship Owner approval required before deployment",
+          ],
+        },
+      ];
+
+    case "iso-ics":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This document extends the ISMS of vessel "${project.vesselName}" to address the specific security requirements of industrial control systems (ICS) and operational technology (OT) in accordance with ISO/IEC 27019:2017 (Information security controls for the energy utility industry — applicable OT principles) and IEC 62443. It addresses the differences between IT security and OT security in the maritime CBS environment.`,
+        },
+        {
+          title: "2. Normative References",
+          body: "This extension references:",
+          bullets: [
+            "ISO/IEC 27019:2017 — Information security controls for the energy utility industry (OT controls applicable to maritime)",
+            "IEC 62443-2-1 — Security management system for IACS",
+            "IEC 62443-3-3 — System security requirements and security levels",
+            "IACS UR E26/E27 — Maritime OT/ICS security requirements",
+            "NIST SP 800-82 Rev. 3 — Guide to OT Security",
+            "NERC CIP — Critical infrastructure protection (applicable principles)",
+          ],
+        },
+        {
+          title: "3. OT/ICS Security Challenges",
+          body: "OT systems in maritime environments have characteristics that require security approaches different from standard IT:",
+          bullets: [
+            "Availability priority — OT systems must maintain high availability; patches and updates require careful planning to avoid downtime",
+            "Long lifecycle — CBS hardware and software may remain operational for 10-30 years; legacy systems may lack modern security features",
+            "Real-time constraints — Safety-critical systems operate under strict timing requirements; security controls must not impair real-time performance",
+            "Proprietary protocols — Maritime OT uses specialized protocols (NMEA, Modbus, Profibus) with limited native security features",
+            "Air gap expectation — Safety-critical systems traditionally isolated; but increasing connectivity creates new attack surfaces",
+            "Safety-security interaction — Security controls must not degrade functional safety; safety always takes precedence",
+          ],
+        },
+        {
+          title: "4. OT-Specific Security Controls",
+          body: `ISO 27019 extensions applied to the ${hardware.length} CBS assets across ${zones.size} zone(s):`,
+          bullets: [
+            "Patch management — Patches tested in isolated environment before deployment to operational systems; vendor-approved patches only; emergency patch procedures without full testing require safety officer sign-off",
+            "Access management — Vendor/service access follows strict procedure (ref: E26-RAP); no anonymous or shared accounts; minimum required privilege principle",
+            "Physical security — All OT equipment in physically secured locations; tamper-evident seals on cabinets; visual inspection during rounds",
+            "Change management — All OT configuration changes follow formal change control (ref: E27-MOC); rollback procedures required before changes are applied",
+            "Monitoring — Passive monitoring preferred for OT networks to avoid disrupting real-time operations; out-of-band management network for monitoring traffic",
+            "Backup and recovery — Validated backup of all OT configurations; recovery procedures tested annually; recovery time targets compatible with safety requirements",
+          ],
+        },
+        {
+          title: "5. Legacy System Risk Management",
+          body: "Legacy OT systems that cannot implement standard security controls require:",
+          bullets: [
+            "Compensating controls — Additional network isolation, monitoring, and physical access controls",
+            "Formal risk acceptance — Documented acceptance of residual risk with DPA/Owner approval",
+            "Upgrade/replacement planning — Lifecycle management plan targeting replacement before end of vendor support",
+            "Enhanced monitoring — Increased monitoring frequency for legacy systems",
+            "Restricted connectivity — Maximum isolation from other CBS zones and external networks",
+          ],
+        },
+        {
+          title: "6. Safety-Security Integration",
+          body: "The interaction between functional safety and information security must be managed:",
+          bullets: [
+            "Safety system priority — Any security control that could degrade safety system performance is prohibited without safety engineer approval",
+            "Fail-safe design — CBS security design ensures cyber incidents result in safe state (not dangerous state)",
+            "Manual override — Manual override capabilities maintained for all safety-critical functions",
+            "Joint assessment — Safety and security teams jointly assess proposed controls for safety-critical systems",
+            "Reference: Vessel Safety Management System (SMS) and equipment safety manuals for specific safety requirements",
+          ],
+        },
+        {
+          title: "7. OT Security Monitoring",
+          body: "Monitoring approaches adapted for OT environment:",
+          bullets: [
+            "Passive network monitoring — Traffic analysis without active probing of OT systems",
+            "Industrial protocol analysis — Monitoring for anomalous commands in NMEA, Modbus, and other maritime protocols",
+            "Behavioral baseline — Establish normal operational patterns; alert on deviations",
+            "Log collection — Collect logs from OT systems that support logging; compensate with network monitoring for systems without logging capability",
+            "Alert thresholds — Calibrated to minimize false positives that could distract operational personnel",
+          ],
+        },
+      ];
+
     default:
       return [
         {

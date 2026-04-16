@@ -23,6 +23,9 @@ import { formatDateTime } from "@/lib/utils";
 import {
   E27_DOC_TYPES,
   E26_DOC_TYPES,
+  IEC_DOC_TYPES,
+  NIST_DOC_TYPES,
+  ISO_DOC_TYPES,
   DOC_STANDARDS,
   type DocType,
 } from "@/types";
@@ -71,11 +74,12 @@ export default function DocumentPage() {
   const canEdit = userRole === "VENDOR" || userRole === "ADMIN";
   const isShipyard = userRole === "SHIPYARD";
 
-  // Shipyard sees only E26, Vendor only E27, Admin sees both
+  // Shipyard sees only E26, Vendor sees E27+IEC+NIST+ISO, Admin sees all 5
   const visibleStandards = DOC_STANDARDS.filter((s) => {
     if (userRole === "ADMIN") return true;
     if (isShipyard) return s.id === "E26";
-    return s.id === "E27";
+    // VENDOR: all standards except E26
+    return s.id !== "E26";
   });
 
   const [activeTab, setActiveTab] = useState<string>(visibleStandards[0]?.id ?? "E27");
@@ -237,13 +241,21 @@ export default function DocumentPage() {
     );
   }
 
-  const activeDocTypes = activeTab === "E27" ? E27_DOC_TYPES : E26_DOC_TYPES;
+  const DOC_TYPES_BY_STANDARD: Record<string, typeof E27_DOC_TYPES> = {
+    E27: E27_DOC_TYPES,
+    E26: E26_DOC_TYPES,
+    IEC: IEC_DOC_TYPES,
+    NIST: NIST_DOC_TYPES,
+    ISO: ISO_DOC_TYPES,
+  };
+
+  const activeDocTypes = DOC_TYPES_BY_STANDARD[activeTab] ?? E27_DOC_TYPES;
   const generatedCount = activeDocTypes.filter((dt) => findDoc(dt.code)).length;
 
   const tabs = visibleStandards.map((s) => ({
     id: s.id,
     label: s.id,
-    count: (s.id === "E27" ? E27_DOC_TYPES : E26_DOC_TYPES).filter((dt) =>
+    count: (DOC_TYPES_BY_STANDARD[s.id] ?? []).filter((dt) =>
       findDoc(dt.code),
     ).length,
   }));
