@@ -1,11 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { AlertCircle } from "lucide-react";
-import Link from "next/link";
-import { useLocaleStore } from "@/stores/locale-store";
-import { tx } from "@/lib/i18n";
+import { ErrorScreen } from "@/components/ui/error-screen";
 
 export default function AuthError({
   error,
@@ -14,35 +10,34 @@ export default function AuthError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  const { locale } = useLocaleStore();
-
   useEffect(() => {
-    console.error("Auth error:", error);
+    console.error("[auth error]", error);
   }, [error]);
 
+  // Note: we intentionally DO NOT surface `error.message` to the user.
+  // Auth-layer errors commonly contain provider/DB hints that should
+  // not leak to an unauthenticated client. Only a generic message and
+  // the hashed digest (non-sensitive) are displayed.
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen gap-6 p-6">
-      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-safety-high/10">
-        <AlertCircle className="h-7 w-7 text-safety-high" />
-      </div>
-      <div className="text-center space-y-2">
-        <h2 className="text-h4 text-text">
-          {tx(locale, "Something went wrong", "오류가 발생했습니다", "エラーが発生しました")}
-        </h2>
-        <p className="text-body-sm text-text-secondary">
-          {error.message || tx(locale, "An error occurred during authentication.", "인증 과정에서 문제가 발생했습니다.", "認証中にエラーが発生しました。")}
-        </p>
-      </div>
-      <div className="flex items-center gap-3">
-        <Button onClick={reset} variant="secondary">
-          {tx(locale, "Try again", "다시 시도", "再試行")}
-        </Button>
-        <Link href="/login">
-          <Button variant="outline">
-            {tx(locale, "Go to login", "로그인으로", "ログインへ")}
-          </Button>
-        </Link>
-      </div>
-    </div>
+    <ErrorScreen
+      code="ERR"
+      errKey="ERR_AUTH"
+      title={{
+        en: "We could not complete that request.",
+        ko: "요청을 처리하지 못했습니다.",
+        ja: "リクエストを処理できませんでした。",
+      }}
+      description={{
+        en: "Something went wrong while signing you in. Please try again. If you continue to see this message, contact your administrator.",
+        ko: "로그인 중 문제가 발생했습니다. 다시 시도해 주세요. 계속 발생하면 관리자에게 문의하세요.",
+        ja: "サインイン中に問題が発生しました。再度お試しください。繰り返し発生する場合は管理者にお問い合わせください。",
+      }}
+      referenceId={error.digest}
+      debug={{ message: error.message, stack: error.stack }}
+      actions={[
+        { label: { en: "Try again", ko: "다시 시도", ja: "再試行" }, onClick: reset },
+        { label: { en: "Back to login", ko: "로그인으로", ja: "ログインへ" }, href: "/login", variant: "outline" },
+      ]}
+    />
   );
 }

@@ -1,23 +1,25 @@
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Home } from "lucide-react";
+"use client";
+
+import { ErrorScreen } from "@/components/ui/error-screen";
 
 export default function NotFound() {
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen gap-6 p-6 bg-surface">
-      <div className="text-center space-y-2">
-        <p className="font-mono text-[80px] font-extrabold text-brand/20 leading-none">404</p>
-        <h2 className="text-h4 text-text">페이지를 찾을 수 없습니다</h2>
-        <p className="text-body-sm text-text-secondary">
-          요청하신 페이지가 존재하지 않거나 이동되었습니다.
-        </p>
-      </div>
-      <Link href="/">
-        <Button variant="secondary">
-          <Home className="h-4 w-4" />
-          홈으로 돌아가기
-        </Button>
-      </Link>
-    </div>
+    <ErrorScreen
+      code="404"
+      errKey="ERR_NOT_FOUND"
+      title={{
+        en: "This page cannot be reached.",
+        ko: "요청하신 페이지에 접근할 수 없습니다.",
+        ja: "このページには到達できません。",
+      }}
+      description={{
+        en: "The resource you requested does not exist or you do not have access to it. No further details are disclosed.",
+        ko: "요청하신 리소스가 존재하지 않거나 접근 권한이 없습니다. 자세한 정보는 공개하지 않습니다.",
+        ja: "要求されたリソースは存在しないか、アクセス権限がありません。詳細は開示されません。",
+      }}
+      actions={[
+        { label: { en: "Return home", ko: "홈으로 돌아가기", ja: "ホームへ戻る" }, href: "/" },
+      ]}
+    />
   );
 }

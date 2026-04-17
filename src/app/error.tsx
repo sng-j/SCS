@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import Link from "next/link";
-import { AlertCircle } from "lucide-react";
+import { ErrorScreen } from "@/components/ui/error-screen";
 
 export default function RootError({
   error,
@@ -12,36 +11,30 @@ export default function RootError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("Root error:", error);
+    // Log internally for the operator. Never shown to the user in production.
+    console.error("[root error]", error);
   }, [error]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", gap: "24px", padding: "24px", fontFamily: "system-ui, sans-serif" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "64px", height: "64px", borderRadius: "9999px", backgroundColor: "rgba(218,30,40,0.1)" }}>
-        <AlertCircle style={{ width: "32px", height: "32px", color: "#DA1E28" }} />
-      </div>
-      <div style={{ textAlign: "center" }}>
-        <h2 style={{ fontSize: "1.5rem", fontWeight: 800, marginBottom: "8px" }}>
-          Something went wrong
-        </h2>
-        <p style={{ fontSize: "0.875rem", color: "#6b7280", maxWidth: "400px" }}>
-          An unexpected error occurred. Please try again or return to the home page.
-        </p>
-      </div>
-      <div style={{ display: "flex", gap: "12px" }}>
-        <button
-          onClick={reset}
-          style={{ padding: "8px 16px", borderRadius: "4px", border: "1px solid #d0d9e8", background: "white", cursor: "pointer", fontSize: "0.875rem" }}
-        >
-          Try again
-        </button>
-        <Link
-          href="/"
-          style={{ padding: "8px 16px", borderRadius: "4px", background: "#0F62FE", color: "white", textDecoration: "none", fontSize: "0.875rem" }}
-        >
-          Go home
-        </Link>
-      </div>
-    </div>
+    <ErrorScreen
+      code="500"
+      errKey="ERR_INTERNAL"
+      title={{
+        en: "A temporary error occurred.",
+        ko: "일시적인 오류가 발생했습니다.",
+        ja: "一時的なエラーが発生しました。",
+      }}
+      description={{
+        en: "The request could not be completed. You can retry the action or return to the home page. If the problem persists, contact your administrator with the reference below.",
+        ko: "요청을 완료하지 못했습니다. 다시 시도하거나 홈으로 돌아갈 수 있습니다. 문제가 계속되면 아래 참조 번호와 함께 관리자에게 문의하세요.",
+        ja: "リクエストを完了できませんでした。再試行するか、ホームへ戻ることができます。問題が続く場合は、以下の参照番号と共に管理者にお問い合わせください。",
+      }}
+      referenceId={error.digest}
+      debug={{ message: error.message, stack: error.stack }}
+      actions={[
+        { label: { en: "Retry", ko: "다시 시도", ja: "再試行" }, onClick: reset },
+        { label: { en: "Home", ko: "홈으로", ja: "ホームへ" }, href: "/", variant: "outline" },
+      ]}
+    />
   );
 }
