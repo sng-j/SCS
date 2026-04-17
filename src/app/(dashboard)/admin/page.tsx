@@ -31,7 +31,7 @@ interface LogRow     { id: string; event: string; userEmail: string | null; leve
 
 // ─── Bulk upload (Excel paste) helpers ───────────────────────────────────────
 
-function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone, validate, requiredColumns }: {
+function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone, validate, requiredColumns, fixedFields }: {
   locale: string;
   endpoint: string;
   payloadKey: string;
@@ -42,6 +42,8 @@ function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone,
   validate?: (row: Record<string, string>) => Record<string, string>;
   /** Column names to mark with * in the header. */
   requiredColumns?: string[];
+  /** Fields auto-injected into every row before sending (e.g. role: "SHIPYARD"). */
+  fixedFields?: Record<string, string>;
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [rows, setRows] = useState<Record<string, string>[]>(() =>
@@ -177,10 +179,14 @@ function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone,
     setErrors({}); setErrorSummary(null);
     setUploading(true);
     try {
+      // Inject fixed fields (e.g. role="SHIPYARD") into every row before sending
+      const payload = fixedFields
+        ? nonEmptyRows.map((r) => ({ ...fixedFields, ...r }))
+        : nonEmptyRows;
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [payloadKey]: nonEmptyRows }),
+        body: JSON.stringify({ [payloadKey]: payload }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -834,43 +840,66 @@ function UsersTab({ locale }: { locale: string }) {
 
   return (
     <div className="space-y-6">
-      {/* Create account buttons */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex gap-2">
+      {/* Create & Bulk account buttons */}
+      <div className="space-y-3">
+        {/* Single-add buttons */}
+        <div className="flex gap-2 flex-wrap">
           <Button size="sm" onClick={() => { setCreateRole("ADMIN"); setCreateOpen(true); }}>
             <Plus size={14} /> {tx(locale, "Add Admin", "관리자 추가", "管理者追加")}
           </Button>
           <Button size="sm" variant="outline" onClick={() => { setCreateRole("SHIPYARD"); setCreateShipyardMode(shipyards.length > 0 ? "join" : "new"); setCreateShipyardId(""); setCreateOpen(true); }}>
-            <Plus size={14} /> {tx(locale, "Add Shipyard", "조선소 추가", "造船所追加")}
+            <Plus size={14} /> {tx(locale, "Add Shipyard User", "조선소 계정 추가", "造船所アカウント追加")}
           </Button>
           <Button size="sm" variant="outline" onClick={() => { setCreateRole("VENDOR"); setCreateShipyardId(""); setCreateOpen(true); }}>
             <Plus size={14} /> {tx(locale, "Add Vendor", "벤더 추가", "ベンダー追加")}
           </Button>
         </div>
-        <CsvUploadButton
-          locale={locale}
-          endpoint="/api/admin/users/bulk"
-          payloadKey="users"
-          label={tx(locale, "Bulk Upload", "엑셀 붙여넣기 등록", "Excel貼り付け登録")}
-          columns={["email", "name", "role", "company", "phone", "password", "shipyard"]}
-          requiredColumns={["email", "name", "role", "password"]}
-          validate={(row) => {
-            const e: Record<string, string> = {};
-            if (!row.email?.trim()) e.email = tx(locale, "Required", "필수", "必須");
-            else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email.trim())) e.email = tx(locale, "Invalid email", "이메일 형식 오류", "メール形式エラー");
-            if (!row.name?.trim()) e.name = tx(locale, "Required", "필수", "必須");
-            const role = row.role?.trim().toUpperCase();
-            if (!role) e.role = tx(locale, "Required", "필수", "必須");
-            else if (!["ADMIN", "SHIPYARD", "VENDOR"].includes(role)) e.role = tx(locale, "ADMIN/SHIPYARD/VENDOR only", "ADMIN/SHIPYARD/VENDOR만 가능", "ADMIN/SHIPYARD/VENDORのみ");
-            if (!row.password?.trim()) e.password = tx(locale, "Required", "필수", "必須");
-            else if (row.password.length < 8) e.password = tx(locale, "Min 8 chars", "8자 이상", "8文字以上");
-            if ((role === "SHIPYARD" || role === "VENDOR") && !row.shipyard?.trim()) {
-              e.shipyard = tx(locale, "Required for SHIPYARD/VENDOR", "SHIPYARD/VENDOR는 필수", "SHIPYARD/VENDORは必須");
-            }
-            return e;
-          }}
-          onDone={loadUsers}
-        />
+        {/* Bulk upload — separate button per role (no role column needed) */}
+        <div className="flex gap-2 flex-wrap items-center">
+          <span className="text-[11px] text-text-tertiary mr-1">
+            {tx(locale, "Bulk:", "일괄 등록:", "一括:")}
+          </span>
+          <CsvUploadButton
+            locale={locale}
+            endpoint="/api/admin/users/bulk"
+            payloadKey="users"
+            label={tx(locale, "Shipyard Users", "조선소 계정", "造船所アカウント")}
+            columns={["email", "name", "company", "phone", "password", "shipyard"]}
+            requiredColumns={["email", "name", "password", "shipyard"]}
+            fixedFields={{ role: "SHIPYARD" }}
+            validate={(row) => {
+              const e: Record<string, string> = {};
+              if (!row.email?.trim()) e.email = tx(locale, "Required", "필수", "必須");
+              else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email.trim())) e.email = tx(locale, "Invalid email", "이메일 형식 오류", "メール形式エラー");
+              if (!row.name?.trim()) e.name = tx(locale, "Required", "필수", "必須");
+              if (!row.password?.trim()) e.password = tx(locale, "Required", "필수", "必須");
+              else if (row.password.length < 8) e.password = tx(locale, "Min 8 chars", "8자 이상", "8文字以上");
+              if (!row.shipyard?.trim()) e.shipyard = tx(locale, "Required", "필수", "必須");
+              return e;
+            }}
+            onDone={loadUsers}
+          />
+          <CsvUploadButton
+            locale={locale}
+            endpoint="/api/admin/users/bulk"
+            payloadKey="users"
+            label={tx(locale, "Vendors", "벤더 계정", "ベンダー")}
+            columns={["email", "name", "company", "phone", "password", "shipyard"]}
+            requiredColumns={["email", "name", "password", "shipyard"]}
+            fixedFields={{ role: "VENDOR" }}
+            validate={(row) => {
+              const e: Record<string, string> = {};
+              if (!row.email?.trim()) e.email = tx(locale, "Required", "필수", "必須");
+              else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email.trim())) e.email = tx(locale, "Invalid email", "이메일 형식 오류", "メール形式エラー");
+              if (!row.name?.trim()) e.name = tx(locale, "Required", "필수", "必須");
+              if (!row.password?.trim()) e.password = tx(locale, "Required", "필수", "必須");
+              else if (row.password.length < 8) e.password = tx(locale, "Min 8 chars", "8자 이상", "8文字以上");
+              if (!row.shipyard?.trim()) e.shipyard = tx(locale, "Required (shipyard name)", "필수 (조선소 이름)", "必須 (造船所名)");
+              return e;
+            }}
+            onDone={loadUsers}
+          />
+        </div>
       </div>
 
       <UserSection title={tx(locale, "Admins", "관리자", "管理者")} list={adminUsers} hideDelete />
