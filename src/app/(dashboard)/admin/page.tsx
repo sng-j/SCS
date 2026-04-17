@@ -31,49 +31,34 @@ interface LogRow     { id: string; event: string; userEmail: string | null; leve
 
 // ─── Bulk upload (Excel paste) helpers ───────────────────────────────────────
 
-function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone, validate, requiredColumns, fixedFields }: {
+function BulkUploadGrid({ locale, endpoint, payloadKey, columns, onSuccess, onCancel, validate, requiredColumns, fixedFields }: {
   locale: string;
   endpoint: string;
   payloadKey: string;
   columns: string[];
-  label: string;
-  onDone: () => void;
-  /** Client-side validator. Returns { [colName]: errorMessage } for each invalid field. */
+  onSuccess: () => void;
+  onCancel: () => void;
   validate?: (row: Record<string, string>) => Record<string, string>;
-  /** Column names to mark with * in the header. */
   requiredColumns?: string[];
-  /** Fields auto-injected into every row before sending (e.g. role: "SHIPYARD"). */
   fixedFields?: Record<string, string>;
 }) {
-  const [dialogOpen, setDialogOpen] = useState(false);
   const [rows, setRows] = useState<Record<string, string>[]>(() =>
     Array.from({ length: 5 }, () => Object.fromEntries(columns.map((c) => [c, ""])))
   );
   const [uploading, setUploading] = useState(false);
-
-  // Range selection state (Excel-style drag select)
   const [selStart, setSelStart] = useState<[number, number] | null>(null);
   const [selEnd, setSelEnd] = useState<[number, number] | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-
-  // Per-cell validation errors, indexed by "rowIdx:colName"
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [errorSummary, setErrorSummary] = useState<string | null>(null);
 
-  const resetGrid = () => {
-    setRows(Array.from({ length: 5 }, () => Object.fromEntries(columns.map((c) => [c, ""]))));
-    setSelStart(null); setSelEnd(null);
-    setErrors({}); setErrorSummary(null);
-  };
+  const nonEmptyRows = rows.filter((r) => Object.values(r).some((v) => v && v.trim().length > 0));
 
   const selectionBounds = (() => {
     if (!selStart || !selEnd) return null;
     const [r1, c1] = selStart; const [r2, c2] = selEnd;
-    if (r1 === r2 && c1 === c2) return null; // single-cell focus, don't show selection
-    return {
-      rMin: Math.min(r1, r2), rMax: Math.max(r1, r2),
-      cMin: Math.min(c1, c2), cMax: Math.max(c1, c2),
-    };
+    if (r1 === r2 && c1 === c2) return null;
+    return { rMin: Math.min(r1, r2), rMax: Math.max(r1, r2), cMin: Math.min(c1, c2), cMax: Math.max(c1, c2) };
   })();
 
   const isCellSelected = (rowIdx: number, colIdx: number) => {
@@ -82,20 +67,16 @@ function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone,
            colIdx >= selectionBounds.cMin && colIdx <= selectionBounds.cMax;
   };
 
-  const nonEmptyRows = rows.filter((r) => Object.values(r).some((v) => v && v.trim().length > 0));
-
   const updateCell = (rowIdx: number, col: string, value: string) => {
     setRows((prev) => {
       const next = [...prev];
       next[rowIdx] = { ...next[rowIdx], [col]: value };
       return next;
     });
-    // Clear error for this cell as user types
     setErrors((prev) => {
       const key = `${rowIdx}:${col}`;
       if (!prev[key]) return prev;
-      const next = { ...prev };
-      delete next[key];
+      const next = { ...prev }; delete next[key];
       return next;
     });
   };
@@ -108,24 +89,18 @@ function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone,
     setRows((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== idx) : prev));
   };
 
-  /** Handle paste from Excel — fills a rectangular range of cells */
   const handleCellPaste = (e: React.ClipboardEvent, startRow: number, startCol: string) => {
     const text = e.clipboardData.getData("text");
-    if (!text) return;
-    if (!text.includes("\t") && !text.includes("\n")) return; // single cell — default paste
-
+    if (!text || (!text.includes("\t") && !text.includes("\n"))) return;
     e.preventDefault();
     let cleaned = text;
     if (cleaned.charCodeAt(0) === 0xFEFF) cleaned = cleaned.slice(1);
     const lines = cleaned.split(/\r?\n/).filter((l) => l.length > 0);
     if (lines.length === 0) return;
-
-    // Auto-detect header row (first row with any column name)
     const firstCells = lines[0].split("\t").map((c) => c.trim().toLowerCase());
     const colsLower = columns.map((c) => c.toLowerCase());
     const hasHeader = firstCells.some((c) => colsLower.includes(c));
     const dataLines = hasHeader ? lines.slice(1) : lines;
-
     const startColIdx = columns.indexOf(startCol);
     setRows((prev) => {
       const next = [...prev];
@@ -135,9 +110,7 @@ function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone,
         const cells = line.split("\t");
         cells.forEach((cell, cellIdx) => {
           const targetCol = columns[startColIdx + cellIdx];
-          if (targetCol) {
-            next[targetRow] = { ...next[targetRow], [targetCol]: cell.trim() };
-          }
+          if (targetCol) next[targetRow] = { ...next[targetRow], [targetCol]: cell.trim() };
         });
       });
       return next;
@@ -149,14 +122,11 @@ function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone,
       showToast.error(tx(locale, "No rows to import", "등록할 행이 없습니다", "登録する行がありません"));
       return;
     }
-
-    // Client-side validation before sending
     if (validate) {
       const newErrors: Record<string, string> = {};
       let invalidRows = 0;
       rows.forEach((row, rowIdx) => {
-        const isEmpty = Object.values(row).every((v) => !v || !v.trim());
-        if (isEmpty) return; // skip empty rows
+        if (Object.values(row).every((v) => !v || !v.trim())) return;
         const rowErrors = validate(row);
         const keys = Object.keys(rowErrors);
         if (keys.length > 0) {
@@ -174,12 +144,9 @@ function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone,
         return;
       }
     }
-
-    // Clear errors on successful validation
     setErrors({}); setErrorSummary(null);
     setUploading(true);
     try {
-      // Inject fixed fields (e.g. role="SHIPYARD") into every row before sending
       const payload = fixedFields
         ? nonEmptyRows.map((r) => ({ ...fixedFields, ...r }))
         : nonEmptyRows;
@@ -192,16 +159,13 @@ function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone,
         const data = await res.json();
         const serverErrors = data.errors || [];
         if (serverErrors.length > 0) {
-          // Map server errors back to specific cells when possible
           const newErrors: Record<string, string> = {};
           const validRows = rows.filter((r) => Object.values(r).some((v) => v && v.trim()));
           serverErrors.forEach((err: { row: number; error: string }) => {
-            const serverRowIdx = err.row - 1; // 1-based
-            const actualRow = validRows[serverRowIdx];
+            const actualRow = validRows[err.row - 1];
             if (!actualRow) return;
             const realIdx = rows.indexOf(actualRow);
             if (realIdx < 0) return;
-            // Heuristic: which column does the error reference?
             const lower = err.error.toLowerCase();
             for (const col of columns) {
               if (lower.includes(col.toLowerCase())) {
@@ -209,22 +173,19 @@ function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone,
                 return;
               }
             }
-            // Fallback: mark first column
             newErrors[`${realIdx}:${columns[0]}`] = err.error;
           });
           setErrors(newErrors);
           setErrorSummary(tx(locale,
             `${data.created} succeeded, ${serverErrors.length} failed. See highlighted cells.`,
             `${data.created}건 성공, ${serverErrors.length}건 실패. 빨간 셀을 확인하세요.`,
-            `${data.created}件成功、${serverErrors.length}件失敗。赤色のセルを確認してください。`
+            `${data.created}件成功、${serverErrors.length}件失敗。`
           ));
-          if (data.created > 0) onDone();
+          if (data.created > 0) onSuccess();
           showToast.error(tx(locale, `${serverErrors.length} failed`, `${serverErrors.length}건 실패`, `${serverErrors.length}件失敗`));
         } else {
           showToast.success(tx(locale, `${data.created} created`, `${data.created}건 등록 완료`, `${data.created}件登録完了`));
-          setDialogOpen(false);
-          resetGrid();
-          onDone();
+          onSuccess();
         }
       } else {
         const d = await res.json().catch(() => ({}));
@@ -235,163 +196,122 @@ function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone,
     }
   };
 
-  const handleClose = () => {
-    setDialogOpen(false);
-    resetGrid();
-  };
-
   return (
-    <>
-      <Button size="sm" variant="outline" onClick={() => setDialogOpen(true)}>
-        <Upload size={13} /> {label}
-      </Button>
-      <Dialog open={dialogOpen} onClose={handleClose} title={label} maxWidth="max-w-5xl">
-        <div className="space-y-3">
-          <p className="text-[11px] text-text-secondary">
-            {tx(locale,
-              "Paste from Excel (Ctrl+V) to fill cells. Drag to select a range, then press Delete to clear. Required fields are marked with *.",
-              "엑셀에서 붙여넣기(Ctrl+V)로 셀을 채우거나 직접 입력하세요. 드래그로 범위 선택 후 Delete로 지우기. 필수 항목은 * 표시.",
-              "Excelから貼り付け(Ctrl+V)でセル入力。ドラッグで範囲選択後Deleteで削除。必須項目は*表示。")}
-          </p>
-
-          {/* Error summary banner */}
-          {errorSummary && (
-            <div className="rounded-lg border border-safety-high/40 bg-risk-bg px-3 py-2 flex items-start gap-2">
-              <AlertCircle size={14} className="text-safety-high shrink-0 mt-0.5" />
-              <p className="text-[12px] text-safety-high font-medium">{errorSummary}</p>
-            </div>
-          )}
-
-          {/* Spreadsheet grid */}
-          <div
-            className="rounded-lg border border-border overflow-hidden"
-            onMouseLeave={() => setIsDragging(false)}
-            onMouseUp={() => setIsDragging(false)}
-            onKeyDown={(e) => {
-              if ((e.key === "Delete" || e.key === "Backspace") && selectionBounds) {
-                e.preventDefault();
-                const { rMin, rMax, cMin, cMax } = selectionBounds;
-                setRows((prev) => prev.map((row, rI) => {
-                  if (rI < rMin || rI > rMax) return row;
-                  const next = { ...row };
-                  for (let cI = cMin; cI <= cMax; cI++) next[columns[cI]] = "";
-                  return next;
-                }));
-              } else if (e.key === "Escape") {
-                setSelStart(null); setSelEnd(null);
-              }
-            }}
-            tabIndex={-1}
-          >
-            <div className="max-h-[440px] overflow-auto">
-              <table className="border-collapse w-full">
-                <thead className="bg-surface-secondary sticky top-0 z-10">
-                  <tr>
-                    <th className="w-10 border border-border px-2 py-1.5 text-[10px] font-bold text-text-tertiary">#</th>
-                    {columns.map((c) => (
-                      <th key={c} className="border border-border px-2 py-1.5 text-left text-[11px] font-bold text-text whitespace-nowrap min-w-[140px]">
-                        {c}{requiredColumns?.includes(c) && <span className="text-safety-high ml-0.5">*</span>}
-                      </th>
-                    ))}
-                    <th className="w-8 border border-border bg-surface-secondary"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row, rowIdx) => (
-                    <tr key={rowIdx} className="group">
-                      <td className="border border-border bg-surface-secondary/30 px-2 py-0.5 text-center text-[10px] text-text-tertiary tabular-nums select-none">
-                        {rowIdx + 1}
-                      </td>
-                      {columns.map((c, colIdx) => {
-                        const selected = isCellSelected(rowIdx, colIdx);
-                        const errKey = `${rowIdx}:${c}`;
-                        const errMsg = errors[errKey];
-                        return (
-                          <td
-                            key={c}
-                            className={cn(
-                              "border p-0 relative transition-colors",
-                              errMsg ? "border-safety-high bg-risk-bg/50" :
-                                selected ? "border-border bg-brand/20" : "border-border"
-                            )}
-                            title={errMsg || ""}
-                            onMouseDown={(e) => {
-                              if (e.shiftKey && selStart) {
-                                e.preventDefault();
-                                setSelEnd([rowIdx, colIdx]);
-                              } else {
-                                setSelStart([rowIdx, colIdx]);
-                                setSelEnd([rowIdx, colIdx]);
-                                setIsDragging(true);
-                              }
-                            }}
-                            onMouseEnter={() => {
-                              if (isDragging) setSelEnd([rowIdx, colIdx]);
-                            }}
-                          >
-                            <input
-                              type="text"
-                              value={row[c] || ""}
-                              onChange={(e) => updateCell(rowIdx, c, e.target.value)}
-                              onPaste={(e) => handleCellPaste(e, rowIdx, c)}
-                              onFocus={() => {
-                                if (selectionBounds) { setSelStart([rowIdx, colIdx]); setSelEnd([rowIdx, colIdx]); }
-                              }}
-                              className={cn(
-                                "w-full px-2 py-1 text-[11px] bg-transparent outline-none transition-colors",
-                                errMsg ? "text-safety-high placeholder:text-safety-high/50" : "text-text",
-                                !selected && !errMsg && "focus:bg-brand-lighter/40 focus:ring-1 focus:ring-inset focus:ring-brand/40",
-                                errMsg && "focus:ring-1 focus:ring-inset focus:ring-safety-high/60"
-                              )}
-                            />
-                            {errMsg && (
-                              <div className="absolute top-0 right-0 h-1.5 w-1.5 rounded-full bg-safety-high m-0.5" />
-                            )}
-                          </td>
-                        );
-                      })}
-                      <td className="border border-border bg-surface-secondary/30 text-center">
-                        <button
-                          onClick={() => removeRow(rowIdx)}
-                          className="opacity-0 group-hover:opacity-100 text-text-tertiary hover:text-safety-high transition-opacity p-0.5"
-                          title={tx(locale, "Remove row", "행 삭제", "行削除")}
-                          disabled={rows.length <= 1}
-                        >
-                          <X size={12} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="px-3 py-2 border-t border-border bg-surface-secondary/30 flex items-center justify-between">
-              <button
-                onClick={addRow}
-                className="text-[11px] font-medium text-brand hover:text-brand/80 transition-colors inline-flex items-center gap-1"
-              >
-                <Plus size={12} /> {tx(locale, "Add row", "행 추가", "行追加")}
-              </button>
-              <span className="text-[11px] text-text-tertiary">
-                {tx(locale, `${nonEmptyRows.length} row(s) ready`, `${nonEmptyRows.length}행 준비됨`, `${nonEmptyRows.length}行準備完了`)}
-              </span>
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div className="flex justify-end gap-2 pt-3 border-t border-border">
-            <Button variant="outline" onClick={handleClose}>
-              {tx(locale, "Cancel", "취소", "キャンセル")}
-            </Button>
-            <Button onClick={handleSubmit} loading={uploading} disabled={nonEmptyRows.length === 0}>
-              {tx(locale, `Import ${nonEmptyRows.length} row(s)`, `${nonEmptyRows.length}건 등록`, `${nonEmptyRows.length}件登録`)}
-            </Button>
-          </div>
+    <div className="space-y-3">
+      <p className="text-[11px] text-text-secondary">
+        {tx(locale,
+          "Paste from Excel (Ctrl+V) to fill cells. Drag to select a range, press Delete to clear. Required fields are marked with *.",
+          "엑셀에서 붙여넣기(Ctrl+V)로 셀을 채우거나 직접 입력하세요. 드래그로 범위 선택 후 Delete로 지우기. 필수 항목은 * 표시.",
+          "Excelから貼り付け(Ctrl+V)で入力。ドラッグで範囲選択後Delete。必須は*。")}
+      </p>
+      {errorSummary && (
+        <div className="rounded-lg border border-safety-high/40 bg-risk-bg px-3 py-2 flex items-start gap-2">
+          <AlertCircle size={14} className="text-safety-high shrink-0 mt-0.5" />
+          <p className="text-[12px] text-safety-high font-medium">{errorSummary}</p>
         </div>
-      </Dialog>
-    </>
+      )}
+      <div
+        className="rounded-lg border border-border overflow-hidden"
+        onMouseLeave={() => setIsDragging(false)}
+        onMouseUp={() => setIsDragging(false)}
+        onKeyDown={(e) => {
+          if ((e.key === "Delete" || e.key === "Backspace") && selectionBounds) {
+            e.preventDefault();
+            const { rMin, rMax, cMin, cMax } = selectionBounds;
+            setRows((prev) => prev.map((row, rI) => {
+              if (rI < rMin || rI > rMax) return row;
+              const next = { ...row };
+              for (let cI = cMin; cI <= cMax; cI++) next[columns[cI]] = "";
+              return next;
+            }));
+          } else if (e.key === "Escape") { setSelStart(null); setSelEnd(null); }
+        }}
+        tabIndex={-1}
+      >
+        <div className="max-h-[420px] overflow-auto">
+          <table className="border-collapse w-full">
+            <thead className="bg-surface-secondary sticky top-0 z-10">
+              <tr>
+                <th className="w-10 border border-border px-2 py-1.5 text-[10px] font-bold text-text-tertiary">#</th>
+                {columns.map((c) => (
+                  <th key={c} className="border border-border px-2 py-1.5 text-left text-[11px] font-bold text-text whitespace-nowrap min-w-[140px]">
+                    {c}{requiredColumns?.includes(c) && <span className="text-safety-high ml-0.5">*</span>}
+                  </th>
+                ))}
+                <th className="w-8 border border-border bg-surface-secondary"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, rowIdx) => (
+                <tr key={rowIdx} className="group">
+                  <td className="border border-border bg-surface-secondary/30 px-2 py-0.5 text-center text-[10px] text-text-tertiary tabular-nums select-none">{rowIdx + 1}</td>
+                  {columns.map((c, colIdx) => {
+                    const selected = isCellSelected(rowIdx, colIdx);
+                    const errKey = `${rowIdx}:${c}`;
+                    const errMsg = errors[errKey];
+                    return (
+                      <td
+                        key={c}
+                        className={cn("border p-0 relative transition-colors",
+                          errMsg ? "border-safety-high bg-risk-bg/50" :
+                            selected ? "border-border bg-brand/20" : "border-border")}
+                        title={errMsg || ""}
+                        onMouseDown={(e) => {
+                          if (e.shiftKey && selStart) { e.preventDefault(); setSelEnd([rowIdx, colIdx]); }
+                          else { setSelStart([rowIdx, colIdx]); setSelEnd([rowIdx, colIdx]); setIsDragging(true); }
+                        }}
+                        onMouseEnter={() => { if (isDragging) setSelEnd([rowIdx, colIdx]); }}
+                      >
+                        <input
+                          type="text"
+                          value={row[c] || ""}
+                          onChange={(e) => updateCell(rowIdx, c, e.target.value)}
+                          onPaste={(e) => handleCellPaste(e, rowIdx, c)}
+                          onFocus={() => { if (selectionBounds) { setSelStart([rowIdx, colIdx]); setSelEnd([rowIdx, colIdx]); } }}
+                          className={cn(
+                            "w-full px-2 py-1 text-[11px] bg-transparent outline-none transition-colors",
+                            errMsg ? "text-safety-high" : "text-text",
+                            !selected && !errMsg && "focus:bg-brand-lighter/40 focus:ring-1 focus:ring-inset focus:ring-brand/40",
+                            errMsg && "focus:ring-1 focus:ring-inset focus:ring-safety-high/60"
+                          )}
+                        />
+                        {errMsg && <div className="absolute top-0 right-0 h-1.5 w-1.5 rounded-full bg-safety-high m-0.5" />}
+                      </td>
+                    );
+                  })}
+                  <td className="border border-border bg-surface-secondary/30 text-center">
+                    <button onClick={() => removeRow(rowIdx)}
+                      className="opacity-0 group-hover:opacity-100 text-text-tertiary hover:text-safety-high transition-opacity p-0.5"
+                      title={tx(locale, "Remove row", "행 삭제", "行削除")} disabled={rows.length <= 1}>
+                      <X size={12} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="px-3 py-2 border-t border-border bg-surface-secondary/30 flex items-center justify-between">
+          <button onClick={addRow} className="text-[11px] font-medium text-brand hover:text-brand/80 transition-colors inline-flex items-center gap-1">
+            <Plus size={12} /> {tx(locale, "Add row", "행 추가", "行追加")}
+          </button>
+          <span className="text-[11px] text-text-tertiary">
+            {tx(locale, `${nonEmptyRows.length} row(s) ready`, `${nonEmptyRows.length}행 준비됨`, `${nonEmptyRows.length}行準備完了`)}
+          </span>
+        </div>
+      </div>
+      <div className="flex justify-end gap-2 pt-3 border-t border-border">
+        <Button variant="outline" onClick={onCancel}>
+          {tx(locale, "Cancel", "취소", "キャンセル")}
+        </Button>
+        <Button onClick={handleSubmit} loading={uploading} disabled={nonEmptyRows.length === 0}>
+          {tx(locale, `Import ${nonEmptyRows.length} row(s)`, `${nonEmptyRows.length}건 등록`, `${nonEmptyRows.length}件登録`)}
+        </Button>
+      </div>
+    </div>
   );
 }
+
 
 const TABS = ["users", "signups", "shipyards", "projects", "submissions", "faq", "qna", "settings", "logs", "dataset", "data-health", "doc-formats", "society-kb"] as const;
 type Tab = typeof TABS[number];
@@ -659,6 +579,7 @@ function UsersTab({ locale }: { locale: string }) {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [createRole, setCreateRole] = useState<"ADMIN" | "SHIPYARD" | "VENDOR">("SHIPYARD");
+  const [createMode, setCreateMode] = useState<"single" | "bulk">("single");
   const [createForm, setCreateForm] = useState({ name: "", email: "", password: "", company: "" });
   // For SHIPYARD users: "join" attaches to an existing shipyard, "new" creates one.
   // This is the structural fix for data-mismatch bugs — the operator must make
@@ -840,66 +761,17 @@ function UsersTab({ locale }: { locale: string }) {
 
   return (
     <div className="space-y-6">
-      {/* Create & Bulk account buttons */}
-      <div className="space-y-3">
-        {/* Single-add buttons */}
-        <div className="flex gap-2 flex-wrap">
-          <Button size="sm" onClick={() => { setCreateRole("ADMIN"); setCreateOpen(true); }}>
-            <Plus size={14} /> {tx(locale, "Add Admin", "관리자 추가", "管理者追加")}
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => { setCreateRole("SHIPYARD"); setCreateShipyardMode(shipyards.length > 0 ? "join" : "new"); setCreateShipyardId(""); setCreateOpen(true); }}>
-            <Plus size={14} /> {tx(locale, "Add Shipyard User", "조선소 계정 추가", "造船所アカウント追加")}
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => { setCreateRole("VENDOR"); setCreateShipyardId(""); setCreateOpen(true); }}>
-            <Plus size={14} /> {tx(locale, "Add Vendor", "벤더 추가", "ベンダー追加")}
-          </Button>
-        </div>
-        {/* Bulk upload — separate button per role (no role column needed) */}
-        <div className="flex gap-2 flex-wrap items-center">
-          <span className="text-[11px] text-text-tertiary mr-1">
-            {tx(locale, "Bulk:", "일괄 등록:", "一括:")}
-          </span>
-          <CsvUploadButton
-            locale={locale}
-            endpoint="/api/admin/users/bulk"
-            payloadKey="users"
-            label={tx(locale, "Shipyard Users", "조선소 계정", "造船所アカウント")}
-            columns={["email", "name", "company", "phone", "password", "shipyard"]}
-            requiredColumns={["email", "name", "password", "shipyard"]}
-            fixedFields={{ role: "SHIPYARD" }}
-            validate={(row) => {
-              const e: Record<string, string> = {};
-              if (!row.email?.trim()) e.email = tx(locale, "Required", "필수", "必須");
-              else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email.trim())) e.email = tx(locale, "Invalid email", "이메일 형식 오류", "メール形式エラー");
-              if (!row.name?.trim()) e.name = tx(locale, "Required", "필수", "必須");
-              if (!row.password?.trim()) e.password = tx(locale, "Required", "필수", "必須");
-              else if (row.password.length < 8) e.password = tx(locale, "Min 8 chars", "8자 이상", "8文字以上");
-              if (!row.shipyard?.trim()) e.shipyard = tx(locale, "Required", "필수", "必須");
-              return e;
-            }}
-            onDone={loadUsers}
-          />
-          <CsvUploadButton
-            locale={locale}
-            endpoint="/api/admin/users/bulk"
-            payloadKey="users"
-            label={tx(locale, "Vendors", "벤더 계정", "ベンダー")}
-            columns={["email", "name", "company", "phone", "password", "shipyard"]}
-            requiredColumns={["email", "name", "password", "shipyard"]}
-            fixedFields={{ role: "VENDOR" }}
-            validate={(row) => {
-              const e: Record<string, string> = {};
-              if (!row.email?.trim()) e.email = tx(locale, "Required", "필수", "必須");
-              else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email.trim())) e.email = tx(locale, "Invalid email", "이메일 형식 오류", "メール形式エラー");
-              if (!row.name?.trim()) e.name = tx(locale, "Required", "필수", "必須");
-              if (!row.password?.trim()) e.password = tx(locale, "Required", "필수", "必須");
-              else if (row.password.length < 8) e.password = tx(locale, "Min 8 chars", "8자 이상", "8文字以上");
-              if (!row.shipyard?.trim()) e.shipyard = tx(locale, "Required (shipyard name)", "필수 (조선소 이름)", "必須 (造船所名)");
-              return e;
-            }}
-            onDone={loadUsers}
-          />
-        </div>
+      {/* Single-add buttons — bulk upload accessed via tab inside each dialog */}
+      <div className="flex gap-2 flex-wrap">
+        <Button size="sm" onClick={() => { setCreateRole("ADMIN"); setCreateMode("single"); setCreateOpen(true); }}>
+          <Plus size={14} /> {tx(locale, "Add Admin", "관리자 추가", "管理者追加")}
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => { setCreateRole("SHIPYARD"); setCreateShipyardMode(shipyards.length > 0 ? "join" : "new"); setCreateShipyardId(""); setCreateMode("single"); setCreateOpen(true); }}>
+          <Plus size={14} /> {tx(locale, "Add Shipyard User", "조선소 계정 추가", "造船所アカウント追加")}
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => { setCreateRole("VENDOR"); setCreateShipyardId(""); setCreateMode("single"); setCreateOpen(true); }}>
+          <Plus size={14} /> {tx(locale, "Add Vendor", "벤더 추가", "ベンダー追加")}
+        </Button>
       </div>
 
       <UserSection title={tx(locale, "Admins", "관리자", "管理者")} list={adminUsers} hideDelete />
@@ -915,12 +787,51 @@ function UsersTab({ locale }: { locale: string }) {
           createRole === "VENDOR" ? tx(locale, "Create Vendor", "벤더 계정 생성", "ベンダーアカウント作成") :
           tx(locale, "Create Shipyard", "조선소 계정 생성", "造船所アカウント作成")
         }
-        description={
+        description={createMode === "single" ? (
           createRole === "ADMIN" ? tx(locale, "Create an account with system admin privileges", "시스템 관리 권한을 가진 계정을 생성합니다", "システム管理権限を持つアカウントを作成します") :
           createRole === "VENDOR" ? tx(locale, "Create a vendor account assigned to a shipyard", "조선소에 배정된 벤더 계정을 생성합니다", "造船所に配属されたベンダーアカウントを作成します") :
           tx(locale, "Create a shipyard account to manage projects and vendors", "프로젝트와 벤더를 관리할 조선소 계정을 생성합니다", "プロジェクトとベンダーを管理する造船所アカウントを作成します")
-        }
+        ) : undefined}
+        maxWidth={createMode === "bulk" ? "max-w-5xl" : undefined}
       >
+        {/* Mode tabs — only for SHIPYARD/VENDOR (admins are rare, bulk admin creation not needed) */}
+        {createRole !== "ADMIN" && (
+          <div className="flex gap-1 p-1 bg-surface-secondary rounded-[8px] w-fit mb-4">
+            <button onClick={() => setCreateMode("single")}
+              className={cn("px-3 py-1.5 rounded-[6px] text-[12px] font-medium transition-all",
+                createMode === "single" ? "bg-white text-text shadow-xs" : "text-text-tertiary hover:text-text-secondary")}>
+              {tx(locale, "Single", "개별 추가", "個別追加")}
+            </button>
+            <button onClick={() => setCreateMode("bulk")}
+              className={cn("px-3 py-1.5 rounded-[6px] text-[12px] font-medium transition-all inline-flex items-center gap-1",
+                createMode === "bulk" ? "bg-white text-text shadow-xs" : "text-text-tertiary hover:text-text-secondary")}>
+              <Upload size={12} /> {tx(locale, "Bulk (paste from Excel)", "일괄 등록 (엑셀 붙여넣기)", "一括登録")}
+            </button>
+          </div>
+        )}
+
+        {createMode === "bulk" && createRole !== "ADMIN" ? (
+          <BulkUploadGrid
+            locale={locale}
+            endpoint="/api/admin/users/bulk"
+            payloadKey="users"
+            columns={["email", "name", "company", "phone", "password", "shipyard"]}
+            requiredColumns={["email", "name", "password", "shipyard"]}
+            fixedFields={{ role: createRole }}
+            validate={(row) => {
+              const e: Record<string, string> = {};
+              if (!row.email?.trim()) e.email = tx(locale, "Required", "필수", "必須");
+              else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email.trim())) e.email = tx(locale, "Invalid email", "이메일 형식 오류", "メール形式エラー");
+              if (!row.name?.trim()) e.name = tx(locale, "Required", "필수", "必須");
+              if (!row.password?.trim()) e.password = tx(locale, "Required", "필수", "必須");
+              else if (row.password.length < 8) e.password = tx(locale, "Min 8 chars", "8자 이상", "8文字以上");
+              if (!row.shipyard?.trim()) e.shipyard = tx(locale, "Required (shipyard name)", "필수 (조선소 이름)", "必須 (造船所名)");
+              return e;
+            }}
+            onSuccess={() => { setCreateOpen(false); loadUsers(); }}
+            onCancel={() => setCreateOpen(false)}
+          />
+        ) : (
         <div className="space-y-4">
           <Input label={tx(locale, "Name *", "이름 *", "名前 *")} placeholder={tx(locale, "Name", "이름", "名前")} value={createForm.name} onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })} />
           <Input label={tx(locale, "Email *", "이메일 *", "メール *")} type="email" placeholder="user@example.com" value={createForm.email} onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })} />
@@ -1039,6 +950,7 @@ function UsersTab({ locale }: { locale: string }) {
             <Button onClick={handleCreateUser} loading={createSaving}><Plus size={14} /> {tx(locale, "Create", "생성", "作成")}</Button>
           </div>
         </div>
+        )}
       </Dialog>
 
       {/* Delete user confirm */}
@@ -1349,6 +1261,7 @@ function ShipyardsTab({ locale }: { locale: string }) {
   const [shipyards, setShipyards] = useState<ShipyardRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState<"single" | "bulk">("single");
   const [editTarget, setEditTarget] = useState<ShipyardRow | null>(null);
   const [form, setForm] = useState({ name: "", address: "", phone: "", contact: "" });
   const [saving, setSaving] = useState(false);
@@ -1368,8 +1281,8 @@ function ShipyardsTab({ locale }: { locale: string }) {
 
   useEffect(() => { fetchShipyards(); }, [fetchShipyards]);
 
-  function openCreate() { setEditTarget(null); setForm({ name: "", address: "", phone: "", contact: "" }); setDialogOpen(true); }
-  function openEdit(s: ShipyardRow) { setEditTarget(s); setForm({ name: s.name, address: s.address || "", phone: s.phone || "", contact: s.contact || "" }); setDialogOpen(true); }
+  function openCreate() { setEditTarget(null); setForm({ name: "", address: "", phone: "", contact: "" }); setDialogMode("single"); setDialogOpen(true); }
+  function openEdit(s: ShipyardRow) { setEditTarget(s); setForm({ name: s.name, address: s.address || "", phone: s.phone || "", contact: s.contact || "" }); setDialogMode("single"); setDialogOpen(true); }
 
   async function handleSave() {
     if (!form.name) { showToast.error(tx(locale, "Name required", "이름은 필수입니다", "名前は必須です")); return; }
@@ -1455,20 +1368,6 @@ function ShipyardsTab({ locale }: { locale: string }) {
           <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-tertiary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
         </div>
         <Button size="sm" onClick={openCreate}><Plus size={14} /> {tx(locale, "Add", "추가", "追加")}</Button>
-        <CsvUploadButton
-          locale={locale}
-          endpoint="/api/admin/shipyards/bulk"
-          payloadKey="shipyards"
-          label={tx(locale, "Bulk Upload", "엑셀 붙여넣기 등록", "Excel貼り付け登録")}
-          columns={["name", "address", "phone", "contact"]}
-          requiredColumns={["name"]}
-          validate={(row) => {
-            const e: Record<string, string> = {};
-            if (!row.name?.trim()) e.name = tx(locale, "Required", "필수", "必須");
-            return e;
-          }}
-          onDone={fetchShipyards}
-        />
       </div>
 
       {filtered.length === 0 ? (
@@ -1601,7 +1500,44 @@ function ShipyardsTab({ locale }: { locale: string }) {
           })}
         </div>
       )}
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} title={editTarget ? (tx(locale, "Edit Shipyard", "조선소 수정", "造船所編集")) : (tx(locale, "Add Shipyard", "조선소 추가", "造船所追加"))}>
+      <Dialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        title={editTarget ? (tx(locale, "Edit Shipyard", "조선소 수정", "造船所編集")) : (tx(locale, "Add Shipyard", "조선소 추가", "造船所追加"))}
+        maxWidth={dialogMode === "bulk" ? "max-w-5xl" : undefined}
+      >
+        {/* Mode tabs (only when creating, not editing) */}
+        {!editTarget && (
+          <div className="flex gap-1 p-1 bg-surface-secondary rounded-[8px] w-fit mb-4">
+            <button onClick={() => setDialogMode("single")}
+              className={cn("px-3 py-1.5 rounded-[6px] text-[12px] font-medium transition-all",
+                dialogMode === "single" ? "bg-white text-text shadow-xs" : "text-text-tertiary hover:text-text-secondary")}>
+              {tx(locale, "Single", "개별 추가", "個別追加")}
+            </button>
+            <button onClick={() => setDialogMode("bulk")}
+              className={cn("px-3 py-1.5 rounded-[6px] text-[12px] font-medium transition-all inline-flex items-center gap-1",
+                dialogMode === "bulk" ? "bg-white text-text shadow-xs" : "text-text-tertiary hover:text-text-secondary")}>
+              <Upload size={12} /> {tx(locale, "Bulk (paste from Excel)", "일괄 등록 (엑셀 붙여넣기)", "一括登録")}
+            </button>
+          </div>
+        )}
+
+        {dialogMode === "bulk" && !editTarget ? (
+          <BulkUploadGrid
+            locale={locale}
+            endpoint="/api/admin/shipyards/bulk"
+            payloadKey="shipyards"
+            columns={["name", "address", "phone", "contact"]}
+            requiredColumns={["name"]}
+            validate={(row) => {
+              const e: Record<string, string> = {};
+              if (!row.name?.trim()) e.name = tx(locale, "Required", "필수", "必須");
+              return e;
+            }}
+            onSuccess={() => { setDialogOpen(false); fetchShipyards(); }}
+            onCancel={() => setDialogOpen(false)}
+          />
+        ) : (
         <div className="space-y-4">
           <Input label={tx(locale, "Name *", "이름 *", "名前 *")} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           <Input label={tx(locale, "Address", "주소", "住所")} placeholder={tx(locale, "Address", "부산시 영도구", "東京都港区")} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
@@ -1612,6 +1548,7 @@ function ShipyardsTab({ locale }: { locale: string }) {
             <Button onClick={handleSave} loading={saving}>{tx(locale, "Save", "저장", "保存")}</Button>
           </div>
         </div>
+        )}
       </Dialog>
 
       {/* Delete confirmation */}
