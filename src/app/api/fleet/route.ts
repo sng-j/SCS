@@ -90,12 +90,34 @@ export async function GET() {
     const eqTotal = project.equipments.length;
     const eqApproved = project.equipments.filter((e) => e.status === "APPROVED").length;
 
+    // Compute live compliance score from actual progress signals when
+    // the stored value is null. Weighted average of three pillars:
+    //   • Equipment approval rate (40%)
+    //   • Assessment pass rate (40%)
+    //   • Document completion (20%)
+    // Assessment pass rate falls back to completion rate when no PASS/FAIL signal.
+    const eqPct = eqTotal > 0 ? (eqApproved / eqTotal) * 100 : 0;
+    // assessmentCompletion is already computed above (checked vs total).
+    // For the pillar we want actual pass rate where possible:
+    let assessPass = 0;
+    let assessJudged = 0;
+    for (const hw of project.hardware) {
+      for (const a of hw.assessments) {
+        if (a.result === "PASS") { assessPass++; assessJudged++; }
+        else if (a.result === "FAIL" || a.result === "PARTIAL") { assessJudged++; }
+        // NOT_APPLICABLE and NOT_CHECKED excluded from denominator
+      }
+    }
+    const assessPct = assessJudged > 0 ? (assessPass / assessJudged) * 100 : assessmentCompletion;
+    const docPct = TOTAL_DOCUMENTS > 0 ? (Math.min(documentCount, TOTAL_DOCUMENTS) / TOTAL_DOCUMENTS) * 100 : 0;
+    const liveScore = Math.round(eqPct * 0.4 + assessPct * 0.4 + docPct * 0.2);
+
     return {
       id: project.id,
       vesselName: project.vesselName,
       classification: project.classification,
       status: project.status,
-      complianceScore: project.complianceScore ?? 0,
+      complianceScore: project.complianceScore ?? liveScore,
       hardwareCount: project._count.hardware,
       softwareCount: project._count.software,
       equipmentCount: eqTotal,

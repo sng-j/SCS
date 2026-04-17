@@ -11,7 +11,7 @@ interface Params {
 }
 
 /** GET /api/projects/[projectId]/assessments — list all assessments */
-export async function GET(_request: Request, { params }: Params) {
+export async function GET(request: Request, { params }: Params) {
   const user = await getSessionUser();
   if (!user) return apiError("Unauthorized", 401);
 
@@ -19,8 +19,16 @@ export async function GET(_request: Request, { params }: Params) {
   const hasAccess = await verifyProjectAccess(user.id, projectId, user.role, user.shipyardId);
   if (!hasAccess) return apiError("Forbidden", 403);
 
+  const { searchParams } = new URL(request.url);
+  const equipmentId = searchParams.get("equipmentId");
+
   const assessments = await prisma.assessment.findMany({
-    where: { hardware: { projectId } },
+    where: {
+      hardware: equipmentId ? { projectId, equipmentId } : { projectId },
+    },
+    include: {
+      hardware: { select: { id: true, name: true, type: true } },
+    },
     orderBy: [{ hardwareId: "asc" }, { checkId: "asc" }],
   });
 

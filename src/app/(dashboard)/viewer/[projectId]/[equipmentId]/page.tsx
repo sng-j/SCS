@@ -24,7 +24,7 @@ interface Equipment {
 }
 interface Hardware { id: string; name: string; type: string; manufacturer: string | null; model: string | null; ipAddress: string | null; zone: string | null; }
 interface Software { id: string; name: string; version: string | null; vendor: string | null; swType: string; }
-interface Assessment { id: string; hardwareId: string; checkId: string; result: string; evidence: string | null; note: string | null; hardware: { id: string; name: string; type: string }; }
+interface Assessment { id: string; hardwareId: string; checkId: string; result: string; evidence: string | null; note: string | null; hardware?: { id: string; name: string; type: string }; }
 interface Doc { id: string; docType: string; title: string; standard: string; status: string; version: number; generatedAt: string | null; updatedAt: string; }
 
 const TABS = ["summary", "inventory", "assessment", "documents"] as const;
@@ -280,7 +280,7 @@ export default function ViewerEquipmentPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="text-[11px] font-mono font-bold text-text-tertiary">{a.checkId}</span>
-                            <span className="text-[13px] font-semibold text-text truncate">{a.hardware.name}</span>
+                            <span className="text-[13px] font-semibold text-text truncate">{a.hardware?.name || "—"}</span>
                           </div>
                         </div>
                         <span
