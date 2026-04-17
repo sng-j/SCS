@@ -577,19 +577,70 @@ interface ChangeEvent {
   reauditRequired: boolean;
   changedBy: string;
   createdAt: string;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+  resolutionNote: string | null;
 }
 
 function ChangeHistoryTab({ projectId, locale }: { projectId: string; locale: string }) {
+  const { data: session } = useSession();
+  const userRole = (session?.user as { role?: string })?.role;
+  const canResolve = userRole === "SHIPYARD" || userRole === "ADMIN";
+
   const [changes, setChanges] = useState<ChangeEvent[]>([]);
+  const [unresolvedCount, setUnresolvedCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<"unresolved" | "resolved" | "all">("unresolved");
+  const [resolveDialog, setResolveDialog] = useState<ChangeEvent | null>(null);
+  const [resolveNote, setResolveNote] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    fetch(`/api/projects/${projectId}/changes`)
-      .then(async (r) => { if (r.ok) { const d = await r.json(); setChanges(Array.isArray(d) ? d : []); } })
+  const fetchChanges = useCallback(() => {
+    setLoading(true);
+    fetch(`/api/projects/${projectId}/changes?filter=${filter}&limit=100`)
+      .then(async (r) => {
+        if (r.ok) {
+          const d = await r.json();
+          setChanges(Array.isArray(d.changes) ? d.changes : []);
+          setUnresolvedCount(d.unresolvedCount || 0);
+        }
+      })
       .finally(() => setLoading(false));
-  }, [projectId]);
+  }, [projectId, filter]);
 
-  if (loading) return <SkeletonTable rows={5} />;
+  useEffect(() => { fetchChanges(); }, [fetchChanges]);
+
+  const handleResolve = async () => {
+    if (!resolveDialog) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/changes?id=${resolveDialog.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resolve", resolutionNote: resolveNote }),
+      });
+      if (res.ok) {
+        showToast.success(tx(locale, "Marked as resolved", "해결 처리되었습니다", "解決済みにしました"));
+        setResolveDialog(null);
+        setResolveNote("");
+        fetchChanges();
+      } else {
+        showToast.error(tx(locale, "Failed", "처리 실패", "失敗"));
+      }
+    } finally { setSaving(false); }
+  };
+
+  const handleReopen = async (c: ChangeEvent) => {
+    const res = await fetch(`/api/projects/${projectId}/changes?id=${c.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "reopen" }),
+    });
+    if (res.ok) {
+      showToast.success(tx(locale, "Reopened", "재개됨", "再開"));
+      fetchChanges();
+    }
+  };
 
   const sevColors: Record<string, string> = {
     LOW: "bg-surface-secondary text-text-tertiary", MEDIUM: "bg-amber-50 text-amber-600",
@@ -598,31 +649,97 @@ function ChangeHistoryTab({ projectId, locale }: { projectId: string; locale: st
   const typeLabels: Record<string, string> = { CREATE: tx(locale, "Create", "생성", "作成"), UPDATE: tx(locale, "Update", "수정", "更新"), DELETE: tx(locale, "Delete", "삭제", "削除") };
   const entityLabels: Record<string, string> = { HARDWARE: "HW", SOFTWARE: "SW", ASSESSMENT: tx(locale, "Assess", "평가", "評価"), DFD: "DFD", DOCUMENT: tx(locale, "Doc", "문서", "文書") };
 
+  const filterLabel = (f: typeof filter) => {
+    if (f === "unresolved") return tx(locale, `Unresolved (${unresolvedCount})`, `미해결 (${unresolvedCount})`, `未解決 (${unresolvedCount})`);
+    if (f === "resolved") return tx(locale, "Resolved", "해결됨", "解決済み");
+    return tx(locale, "All", "전체", "全て");
+  };
+
   return (
     <div className="space-y-4">
-      <h2 className="text-body-sm font-bold text-text">{tx(locale, "Change History", "변경 이력", "変更履歴")}</h2>
-      {changes.length === 0 ? (
-        <EmptyState icon={History} title={tx(locale, "No changes", "변경 이력이 없습니다", "変更履歴がありません")} />
+      <div className="flex items-center justify-between">
+        <h2 className="text-body-sm font-bold text-text">{tx(locale, "Change History", "변경 이력", "変更履歴")}</h2>
+        <div className="flex gap-1 p-1 bg-surface-secondary rounded-[8px]">
+          {(["unresolved", "resolved", "all"] as const).map((f) => (
+            <button key={f} onClick={() => setFilter(f)}
+              className={cn("px-3 py-1 rounded-[6px] text-[11px] font-medium transition-all",
+                filter === f ? "bg-white text-text shadow-xs" : "text-text-tertiary hover:text-text-secondary")}>
+              {filterLabel(f)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading ? <SkeletonTable rows={5} /> : changes.length === 0 ? (
+        <EmptyState icon={History} title={
+          filter === "unresolved"
+            ? tx(locale, "No unresolved changes", "미해결 변경이 없습니다", "未解決の変更がありません")
+            : tx(locale, "No changes", "변경 이력이 없습니다", "変更履歴がありません")
+        } />
       ) : (
         <Card padding="none">
           <div className="divide-y divide-border max-h-[500px] overflow-y-auto">
             {changes.map((c) => (
-              <div key={c.id} className="flex items-start gap-3 px-5 py-3.5 hover:bg-surface-secondary/30 transition-colors">
+              <div key={c.id} className={cn("flex items-start gap-3 px-5 py-3.5 hover:bg-surface-secondary/30 transition-colors", c.resolvedAt && "opacity-60")}>
                 <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 mt-0.5", sevColors[c.severity] || sevColors.LOW)}>{c.severity}</span>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 text-[12px]">
+                  <div className="flex items-center gap-2 text-[12px] flex-wrap">
                     <span className="font-semibold text-text">{entityLabels[c.entityType] || c.entityType}</span>
                     <span className="text-text-tertiary">·</span>
                     <span className="text-text-secondary">{typeLabels[c.changeType] || c.changeType}</span>
-                    {c.reauditRequired && <span className="px-1.5 py-0.5 rounded-full bg-risk-bg text-safety-high text-[9px] font-bold">{tx(locale, "Re-audit", "재감사 필요", "再監査必要")}</span>}
+                    {c.reauditRequired && !c.resolvedAt && <span className="px-1.5 py-0.5 rounded-full bg-risk-bg text-safety-high text-[9px] font-bold">{tx(locale, "Re-audit", "재감사 필요", "再監査必要")}</span>}
+                    {c.resolvedAt && <span className="px-1.5 py-0.5 rounded-full bg-green-50 text-green-700 text-[9px] font-bold">✓ {tx(locale, "Resolved", "해결됨", "解決済み")}</span>}
                   </div>
-                  <p className="text-[11px] text-text-tertiary mt-0.5">{new Date(c.createdAt).toLocaleString(tx(locale, "en-US", "ko-KR", "ja-JP"))}</p>
+                  <p className="text-[11px] text-text-tertiary mt-0.5">
+                    {new Date(c.createdAt).toLocaleString(tx(locale, "en-US", "ko-KR", "ja-JP"))}
+                    {c.resolvedAt && ` → ${tx(locale, "resolved", "해결", "解決")} ${new Date(c.resolvedAt).toLocaleDateString(tx(locale, "en-US", "ko-KR", "ja-JP"))} ${tx(locale, "by", "by", "by")} ${c.resolvedBy}`}
+                  </p>
+                  {c.resolutionNote && <p className="text-[11px] text-text-secondary mt-1 italic">&ldquo;{c.resolutionNote}&rdquo;</p>}
                 </div>
+                {canResolve && (
+                  c.resolvedAt ? (
+                    <button onClick={() => handleReopen(c)}
+                      className="px-2 py-1 rounded-md text-[10px] font-semibold text-text-tertiary hover:text-brand hover:bg-brand-lighter transition-colors shrink-0">
+                      {tx(locale, "Reopen", "재개", "再開")}
+                    </button>
+                  ) : (
+                    <button onClick={() => { setResolveDialog(c); setResolveNote(""); }}
+                      className="px-2.5 py-1 rounded-md text-[10px] font-bold text-green-700 bg-green-50 hover:bg-green-100 transition-colors shrink-0">
+                      ✓ {tx(locale, "Resolve", "해결됨", "解決")}
+                    </button>
+                  )
+                )}
               </div>
             ))}
           </div>
         </Card>
       )}
+
+      {/* Resolve dialog */}
+      <Dialog open={!!resolveDialog} onClose={() => setResolveDialog(null)}
+        title={tx(locale, "Mark as Resolved", "해결 처리", "解決済みにする")}>
+        <div className="space-y-3">
+          <p className="text-[12px] text-text-secondary">
+            {tx(locale, "Add a resolution note (optional) to record what action was taken:",
+              "조치 완료 메모를 남겨주세요 (선택사항):",
+              "対応完了メモを残してください（任意）:")}
+          </p>
+          <Textarea
+            value={resolveNote}
+            onChange={(e) => setResolveNote(e.target.value)}
+            placeholder={tx(locale, "e.g., Re-audit completed on 2025-04-20, PASS verified",
+              "예: 2025-04-20 재감사 완료, PASS 처리",
+              "例: 2025-04-20 再監査完了、PASS確認")}
+            rows={3}
+          />
+          <div className="flex justify-end gap-3 pt-2">
+            <Button variant="outline" onClick={() => setResolveDialog(null)}>{tx(locale, "Cancel", "취소", "キャンセル")}</Button>
+            <Button onClick={handleResolve} loading={saving} className="bg-green-600 hover:bg-green-700">
+              ✓ {tx(locale, "Mark Resolved", "해결 처리", "解決済みにする")}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }
