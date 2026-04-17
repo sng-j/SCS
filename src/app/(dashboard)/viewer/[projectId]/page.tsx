@@ -3,6 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { motion } from "framer-motion";
+import {
+  ArrowLeft, Eye, Package, ChevronRight, Ship,
+  CheckCircle, Clock, AlertCircle, XCircle,
+} from "lucide-react";
+import { Card, CardBody } from "@/components/ui/card";
+import { SkeletonTable } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useLocaleStore } from "@/stores/locale-store";
 import { tx } from "@/lib/i18n";
 
@@ -24,23 +32,22 @@ interface Project {
   complianceScore: number | null;
 }
 
-/** Editorial status glyph + compressed label. Circles replaced with
- *  typographic marks (●/◐/○/×/—) to keep the nautical-logbook feel. */
-const STATUS_GLYPH: Record<string, { glyph: string; signal: string; en: string; ko: string; ja: string }> = {
-  APPROVED:           { glyph: "●", signal: "c-good", en: "Approved",   ko: "승인됨",   ja: "承認済み" },
-  SUBMITTED:          { glyph: "◐", signal: "c-fair", en: "Submitted",  ko: "제출됨",   ja: "提出済み" },
-  IN_PROGRESS:        { glyph: "◐", signal: "c-fair", en: "In progress",ko: "진행 중",  ja: "進行中" },
-  REVISION_REQUESTED: { glyph: "×", signal: "c-poor", en: "Revision",   ko: "수정 요청",ja: "修正依頼" },
-  PENDING:            { glyph: "○", signal: "c-idle", en: "Pending",    ko: "대기",     ja: "保留中" },
+const STATUS_META: Record<string, {
+  label: { en: string; ko: string; ja: string };
+  color: string; bg: string; icon: React.ElementType;
+}> = {
+  APPROVED:           { label: { en: "Approved",    ko: "승인됨",    ja: "承認済み" }, color: "#24A148", bg: "#E6F7EF", icon: CheckCircle },
+  SUBMITTED:          { label: { en: "Submitted",   ko: "제출됨",    ja: "提出済み" }, color: "#EB6200", bg: "#FFF3E0", icon: Clock },
+  IN_PROGRESS:        { label: { en: "In Progress", ko: "진행 중",   ja: "進行中"   }, color: "#0F62FE", bg: "#EDF5FF", icon: Clock },
+  REVISION_REQUESTED: { label: { en: "Revision",    ko: "수정 요청", ja: "修正依頼" }, color: "#DA1E28", bg: "#FFF1F1", icon: XCircle },
+  PENDING:            { label: { en: "Pending",     ko: "대기",      ja: "保留中"   }, color: "#8D8D8D", bg: "#F4F4F4", icon: AlertCircle },
 };
 
-function pad(n: number, w = 2) { return n.toString().padStart(w, "0"); }
-
-function signalClass(pct: number) {
-  if (pct >= 80) return "c-good";
-  if (pct >= 50) return "c-fair";
-  if (pct >= 20) return "c-idle";
-  return "c-poor";
+function signalColor(pct: number) {
+  if (pct >= 80) return "var(--color-safety-low)";
+  if (pct >= 50) return "var(--color-safety-elevated)";
+  if (pct >= 20) return "var(--color-safety-moderate)";
+  return "var(--color-safety-high)";
 }
 
 export default function ViewerProjectPage() {
@@ -60,8 +67,8 @@ export default function ViewerProjectPage() {
     }).finally(() => setLoading(false));
   }, [projectId]);
 
+  // Surface items requiring attention at the top
   const sortedEq = useMemo(() => {
-    // Surface items requiring attention at the top
     const order = ["REVISION_REQUESTED", "SUBMITTED", "IN_PROGRESS", "PENDING", "APPROVED"];
     return [...equipments].sort((a, b) => {
       const ai = order.indexOf(a.status); const bi = order.indexOf(b.status);
@@ -69,157 +76,134 @@ export default function ViewerProjectPage() {
     });
   }, [equipments]);
 
-  const approvedCount = equipments.filter((e) => e.status === "APPROVED").length;
-  const progressPct = equipments.length > 0 ? Math.round((approvedCount / equipments.length) * 100) : 0;
-  const sig = signalClass(progressPct);
-
   if (loading) {
-    return (
-      <div className="max-w-[1180px] mx-auto px-8 py-10">
-        <div className="masthead"><span>loading · · ·</span><span /></div>
-      </div>
-    );
+    return <div className="max-w-[1200px] mx-auto px-6 py-8"><SkeletonTable rows={5} /></div>;
   }
 
   if (!project) {
     return (
-      <div className="max-w-2xl mx-auto px-8 py-24 text-center">
-        <div className="label mb-2">{tx(locale, "Not found", "찾을 수 없음", "見つかりません")}</div>
-        <h1 className="display text-[48px]">404</h1>
-        <Link href="/viewer" className="back-link mt-8">← {tx(locale, "return to log", "일지로 돌아가기", "ログに戻る")}</Link>
+      <div className="max-w-2xl mx-auto px-6 py-8">
+        <EmptyState icon={Ship} title={tx(locale, "Project not found", "프로젝트를 찾을 수 없습니다", "プロジェクトが見つかりません")} />
       </div>
     );
   }
 
-  return (
-    <div className="max-w-[1180px] mx-auto px-8 py-10">
-      {/* Masthead + breadcrumb */}
-      <div className="masthead reveal">
-        <div className="flex items-center gap-6">
-          <Link href="/viewer" className="c-ink hover:c-copper transition-colors">Admiralty Log</Link>
-          <span className="c-ink-mute">/</span>
-          <span className="c-copper">{project.vesselName}</span>
-        </div>
-        <span className="seal">
-          <span style={{ width: 4, height: 4, background: "var(--copper)", display: "inline-block" }} />
-          Viewer
-        </span>
-      </div>
+  const approvedCount = equipments.filter((e) => e.status === "APPROVED").length;
+  const progressPct = equipments.length > 0 ? Math.round((approvedCount / equipments.length) * 100) : 0;
 
-      <Link href="/viewer" className="back-link mt-6 inline-flex">
-        ← {tx(locale, "fleet overview", "선대 현황", "船隊概要")}
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="max-w-[1200px] mx-auto px-6 py-8 space-y-5"
+    >
+      {/* Back link */}
+      <Link
+        href="/viewer"
+        className="inline-flex items-center gap-1 text-body-xs text-text-tertiary hover:text-brand transition-colors"
+      >
+        <ArrowLeft size={14} /> {tx(locale, "Fleet Overview", "선대 현황", "船隊概要")}
       </Link>
 
-      {/* ── Vessel hero ────────────────────────────────────────────── */}
-      <section className="grid grid-cols-12 gap-10 mt-10 mb-14 reveal reveal-delay-1">
-        <div className="col-span-12 md:col-span-8">
-          <div className="kicker mb-3">§ Vessel file</div>
-          <h1 className="display text-[72px] md:text-[88px] c-ink leading-[0.96]">
-            {project.vesselName}
-          </h1>
-          <dl className="datasheet mt-8 max-w-md">
-            <dt>{tx(locale, "Shipowner", "선주", "船主")}</dt>
-            <dd>{project.shipowner || "—"}</dd>
-            <dt>{tx(locale, "Classification", "선급", "船級")}</dt>
-            <dd>{project.classification || "—"}</dd>
-            <dt>{tx(locale, "System", "시스템", "システム")}</dt>
-            <dd>{project.systemName || "—"}</dd>
-          </dl>
+      {/* Vessel header */}
+      <div>
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-border bg-surface text-text-tertiary text-[10px] font-bold uppercase tracking-wider">
+            <Eye size={10} /> {tx(locale, "Viewer Mode", "뷰어 모드", "閲覧モード")}
+          </span>
+          {project.classification && (
+            <span className="px-1.5 py-0.5 rounded-md bg-surface-secondary text-[10px] font-bold text-text-secondary">
+              {project.classification}
+            </span>
+          )}
         </div>
-
-        {/* Progress dial */}
-        <div className="col-span-12 md:col-span-4 md:text-right">
-          <div className="label mb-2">{tx(locale, "Approval ratio", "승인률", "承認率")}</div>
-          <div className="flex items-start gap-1 md:justify-end">
-            <span className={`numeral text-[136px] leading-none ${sig}`}>{progressPct}</span>
-            <span className="numeral text-[36px] c-ink-mute mt-3">%</span>
-          </div>
-          <div className="mono text-[11px] c-ink-mute uppercase tracking-[0.2em] mt-3">
-            {approvedCount} / {equipments.length} {tx(locale, "approved", "승인됨", "承認済み")}
-          </div>
-        </div>
-      </section>
-
-      {/* Scale bar under hero */}
-      <div className="mb-14 reveal reveal-delay-2">
-        <div className="scale">
-          <div className={`scale-fill scale-in-bar ${sig}`} style={{ width: `${Math.max(1, progressPct)}%` }} />
-        </div>
-        <div className="flex justify-between mt-2 mono text-[9px] uppercase tracking-[0.22em] c-ink-mute">
-          <span>0</span><span>20</span><span>40</span><span>60</span><span>80</span><span>100</span>
-        </div>
+        <h1 className="text-h4 font-extrabold text-text">{project.vesselName}</h1>
+        <p className="text-body-sm text-text-tertiary mt-1">
+          {[project.shipowner, project.systemName].filter(Boolean).join(" · ") || "—"}
+        </p>
       </div>
 
-      {/* ── Equipment register ─────────────────────────────────────── */}
-      <section className="reveal reveal-delay-3">
-        <div className="flex items-baseline justify-between mb-6">
-          <div>
-            <div className="kicker">§ II · Equipment register</div>
-            <h2 className="display text-[32px] mt-1">
-              {equipments.length} {tx(locale, "items under certification", "인증 대상 기자재", "認証対象機器")}
-            </h2>
-          </div>
-        </div>
-
-        {equipments.length === 0 ? (
-          <div className="py-20 text-center border-y border-[color:var(--line)]">
-            <div className="label">{tx(locale, "Register empty", "기자재 없음", "登録なし")}</div>
-            <p className="display-italic c-ink-soft text-[20px] mt-2">{tx(locale, "No equipment yet filed.", "아직 등록된 기자재가 없습니다.", "まだ機器が登録されていません。")}</p>
-          </div>
-        ) : (
-          <div className="border-t border-b border-[color:var(--ink)]">
-            {/* Table header */}
-            <div className="grid grid-cols-12 gap-4 px-4 py-3 border-b border-[color:var(--line)] label">
-              <div className="col-span-1">№</div>
-              <div className="col-span-5">{tx(locale, "Equipment", "기자재", "機器")}</div>
-              <div className="col-span-3">{tx(locale, "Vendor", "벤더", "ベンダー")}</div>
-              <div className="col-span-1 text-right">HW</div>
-              <div className="col-span-1 text-right">SW</div>
-              <div className="col-span-1 text-right">{tx(locale, "State", "상태", "状態")}</div>
+      {/* Overall progress */}
+      <Card>
+        <CardBody>
+          <div className="flex items-baseline justify-between mb-3">
+            <div>
+              <p className="text-[11px] font-medium uppercase tracking-wider text-text-tertiary">
+                {tx(locale, "Equipment Approval Progress", "기자재 승인 진행률", "機器承認進捗")}
+              </p>
+              <p className="text-body-sm text-text-secondary mt-1">
+                {tx(locale,
+                  `${approvedCount} of ${equipments.length} equipment approved`,
+                  `전체 ${equipments.length}개 중 ${approvedCount}개 승인 완료`,
+                  `${equipments.length}中 ${approvedCount} 承認済み`)}
+              </p>
             </div>
-
-            {/* Rows */}
-            {sortedEq.map((eq, i) => {
-              const st = STATUS_GLYPH[eq.status] || STATUS_GLYPH.PENDING;
-              return (
-                <Link
-                  key={eq.id}
-                  href={`/viewer/${projectId}/${eq.id}`}
-                  className="grid grid-cols-12 gap-4 px-4 py-5 items-center border-b border-[color:var(--line)] last:border-b-0 hover:bg-[color:var(--paper-edge)] transition-colors group"
-                >
-                  <div className="col-span-1 mono text-[11px] c-ink-mute tabular-nums">{pad(i + 1)}</div>
-                  <div className="col-span-5">
-                    <div className="flex items-baseline gap-3">
-                      <span className="display text-[22px] c-ink group-hover:c-copper transition-colors leading-tight">{eq.name}</span>
-                      {eq.dfdDiagram && (
-                        <span className="mono text-[9px] c-ink-mute uppercase tracking-[0.2em] border border-[color:var(--line-strong)] px-1.5 py-0.5">DFD</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="col-span-3 mono text-[11px] c-ink-soft truncate">
-                    {eq.vendor?.company || eq.vendor?.name || <span className="c-ink-mute">—</span>}
-                  </div>
-                  <div className="col-span-1 mono text-[12px] c-ink text-right tabular-nums">{eq._count.hardware}</div>
-                  <div className="col-span-1 mono text-[12px] c-ink text-right tabular-nums">{eq._count.software}</div>
-                  <div className="col-span-1 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <span className={`${st.signal} text-[15px] leading-none`}>{st.glyph}</span>
-                      <span className={`mono text-[9px] uppercase tracking-[0.18em] ${st.signal}`}>
-                        {st[locale as "en"|"ko"|"ja"] || st.en}
-                      </span>
-                    </div>
-                  </div>
-                </Link>
-              );
-            })}
+            <span className="text-[32px] font-extrabold tabular-nums" style={{ color: signalColor(progressPct) }}>
+              {progressPct}%
+            </span>
           </div>
-        )}
-      </section>
+          <div className="h-2 rounded-full bg-surface-secondary overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all duration-700"
+              style={{ width: `${progressPct}%`, backgroundColor: signalColor(progressPct) }}
+            />
+          </div>
+        </CardBody>
+      </Card>
 
-      <footer className="mt-24 pt-6 border-t border-[color:var(--ink)] flex items-center justify-between text-[10px] mono uppercase tracking-[0.22em] c-ink-mute">
-        <span>— vessel file · {project.vesselName} —</span>
-        <span>Read-only record</span>
-      </footer>
-    </div>
+      {/* Equipment list */}
+      {equipments.length === 0 ? (
+        <Card><CardBody><EmptyState icon={Package} title={tx(locale, "No equipment registered", "등록된 기자재가 없습니다", "登録された機器がありません")} /></CardBody></Card>
+      ) : (
+        <div>
+          <h2 className="text-body-sm font-bold text-text mb-2 px-1">
+            {tx(locale,
+              `Equipment (${equipments.length})`,
+              `기자재 (${equipments.length}개)`,
+              `機器 (${equipments.length})`)}
+          </h2>
+          <Card padding="none">
+            <div className="divide-y divide-border">
+              {sortedEq.map((eq) => {
+                const st = STATUS_META[eq.status] || STATUS_META.PENDING;
+                const Icon = st.icon;
+                return (
+                  <Link
+                    key={eq.id}
+                    href={`/viewer/${projectId}/${eq.id}`}
+                    className="flex items-center gap-4 px-5 py-4 hover:bg-surface-secondary/30 transition-colors group"
+                  >
+                    <div
+                      className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: st.bg }}
+                    >
+                      <Icon size={18} style={{ color: st.color }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <p className="text-body-md font-bold text-text truncate group-hover:text-brand transition-colors">{eq.name}</p>
+                        <span
+                          className="px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0"
+                          style={{ backgroundColor: st.bg, color: st.color }}
+                        >
+                          {st.label[locale as "en" | "ko" | "ja"] || st.label.en}
+                        </span>
+                      </div>
+                      <p className="text-body-xs text-text-tertiary">
+                        {eq.vendor?.company || eq.vendor?.name || tx(locale, "No vendor assigned", "벤더 미배정", "ベンダー未割当")}
+                        {` · HW ${eq._count.hardware} · SW ${eq._count.software}`}
+                        {eq.dfdDiagram ? ` · ${tx(locale, "DFD ✓", "DFD ✓", "DFD ✓")}` : ""}
+                      </p>
+                    </div>
+                    <ChevronRight size={16} className="text-text-tertiary group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0" />
+                  </Link>
+                );
+              })}
+            </div>
+          </Card>
+        </div>
+      )}
+    </motion.div>
   );
 }

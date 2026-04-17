@@ -3,17 +3,25 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { AnimatePresence, motion } from "framer-motion";
-import { X as IconX, Download } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  ArrowLeft, Eye, Cpu, Package, FileText, Network, ClipboardCheck,
+  ChevronDown, ChevronRight, Download,
+  CheckCircle, XCircle, AlertCircle, MinusCircle, Clock,
+  X as IconX,
+} from "lucide-react";
+import { Card, CardBody } from "@/components/ui/card";
+import { SkeletonTable } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useLocaleStore } from "@/stores/locale-store";
 import { tx } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 
 interface Equipment {
   id: string; name: string; status: string;
   vendor: { id: string; name: string; company: string | null } | null;
   _count: { hardware: number; software: number };
   dfdDiagram: { id: string } | null;
-  certificationInfo?: string;
 }
 interface Hardware {
   id: string; name: string; type: string; manufacturer: string | null; model: string | null;
@@ -41,28 +49,32 @@ interface Doc {
 const TABS = ["summary", "inventory", "assessment", "documents"] as const;
 type Tab = typeof TABS[number];
 
-const RESULT_META: Record<string, { glyph: string; signal: string; en: string; ko: string; ja: string }> = {
-  PASS:           { glyph: "●", signal: "c-good", en: "Pass",        ko: "합격",     ja: "合格" },
-  FAIL:           { glyph: "×", signal: "c-poor", en: "Fail",        ko: "불합격",   ja: "不合格" },
-  PARTIAL:        { glyph: "◐", signal: "c-fair", en: "Partial",     ko: "일부",     ja: "一部" },
-  NOT_APPLICABLE: { glyph: "—", signal: "c-idle", en: "N/A",         ko: "해당없음",  ja: "N/A" },
-  NOT_CHECKED:    { glyph: "○", signal: "c-idle", en: "Unchecked",   ko: "미점검",   ja: "未点検" },
+const RESULT_META: Record<string, {
+  icon: React.ElementType; color: string; bg: string;
+  label: { en: string; ko: string; ja: string };
+}> = {
+  PASS:           { icon: CheckCircle, color: "#24A148", bg: "#E6F7EF", label: { en: "Pass",        ko: "합격",     ja: "合格" } },
+  FAIL:           { icon: XCircle,     color: "#DA1E28", bg: "#FFF1F1", label: { en: "Fail",        ko: "불합격",    ja: "不合格" } },
+  PARTIAL:        { icon: AlertCircle, color: "#EB6200", bg: "#FFF3E0", label: { en: "Partial",     ko: "일부",      ja: "一部" } },
+  NOT_APPLICABLE: { icon: MinusCircle, color: "#8D8D8D", bg: "#F4F4F4", label: { en: "N/A",         ko: "해당없음",  ja: "N/A" } },
+  NOT_CHECKED:    { icon: Clock,       color: "#A8A8A8", bg: "#F4F4F4", label: { en: "Not Checked", ko: "미점검",    ja: "未点検" } },
 };
 
-const STATUS_META: Record<string, { glyph: string; signal: string; en: string; ko: string; ja: string }> = {
-  APPROVED:           { glyph: "●", signal: "c-good", en: "Approved", ko: "승인됨",   ja: "承認済み" },
-  SUBMITTED:          { glyph: "◐", signal: "c-fair", en: "Submitted",ko: "제출됨",   ja: "提出済み" },
-  IN_PROGRESS:        { glyph: "◐", signal: "c-fair", en: "In progress",ko: "진행 중",ja: "進行中" },
-  REVISION_REQUESTED: { glyph: "×", signal: "c-poor", en: "Revision", ko: "수정 요청",ja: "修正依頼" },
-  PENDING:            { glyph: "○", signal: "c-idle", en: "Pending",  ko: "대기",     ja: "保留中" },
+const STATUS_META: Record<string, {
+  label: { en: string; ko: string; ja: string }; color: string; bg: string;
+}> = {
+  APPROVED:           { label: { en: "Approved",    ko: "승인됨",    ja: "承認済み" }, color: "#24A148", bg: "#E6F7EF" },
+  SUBMITTED:          { label: { en: "Submitted",   ko: "제출됨",    ja: "提出済み" }, color: "#EB6200", bg: "#FFF3E0" },
+  IN_PROGRESS:        { label: { en: "In Progress", ko: "진행 중",   ja: "進行中"   }, color: "#0F62FE", bg: "#EDF5FF" },
+  REVISION_REQUESTED: { label: { en: "Revision",    ko: "수정 요청", ja: "修正依頼" }, color: "#DA1E28", bg: "#FFF1F1" },
+  PENDING:            { label: { en: "Pending",     ko: "대기",      ja: "保留中"   }, color: "#8D8D8D", bg: "#F4F4F4" },
 };
 
-function pad(n: number, w = 2) { return n.toString().padStart(w, "0"); }
-function signalClass(pct: number) {
-  if (pct >= 80) return "c-good";
-  if (pct >= 50) return "c-fair";
-  if (pct >= 20) return "c-idle";
-  return "c-poor";
+function signalColor(pct: number) {
+  if (pct >= 80) return "var(--color-safety-low)";
+  if (pct >= 50) return "var(--color-safety-elevated)";
+  if (pct >= 20) return "var(--color-safety-moderate)";
+  return "var(--color-safety-high)";
 }
 
 export default function ViewerEquipmentPage() {
@@ -88,9 +100,9 @@ export default function ViewerEquipmentPage() {
     try {
       const res = await fetch(`/api/projects/${projectId}/documents/${d.id}/preview`);
       if (res.ok) setPreviewHtml(await res.text());
-      else setPreviewHtml(`<div style="padding:2rem;color:#8B8578;font-family:IBM Plex Mono,monospace;font-size:11px">preview failed (${res.status})</div>`);
+      else setPreviewHtml(`<div style="padding:2rem;color:#666">Preview failed (${res.status})</div>`);
     } catch {
-      setPreviewHtml(`<div style="padding:2rem;color:#8B8578;font-family:IBM Plex Mono,monospace;font-size:11px">preview error</div>`);
+      setPreviewHtml(`<div style="padding:2rem;color:#666">Preview error</div>`);
     } finally { setPreviewLoading(false); }
   };
   const closePreview = () => { setPreviewDoc(null); setPreviewHtml(null); };
@@ -115,18 +127,13 @@ export default function ViewerEquipmentPage() {
   }, [projectId, equipmentId]);
 
   if (loading) {
-    return (
-      <div className="max-w-[1180px] mx-auto px-8 py-10">
-        <div className="masthead"><span>loading · · ·</span><span /></div>
-      </div>
-    );
+    return <div className="max-w-[1200px] mx-auto px-6 py-8"><SkeletonTable rows={6} /></div>;
   }
+
   if (!equipment) {
     return (
-      <div className="max-w-2xl mx-auto px-8 py-24 text-center">
-        <div className="label mb-2">{tx(locale, "Not found", "찾을 수 없음", "見つかりません")}</div>
-        <h1 className="display text-[48px]">404</h1>
-        <Link href={`/viewer/${projectId}`} className="back-link mt-8">← {tx(locale, "back to vessel", "선박으로 돌아가기", "船舶に戻る")}</Link>
+      <div className="max-w-2xl mx-auto px-6 py-8">
+        <EmptyState icon={Package} title={tx(locale, "Equipment not found", "기자재를 찾을 수 없습니다", "機器が見つかりません")} />
       </div>
     );
   }
@@ -138,184 +145,210 @@ export default function ViewerEquipmentPage() {
   const judged = assessPass + assessFail;
   const assessPct = judged > 0 ? Math.round((assessPass / judged) * 100) : 0;
 
-  const tabs: Record<Tab, { en: string; ko: string; ja: string }> = {
-    summary:    { en: "Summary",    ko: "요약",        ja: "サマリー" },
-    inventory:  { en: "Inventory",  ko: "인벤토리",     ja: "インベントリ" },
-    assessment: { en: "Assessment", ko: "평가",        ja: "評価" },
-    documents:  { en: "Documents",  ko: "문서",        ja: "文書" },
-  };
-
   const st = STATUS_META[equipment.status] || STATUS_META.PENDING;
 
-  return (
-    <div className="max-w-[1180px] mx-auto px-8 py-10">
-      {/* Masthead */}
-      <div className="masthead reveal">
-        <div className="flex items-center gap-6">
-          <Link href="/viewer" className="c-ink hover:c-copper transition-colors">Admiralty Log</Link>
-          <span className="c-ink-mute">/</span>
-          <Link href={`/viewer/${projectId}`} className="c-ink-soft hover:c-copper transition-colors">{project?.vesselName || "…"}</Link>
-          <span className="c-ink-mute">/</span>
-          <span className="c-copper">{equipment.name}</span>
-        </div>
-        <span className="seal">
-          <span style={{ width: 4, height: 4, background: "var(--copper)", display: "inline-block" }} />
-          Viewer
-        </span>
-      </div>
+  const tabLabels: Record<Tab, { en: string; ko: string; ja: string; icon: React.ElementType }> = {
+    summary:    { en: "Summary",    ko: "요약",      ja: "サマリー", icon: Eye },
+    inventory:  { en: "Inventory",  ko: "자산 목록", ja: "資産",    icon: Cpu },
+    assessment: { en: "Assessment", ko: "보안 평가", ja: "評価",    icon: ClipboardCheck },
+    documents:  { en: "Documents",  ko: "문서",      ja: "文書",    icon: FileText },
+  };
 
-      <Link href={`/viewer/${projectId}`} className="back-link mt-6 inline-flex">
-        ← {project?.vesselName || tx(locale, "vessel", "선박", "船舶")}
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="max-w-[1200px] mx-auto px-6 py-8 space-y-5"
+    >
+      {/* Back link */}
+      <Link
+        href={`/viewer/${projectId}`}
+        className="inline-flex items-center gap-1 text-body-xs text-text-tertiary hover:text-brand transition-colors"
+      >
+        <ArrowLeft size={14} /> {project?.vesselName || tx(locale, "Vessel", "선박", "船舶")}
       </Link>
 
-      {/* Hero */}
-      <section className="grid grid-cols-12 gap-10 mt-10 mb-12 reveal reveal-delay-1">
-        <div className="col-span-12 md:col-span-8">
-          <div className="kicker mb-3">§ Equipment dossier</div>
-          <h1 className="display text-[64px] md:text-[80px] c-ink leading-[0.96]">
-            {equipment.name}
-          </h1>
-          <p className="mt-6 mono text-[11px] c-ink-soft uppercase tracking-[0.18em]">
-            {equipment.vendor?.company || equipment.vendor?.name || tx(locale, "— no vendor of record —", "— 벤더 미배정 —", "— ベンダーなし —")}
-          </p>
-        </div>
-        <div className="col-span-12 md:col-span-4 md:text-right">
-          <div className="label mb-2">{tx(locale, "Filing status", "제출 상태", "提出状態")}</div>
-          <div className="flex items-baseline md:justify-end gap-3">
-            <span className={`${st.signal} text-[42px] leading-none`}>{st.glyph}</span>
-            <span className={`display text-[28px] ${st.signal}`}>
-              {st[locale as "en"|"ko"|"ja"] || st.en}
-            </span>
-          </div>
-          <div className="mono text-[10px] c-ink-mute uppercase tracking-[0.22em] mt-3">
-            HW {equipment._count.hardware} · SW {equipment._count.software} · DFD {equipment.dfdDiagram ? "set" : "—"}
-          </div>
-        </div>
-      </section>
-
-      {/* Tab bar */}
-      <div className="tab-bar reveal reveal-delay-2">
-        {TABS.map((tab) => (
-          <button
-            key={tab}
-            data-active={activeTab === tab}
-            className="tab"
-            onClick={() => setActiveTab(tab)}
+      {/* Equipment header */}
+      <div>
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-border bg-surface text-text-tertiary text-[10px] font-bold uppercase tracking-wider">
+            <Eye size={10} /> {tx(locale, "Viewer Mode", "뷰어 모드", "閲覧モード")}
+          </span>
+          <span
+            className="px-2 py-0.5 rounded-full text-[10px] font-bold"
+            style={{ backgroundColor: st.bg, color: st.color }}
           >
-            {tabs[tab][locale as "en"|"ko"|"ja"] || tabs[tab].en}
-          </button>
-        ))}
+            {st.label[locale as "en" | "ko" | "ja"] || st.label.en}
+          </span>
+        </div>
+        <h1 className="text-h4 font-extrabold text-text">{equipment.name}</h1>
+        <p className="text-body-sm text-text-tertiary mt-1">
+          {equipment.vendor?.company || equipment.vendor?.name || tx(locale, "No vendor", "벤더 미배정", "ベンダーなし")}
+          {` · HW ${equipment._count.hardware} · SW ${equipment._count.software}`}
+        </p>
       </div>
 
-      {/* Tab content */}
-      <div className="mt-8 reveal reveal-delay-3">
+      {/* Tab bar */}
+      <div className="flex gap-1 p-1 bg-surface-secondary rounded-[8px] w-fit">
+        {TABS.map((tab) => {
+          const t = tabLabels[tab];
+          const Icon = t.icon;
+          return (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={cn(
+                "px-3 py-1.5 rounded-[6px] text-body-sm font-medium transition-all inline-flex items-center gap-1.5",
+                activeTab === tab ? "bg-white text-text shadow-xs" : "text-text-tertiary hover:text-text-secondary"
+              )}
+            >
+              <Icon size={12} /> {t[locale as "en" | "ko" | "ja"] || t.en}
+            </button>
+          );
+        })}
+      </div>
 
-        {/* ── SUMMARY ── */}
-        {activeTab === "summary" && (
-          <div className="grid grid-cols-12 gap-0 border-y border-[color:var(--ink)] divide-x divide-[color:var(--line)]">
-            <KpiCell
-              label={tx(locale, "Inventory", "인벤토리", "資産")}
-              value={`${hardware.length}`}
-              unit={tx(locale, "HW", "HW", "HW")}
-              tail={`${software.length} ${tx(locale, "SW", "SW", "SW")}`}
-            />
-            <KpiCell
-              label={tx(locale, "Assessment", "평가", "評価")}
-              value={`${assessPct}`}
-              unit="%"
-              tail={`✓ ${assessPass} · ✗ ${assessFail} · − ${assessNA}`}
-              signalOn={assessPct}
-            />
-            <KpiCell
-              label={tx(locale, "Documents", "문서", "文書")}
-              value={`${documents.length}`}
-              unit=""
-              tail={tx(locale, "issued", "발행", "発行済み")}
-            />
-            <KpiCell
-              label={tx(locale, "Data flow", "DFD", "DFD")}
-              value={equipment.dfdDiagram ? "●" : "○"}
-              unit=""
-              tail={equipment.dfdDiagram ? tx(locale, "defined", "정의됨", "定義済み") : tx(locale, "not defined", "미정의", "未定義")}
-              signalClassOverride={equipment.dfdDiagram ? "c-good" : "c-idle"}
-            />
-            {assessUnchecked > 0 && (
-              <div className="col-span-12 px-6 py-3 bg-[color:var(--paper-edge)] border-t border-[color:var(--line)] mono text-[10px] uppercase tracking-[0.2em] c-ink-soft">
-                {tx(locale, `${assessUnchecked} checks still unchecked`, `${assessUnchecked}개 항목 미점검`, `${assessUnchecked}件未点検`)}
+      {/* ── SUMMARY ── */}
+      {activeTab === "summary" && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Card>
+            <CardBody>
+              <div className="flex items-center gap-2 mb-2">
+                <Cpu size={14} className="text-text-tertiary" />
+                <p className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">
+                  {tx(locale, "Inventory", "자산 목록", "資産")}
+                </p>
               </div>
-            )}
-          </div>
-        )}
+              <p className="text-[22px] font-extrabold text-text tabular-nums">
+                {hardware.length} <span className="text-[12px] font-medium text-text-tertiary">HW</span>
+                {" · "}
+                {software.length} <span className="text-[12px] font-medium text-text-tertiary">SW</span>
+              </p>
+            </CardBody>
+          </Card>
+          <Card>
+            <CardBody>
+              <div className="flex items-center gap-2 mb-2">
+                <ClipboardCheck size={14} className="text-text-tertiary" />
+                <p className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">
+                  {tx(locale, "Assessment Results", "보안 평가 결과", "評価結果")}
+                </p>
+              </div>
+              <p className="text-[22px] font-extrabold tabular-nums" style={{ color: signalColor(assessPct) }}>
+                {assessPct}% <span className="text-[12px] font-medium text-text-tertiary">pass</span>
+              </p>
+              <p className="text-[11px] text-text-tertiary mt-1">
+                ✓ {assessPass} · ✗ {assessFail} · N/A {assessNA} · {tx(locale, "unchecked", "미점검", "未点検")} {assessUnchecked}
+              </p>
+            </CardBody>
+          </Card>
+          <Card>
+            <CardBody>
+              <div className="flex items-center gap-2 mb-2">
+                <FileText size={14} className="text-text-tertiary" />
+                <p className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">
+                  {tx(locale, "Documents", "문서", "文書")}
+                </p>
+              </div>
+              <p className="text-[22px] font-extrabold text-text tabular-nums">
+                {documents.length}
+              </p>
+            </CardBody>
+          </Card>
+          <Card>
+            <CardBody>
+              <div className="flex items-center gap-2 mb-2">
+                <Network size={14} className="text-text-tertiary" />
+                <p className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">
+                  {tx(locale, "Data Flow Diagram", "DFD", "DFD")}
+                </p>
+              </div>
+              <p className="text-[14px] font-bold text-text">
+                {equipment.dfdDiagram
+                  ? tx(locale, "Defined ✓", "정의됨 ✓", "定義済み ✓")
+                  : tx(locale, "Not defined", "정의되지 않음", "未定義")}
+              </p>
+            </CardBody>
+          </Card>
+        </div>
+      )}
 
-        {/* ── INVENTORY ── */}
-        {activeTab === "inventory" && (
-          <div className="space-y-10">
-            {/* Hardware section */}
-            <div>
-              <div className="flex items-baseline gap-4 mb-4">
-                <span className="kicker">§ Hardware</span>
-                <hr className="rule flex-1" />
-                <span className="mono text-[10px] c-ink-mute uppercase tracking-[0.2em]">{pad(hardware.length)}</span>
-              </div>
-              {hardware.length === 0 ? (
-                <p className="display-italic c-ink-soft text-[18px] py-6">{tx(locale, "No hardware on file.", "하드웨어 기록 없음.", "ハードウェアなし。")}</p>
-              ) : (
-                <div className="border-y border-[color:var(--ink)]">
-                  {hardware.map((hw, i) => {
-                    const open = expandedHw === hw.id;
+      {/* ── INVENTORY ── */}
+      {activeTab === "inventory" && (
+        <div className="space-y-4">
+          {/* Hardware */}
+          <div>
+            <h3 className="text-body-sm font-bold text-text mb-2 px-1">
+              {tx(locale, `Hardware (${hardware.length})`, `하드웨어 (${hardware.length}개)`, `ハードウェア (${hardware.length})`)}
+            </h3>
+            {hardware.length === 0 ? (
+              <Card><CardBody><p className="text-body-xs text-text-tertiary text-center py-4">{tx(locale, "No hardware registered", "등록된 하드웨어가 없습니다", "なし")}</p></CardBody></Card>
+            ) : (
+              <Card padding="none">
+                <div className="divide-y divide-border">
+                  {hardware.map((hw) => {
+                    const isExpanded = expandedHw === hw.id;
                     return (
-                      <div key={hw.id} className="border-b border-[color:var(--line)] last:border-b-0">
+                      <div key={hw.id}>
                         <button
-                          onClick={() => setExpandedHw(open ? null : hw.id)}
-                          className="w-full grid grid-cols-12 gap-4 items-center px-4 py-4 text-left hover:bg-[color:var(--paper-edge)] transition-colors"
+                          onClick={() => setExpandedHw(isExpanded ? null : hw.id)}
+                          className="w-full flex items-center gap-3 px-5 py-3 hover:bg-surface-secondary/30 transition-colors text-left"
                         >
-                          <span className="col-span-1 mono text-[11px] c-ink-mute tabular-nums">{pad(i + 1)}</span>
-                          <span className="col-span-5 flex items-baseline gap-2">
-                            <span className="display text-[18px] c-ink">{hw.name}</span>
-                            {hw.category && <span className="mono text-[9px] c-ink-mute uppercase tracking-[0.16em]">{hw.category}</span>}
-                          </span>
-                          <span className="col-span-3 mono text-[11px] c-ink-soft truncate">
-                            {[hw.manufacturer, hw.model].filter(Boolean).join(" ") || "—"}
-                          </span>
-                          <span className="col-span-2 mono text-[11px] c-ink-soft">{hw.ipAddress || <span className="c-ink-mute">—</span>}</span>
-                          <span className="col-span-1 text-right">
-                            {(hw._count?.cveMatches ?? 0) > 0
-                              ? <span className="mono text-[10px] c-poor font-semibold">{hw._count?.cveMatches} CVE</span>
-                              : <span className="mono text-[9px] c-ink-mute uppercase tracking-[0.2em]">{open ? "−" : "+"}</span>}
-                          </span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-body-sm font-semibold text-text truncate">{hw.name}</p>
+                              {hw.category && (
+                                <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-brand-lighter text-brand shrink-0">
+                                  {hw.category}
+                                </span>
+                              )}
+                              {(hw._count?.cveMatches ?? 0) > 0 && (
+                                <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-risk-bg text-safety-high shrink-0">
+                                  {hw._count?.cveMatches} CVE
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-body-xs text-text-tertiary mt-0.5">
+                              {hw.type} · {[hw.manufacturer, hw.model].filter(Boolean).join(" ") || "—"}
+                              {hw.ipAddress && ` · IP ${hw.ipAddress}`}
+                              {hw.zone && ` · ${hw.zone}`}
+                            </p>
+                          </div>
+                          {isExpanded ? <ChevronDown size={14} className="text-text-tertiary shrink-0" /> : <ChevronRight size={14} className="text-text-tertiary shrink-0" />}
                         </button>
                         <AnimatePresence initial={false}>
-                          {open && (
+                          {isExpanded && (
                             <motion.div
                               initial={{ height: 0, opacity: 0 }}
                               animate={{ height: "auto", opacity: 1 }}
                               exit={{ height: 0, opacity: 0 }}
-                              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-                              className="overflow-hidden bg-[color:var(--paper-edge)]"
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden"
                             >
-                              <div className="px-6 py-5 grid grid-cols-12 gap-8">
-                                <dl className="datasheet col-span-12 md:col-span-7">
-                                  <dt>{tx(locale, "Type", "유형", "種別")}</dt><dd>{hw.type}</dd>
-                                  <dt>{tx(locale, "Manufacturer", "제조사", "製造元")}</dt><dd>{hw.manufacturer || "—"}</dd>
-                                  <dt>{tx(locale, "Model", "모델", "モデル")}</dt><dd>{hw.model || "—"}</dd>
-                                  <dt>IP</dt><dd>{hw.ipAddress || "—"}</dd>
-                                  <dt>MAC</dt><dd>{hw.macAddress || "—"}</dd>
-                                  <dt>{tx(locale, "Zone", "존", "ゾーン")}</dt><dd>{hw.zone || "—"}</dd>
-                                  <dt>{tx(locale, "Location", "위치", "場所")}</dt><dd>{hw.location || "—"}</dd>
-                                  <dt>{tx(locale, "Purpose", "용도", "用途")}</dt><dd>{hw.purpose || "—"}</dd>
+                              <div className="px-5 pb-4 bg-surface-secondary/30">
+                                <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] pt-3">
+                                  <DetailRow label={tx(locale, "Type", "유형", "タイプ")} value={hw.type} />
+                                  <DetailRow label={tx(locale, "Manufacturer", "제조사", "製造元")} value={hw.manufacturer} />
+                                  <DetailRow label={tx(locale, "Model", "모델", "モデル")} value={hw.model} />
+                                  <DetailRow label={tx(locale, "IP Address", "IP 주소", "IPアドレス")} value={hw.ipAddress} />
+                                  <DetailRow label={tx(locale, "MAC Address", "MAC 주소", "MACアドレス")} value={hw.macAddress} />
+                                  <DetailRow label={tx(locale, "Zone", "존", "ゾーン")} value={hw.zone} />
+                                  <DetailRow label={tx(locale, "Location", "위치", "場所")} value={hw.location} />
+                                  <DetailRow label={tx(locale, "Purpose", "용도", "用途")} value={hw.purpose} />
                                 </dl>
                                 {hw.software && hw.software.length > 0 && (
-                                  <div className="col-span-12 md:col-span-5">
-                                    <div className="label mb-2">{tx(locale, "Installed software", "설치된 소프트웨어", "導入済みソフトウェア")}</div>
-                                    <ul className="space-y-1">
+                                  <div className="mt-3 pt-3 border-t border-border">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-text-tertiary mb-1.5">
+                                      {tx(locale, "Installed Software", "설치된 소프트웨어", "インストール済み")}
+                                    </p>
+                                    <div className="flex flex-wrap gap-1">
                                       {hw.software.map((s) => (
-                                        <li key={s.id} className="mono text-[11px] c-ink-soft flex items-baseline gap-2">
-                                          <span className="c-ink-mute">→</span>
-                                          <span className="c-ink">{s.name}</span>
-                                          {s.version && <span className="c-ink-mute">v{s.version}</span>}
-                                        </li>
+                                        <span key={s.id} className="px-2 py-0.5 rounded-md text-[10px] bg-white border border-border text-text-secondary">
+                                          {s.name}{s.version && ` v${s.version}`}
+                                        </span>
                                       ))}
-                                    </ul>
+                                    </div>
                                   </div>
                                 )}
                               </div>
@@ -326,60 +359,69 @@ export default function ViewerEquipmentPage() {
                     );
                   })}
                 </div>
-              )}
-            </div>
+              </Card>
+            )}
+          </div>
 
-            {/* Software section */}
-            <div>
-              <div className="flex items-baseline gap-4 mb-4">
-                <span className="kicker">§ Software</span>
-                <hr className="rule flex-1" />
-                <span className="mono text-[10px] c-ink-mute uppercase tracking-[0.2em]">{pad(software.length)}</span>
-              </div>
-              {software.length === 0 ? (
-                <p className="display-italic c-ink-soft text-[18px] py-6">{tx(locale, "No software on file.", "소프트웨어 기록 없음.", "ソフトウェアなし。")}</p>
-              ) : (
-                <div className="border-y border-[color:var(--ink)]">
-                  {software.map((sw, i) => {
-                    const open = expandedSw === sw.id;
+          {/* Software */}
+          <div>
+            <h3 className="text-body-sm font-bold text-text mb-2 px-1">
+              {tx(locale, `Software (${software.length})`, `소프트웨어 (${software.length}개)`, `ソフトウェア (${software.length})`)}
+            </h3>
+            {software.length === 0 ? (
+              <Card><CardBody><p className="text-body-xs text-text-tertiary text-center py-4">{tx(locale, "No software registered", "등록된 소프트웨어가 없습니다", "なし")}</p></CardBody></Card>
+            ) : (
+              <Card padding="none">
+                <div className="divide-y divide-border">
+                  {software.map((sw) => {
+                    const isExpanded = expandedSw === sw.id;
                     return (
-                      <div key={sw.id} className="border-b border-[color:var(--line)] last:border-b-0">
+                      <div key={sw.id}>
                         <button
-                          onClick={() => setExpandedSw(open ? null : sw.id)}
-                          className="w-full grid grid-cols-12 gap-4 items-center px-4 py-4 text-left hover:bg-[color:var(--paper-edge)] transition-colors"
+                          onClick={() => setExpandedSw(isExpanded ? null : sw.id)}
+                          className="w-full flex items-center gap-3 px-5 py-3 hover:bg-surface-secondary/30 transition-colors text-left"
                         >
-                          <span className="col-span-1 mono text-[11px] c-ink-mute tabular-nums">{pad(i + 1)}</span>
-                          <span className="col-span-5 flex items-baseline gap-2">
-                            <span className="display text-[18px] c-ink">{sw.name}</span>
-                            {sw.version && <span className="mono text-[10px] c-ink-mute">v{sw.version}</span>}
-                          </span>
-                          <span className="col-span-3 mono text-[11px] c-ink-soft truncate">{sw.vendor || "—"}</span>
-                          <span className="col-span-2 mono text-[10px] c-ink-soft uppercase tracking-[0.14em]">{sw.swType}</span>
-                          <span className="col-span-1 text-right">
-                            {(sw._count?.cveMatches ?? 0) > 0
-                              ? <span className="mono text-[10px] c-poor font-semibold">{sw._count?.cveMatches} CVE</span>
-                              : <span className="mono text-[9px] c-ink-mute uppercase tracking-[0.2em]">{open ? "−" : "+"}</span>}
-                          </span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-body-sm font-semibold text-text truncate">
+                                {sw.name} {sw.version && <span className="text-body-xs font-normal text-text-tertiary">v{sw.version}</span>}
+                              </p>
+                              <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-surface-secondary text-text-secondary shrink-0">
+                                {sw.swType}
+                              </span>
+                              {(sw._count?.cveMatches ?? 0) > 0 && (
+                                <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-risk-bg text-safety-high shrink-0">
+                                  {sw._count?.cveMatches} CVE
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-body-xs text-text-tertiary mt-0.5">
+                              {sw.vendor || "—"}
+                              {sw.hardware?.name && ` · ${tx(locale, "on", "에 설치", "に")} ${sw.hardware.name}`}
+                              {sw.listeningPort && ` · port ${sw.listeningPort}`}
+                            </p>
+                          </div>
+                          {isExpanded ? <ChevronDown size={14} className="text-text-tertiary shrink-0" /> : <ChevronRight size={14} className="text-text-tertiary shrink-0" />}
                         </button>
                         <AnimatePresence initial={false}>
-                          {open && (
+                          {isExpanded && (
                             <motion.div
                               initial={{ height: 0, opacity: 0 }}
                               animate={{ height: "auto", opacity: 1 }}
                               exit={{ height: 0, opacity: 0 }}
-                              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-                              className="overflow-hidden bg-[color:var(--paper-edge)]"
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden"
                             >
-                              <div className="px-6 py-5">
-                                <dl className="datasheet max-w-2xl">
-                                  <dt>{tx(locale, "Type", "유형", "種別")}</dt><dd>{sw.swType}</dd>
-                                  <dt>{tx(locale, "Version", "버전", "バージョン")}</dt><dd>{sw.version || "—"}</dd>
-                                  <dt>{tx(locale, "Vendor", "벤더", "ベンダー")}</dt><dd>{sw.vendor || "—"}</dd>
-                                  <dt>CPE</dt><dd className="break-all">{sw.cpe || "—"}</dd>
-                                  <dt>{tx(locale, "Port", "포트", "ポート")}</dt><dd>{sw.listeningPort || "—"}</dd>
-                                  <dt>{tx(locale, "Purpose", "용도", "用途")}</dt><dd>{sw.purpose || "—"}</dd>
-                                  <dt>{tx(locale, "Host", "설치 장비", "ホスト")}</dt><dd>{sw.hardware?.name || "—"}</dd>
-                                  <dt>CVE</dt><dd>{sw._count?.cveMatches ?? 0}</dd>
+                              <div className="px-5 pb-4 bg-surface-secondary/30">
+                                <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] pt-3">
+                                  <DetailRow label={tx(locale, "Type", "유형", "タイプ")} value={sw.swType} />
+                                  <DetailRow label={tx(locale, "Version", "버전", "バージョン")} value={sw.version} />
+                                  <DetailRow label={tx(locale, "Vendor", "벤더", "ベンダー")} value={sw.vendor} />
+                                  <DetailRow label="CPE" value={sw.cpe} />
+                                  <DetailRow label={tx(locale, "Listening Port", "리스닝 포트", "待受ポート")} value={sw.listeningPort} />
+                                  <DetailRow label={tx(locale, "Purpose", "용도", "用途")} value={sw.purpose} />
+                                  <DetailRow label={tx(locale, "Installed On", "설치 장비", "インストール機器")} value={sw.hardware?.name} />
+                                  <DetailRow label={tx(locale, "CVE Matches", "CVE 매칭", "CVE一致")} value={String(sw._count?.cveMatches ?? 0)} />
                                 </dl>
                               </div>
                             </motion.div>
@@ -389,66 +431,70 @@ export default function ViewerEquipmentPage() {
                     );
                   })}
                 </div>
-              )}
-            </div>
+              </Card>
+            )}
           </div>
-        )}
+        </div>
+      )}
 
-        {/* ── ASSESSMENT ── */}
-        {activeTab === "assessment" && (
-          <div>
-            <div className="flex items-baseline gap-4 mb-4">
-              <span className="kicker">§ Security Configuration Audit</span>
-              <hr className="rule flex-1" />
-              <span className="mono text-[10px] c-ink-mute uppercase tracking-[0.2em]">{pad(assessments.length)} items</span>
-            </div>
-            {assessments.length === 0 ? (
-              <p className="display-italic c-ink-soft text-[18px] py-6">{tx(locale, "No checks recorded yet.", "기록된 점검 항목이 없습니다.", "記録された点検項目がありません。")}</p>
-            ) : (
-              <div className="border-y border-[color:var(--ink)]">
+      {/* ── ASSESSMENT ── */}
+      {activeTab === "assessment" && (
+        <div>
+          {assessments.length === 0 ? (
+            <Card><CardBody><EmptyState icon={ClipboardCheck} title={tx(locale, "No assessments", "평가 결과가 없습니다", "評価がありません")} /></CardBody></Card>
+          ) : (
+            <Card padding="none">
+              <div className="divide-y divide-border">
                 {assessments.map((a) => {
                   const r = RESULT_META[a.result] || RESULT_META.NOT_CHECKED;
-                  const open = expandedAssessment === a.id;
+                  const Icon = r.icon;
+                  const isExpanded = expandedAssessment === a.id;
                   const hasDetails = a.evidence || a.note;
                   return (
-                    <div key={a.id} className="border-b border-[color:var(--line)] last:border-b-0">
+                    <div key={a.id}>
                       <button
-                        onClick={() => hasDetails && setExpandedAssessment(open ? null : a.id)}
+                        onClick={() => hasDetails && setExpandedAssessment(isExpanded ? null : a.id)}
                         disabled={!hasDetails}
-                        className="w-full grid grid-cols-12 gap-4 items-center px-4 py-4 text-left hover:bg-[color:var(--paper-edge)] disabled:hover:bg-transparent transition-colors"
+                        className={cn(
+                          "w-full flex items-center gap-3 px-5 py-3 text-left transition-colors",
+                          hasDetails ? "hover:bg-surface-secondary/30 cursor-pointer" : "cursor-default"
+                        )}
                       >
-                        <span className="col-span-2 mono text-[13px] font-semibold c-ink tabular-nums">{a.checkId}</span>
-                        <span className="col-span-7 mono text-[11px] c-ink-soft truncate">{a.hardware?.name || "—"}</span>
-                        <span className="col-span-2 flex items-center gap-2">
-                          <span className={`${r.signal} text-[14px] leading-none`}>{r.glyph}</span>
-                          <span className={`mono text-[10px] uppercase tracking-[0.18em] ${r.signal}`}>
-                            {r[locale as "en"|"ko"|"ja"] || r.en}
-                          </span>
+                        <Icon size={16} style={{ color: r.color }} className="shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-mono font-bold text-text-tertiary">{a.checkId}</span>
+                            <span className="text-body-sm font-semibold text-text truncate">{a.hardware?.name || "—"}</span>
+                          </div>
+                        </div>
+                        <span
+                          className="px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0"
+                          style={{ backgroundColor: r.bg, color: r.color }}
+                        >
+                          {r.label[locale as "en" | "ko" | "ja"] || r.label.en}
                         </span>
-                        <span className="col-span-1 text-right mono text-[10px] c-ink-mute uppercase tracking-[0.2em]">
-                          {hasDetails ? (open ? "close" : "open") : ""}
-                        </span>
+                        {hasDetails && (isExpanded ? <ChevronDown size={14} className="text-text-tertiary" /> : <ChevronRight size={14} className="text-text-tertiary" />)}
                       </button>
                       <AnimatePresence initial={false}>
-                        {open && hasDetails && (
+                        {isExpanded && hasDetails && (
                           <motion.div
                             initial={{ height: 0, opacity: 0 }}
                             animate={{ height: "auto", opacity: 1 }}
                             exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-                            className="overflow-hidden bg-[color:var(--paper-edge)]"
+                            transition={{ duration: 0.2 }}
+                            className="overflow-hidden"
                           >
-                            <div className="px-6 py-5 grid grid-cols-12 gap-8">
+                            <div className="px-5 pb-4 ml-7 space-y-2 bg-surface-secondary/30">
                               {a.evidence && (
-                                <div className="col-span-12 md:col-span-6">
-                                  <div className="label mb-2">{tx(locale, "Evidence", "근거", "証拠")}</div>
-                                  <p className="text-[13px] c-ink-soft leading-[1.65] whitespace-pre-wrap">{a.evidence}</p>
+                                <div className="pt-3">
+                                  <p className="text-[10px] font-bold uppercase tracking-wider text-text-tertiary mb-1">{tx(locale, "Evidence", "근거", "証拠")}</p>
+                                  <p className="text-body-xs text-text-secondary whitespace-pre-wrap">{a.evidence}</p>
                                 </div>
                               )}
                               {a.note && (
-                                <div className="col-span-12 md:col-span-6">
-                                  <div className="label mb-2">{tx(locale, "Note", "비고", "備考")}</div>
-                                  <p className="text-[13px] c-ink-soft leading-[1.65] whitespace-pre-wrap display-italic">{a.note}</p>
+                                <div>
+                                  <p className="text-[10px] font-bold uppercase tracking-wider text-text-tertiary mb-1">{tx(locale, "Note", "비고", "備考")}</p>
+                                  <p className="text-body-xs text-text-secondary whitespace-pre-wrap">{a.note}</p>
                                 </div>
                               )}
                             </div>
@@ -459,106 +505,104 @@ export default function ViewerEquipmentPage() {
                   );
                 })}
               </div>
-            )}
-          </div>
-        )}
+            </Card>
+          )}
+        </div>
+      )}
 
-        {/* ── DOCUMENTS ── */}
-        {activeTab === "documents" && (
-          <div>
-            <div className="flex items-baseline gap-4 mb-4">
-              <span className="kicker">§ Document vault</span>
-              <hr className="rule flex-1" />
-              <span className="mono text-[10px] c-ink-mute uppercase tracking-[0.2em]">{pad(documents.length)} issued</span>
-            </div>
-            {documents.length === 0 ? (
-              <p className="display-italic c-ink-soft text-[18px] py-6">{tx(locale, "No documents in the vault.", "보관된 문서가 없습니다.", "保管された文書がありません。")}</p>
-            ) : (
-              <div className="border-y border-[color:var(--ink)]">
+      {/* ── DOCUMENTS ── */}
+      {activeTab === "documents" && (
+        <div>
+          {documents.length === 0 ? (
+            <Card><CardBody><EmptyState icon={FileText} title={tx(locale, "No documents generated yet", "생성된 문서가 없습니다", "生成された文書がありません")} /></CardBody></Card>
+          ) : (
+            <Card padding="none">
+              <div className="divide-y divide-border">
                 {documents.map((d) => (
-                  <div key={d.id} className="group grid grid-cols-12 gap-4 items-center px-4 py-4 border-b border-[color:var(--line)] last:border-b-0 hover:bg-[color:var(--paper-edge)] transition-colors">
-                    <button onClick={() => openPreview(d)} className="col-span-10 text-left">
-                      <div className="flex items-baseline gap-3">
-                        <span className="mono text-[11px] c-ink-mute tabular-nums">{d.docType}</span>
-                        <span className="display text-[17px] c-ink group-hover:c-copper transition-colors">{d.title}</span>
-                        <span className="mono text-[9px] c-ink-mute uppercase tracking-[0.2em]">v{d.version}</span>
+                  <div key={d.id} className="flex items-center gap-3 px-5 py-3 hover:bg-surface-secondary/30 transition-colors">
+                    <FileText size={16} className="text-text-tertiary shrink-0" />
+                    <button onClick={() => openPreview(d)} className="flex-1 min-w-0 text-left group">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[11px] font-mono font-bold text-text-tertiary">{d.docType}</span>
+                        <span className="text-body-sm font-semibold text-text truncate group-hover:text-brand transition-colors">{d.title}</span>
+                        <span className="px-1.5 py-0.5 rounded bg-surface-secondary text-[9px] font-bold text-text-tertiary">v{d.version}</span>
                       </div>
-                      <div className="mono text-[10px] c-ink-mute uppercase tracking-[0.18em] mt-1">
+                      <p className="text-body-xs text-text-tertiary mt-0.5">
                         {d.standard} · {d.status}
                         {d.generatedAt && ` · ${new Date(d.generatedAt).toLocaleDateString(tx(locale, "en-US", "ko-KR", "ja-JP"))}`}
-                      </div>
+                      </p>
                     </button>
-                    <div className="col-span-2 flex items-center justify-end gap-2">
-                      <button onClick={() => openPreview(d)} className="px-2.5 py-1 mono text-[10px] uppercase tracking-[0.2em] c-ink-soft hover:c-copper transition-colors">
-                        {tx(locale, "read", "읽기", "閲覧")}
-                      </button>
-                      <span className="c-ink-mute">·</span>
-                      <a
-                        href={`/api/projects/${projectId}/documents/${d.id}/download`}
-                        className="px-2.5 py-1 mono text-[10px] uppercase tracking-[0.2em] c-ink-soft hover:c-copper transition-colors inline-flex items-center gap-1"
-                      >
-                        <Download size={10} /> {tx(locale, "dl", "저장", "DL")}
-                      </a>
-                    </div>
+                    <button
+                      onClick={() => openPreview(d)}
+                      className="p-1.5 rounded-md text-text-tertiary hover:text-brand hover:bg-brand-lighter transition-colors shrink-0"
+                      title={tx(locale, "Preview", "미리보기", "プレビュー")}
+                    >
+                      <Eye size={14} />
+                    </button>
+                    <a
+                      href={`/api/projects/${projectId}/documents/${d.id}/download`}
+                      className="p-1.5 rounded-md text-text-tertiary hover:text-brand hover:bg-brand-lighter transition-colors shrink-0"
+                      title={tx(locale, "Download", "다운로드", "ダウンロード")}
+                    >
+                      <Download size={14} />
+                    </a>
                   </div>
                 ))}
               </div>
-            )}
-          </div>
-        )}
-      </div>
+            </Card>
+          )}
+        </div>
+      )}
 
-      <footer className="mt-24 pt-6 border-t border-[color:var(--ink)] flex items-center justify-between text-[10px] mono uppercase tracking-[0.22em] c-ink-mute">
-        <span>— dossier · {equipment.name} —</span>
-        <span>Read-only record</span>
-      </footer>
-
-      {/* Document preview modal — "document vault" */}
+      {/* Document Preview Modal */}
       <AnimatePresence>
         {previewDoc && (
           <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4"
-            style={{ background: "rgba(13, 27, 42, 0.55)", backdropFilter: "blur(3px)" }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
             onClick={closePreview}
           >
             <motion.div
-              initial={{ opacity: 0, scale: 0.98, y: 8 }}
+              initial={{ opacity: 0, scale: 0.96, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.98, y: 8 }}
-              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-              className="bg-[color:var(--paper)] w-full max-w-4xl h-[88vh] flex flex-col border border-[color:var(--ink)]"
+              exit={{ opacity: 0, scale: 0.96, y: 10 }}
+              transition={{ duration: 0.2 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Modal masthead */}
-              <div className="flex items-center justify-between gap-4 px-6 py-3 border-b border-[color:var(--ink)]">
-                <div className="flex items-baseline gap-3 min-w-0">
-                  <span className="mono text-[10px] uppercase tracking-[0.24em] c-ink-mute">{previewDoc.docType}</span>
-                  <span className="display text-[17px] c-ink truncate">{previewDoc.title}</span>
-                  <span className="mono text-[9px] c-ink-mute uppercase tracking-[0.2em]">v{previewDoc.version}</span>
+              <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-border bg-surface-secondary/50">
+                <div className="flex items-center gap-2 min-w-0">
+                  <FileText size={16} className="text-text-tertiary shrink-0" />
+                  <span className="text-[11px] font-mono font-bold text-text-tertiary">{previewDoc.docType}</span>
+                  <h2 className="text-body-sm font-bold text-text truncate">{previewDoc.title}</h2>
+                  <span className="px-1.5 py-0.5 rounded bg-white border border-border text-[9px] font-bold text-text-tertiary">v{previewDoc.version}</span>
                 </div>
-                <div className="flex items-center gap-3 shrink-0">
+                <div className="flex items-center gap-1 shrink-0">
                   <a
                     href={`/api/projects/${projectId}/documents/${previewDoc.id}/download`}
-                    className="mono text-[10px] uppercase tracking-[0.22em] c-ink-soft hover:c-copper transition-colors inline-flex items-center gap-1.5"
+                    className="px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-brand hover:bg-brand-lighter transition-colors inline-flex items-center gap-1"
                   >
                     <Download size={12} /> {tx(locale, "Download", "다운로드", "ダウンロード")}
                   </a>
-                  <button onClick={closePreview} className="p-1 c-ink-mute hover:c-ink transition-colors" aria-label="close">
-                    <IconX size={14} />
+                  <button
+                    onClick={closePreview}
+                    className="p-1.5 rounded-md text-text-tertiary hover:text-text hover:bg-surface-secondary transition-colors"
+                    title={tx(locale, "Close", "닫기", "閉じる")}
+                  >
+                    <IconX size={16} />
                   </button>
                 </div>
               </div>
-              {/* Document sheet */}
-              <div className="flex-1 overflow-auto" style={{ background: "var(--paper-edge)" }}>
+              <div className="flex-1 overflow-auto bg-surface-secondary/20">
                 {previewLoading ? (
                   <div className="flex items-center justify-center h-full">
-                    <span className="mono text-[11px] uppercase tracking-[0.24em] c-ink-mute">{tx(locale, "rendering · · ·", "렌더링 중 · · ·", "レンダリング中 · · ·")}</span>
+                    <div className="text-body-xs text-text-tertiary">{tx(locale, "Loading preview...", "미리보기 로딩 중...", "プレビュー読み込み中...")}</div>
                   </div>
                 ) : previewHtml ? (
                   <div
-                    className="bg-white mx-auto my-8 shadow-sm border border-[color:var(--line-strong)] max-w-[794px] p-12"
-                    style={{ color: "#111" }}
+                    className="bg-white mx-auto my-6 shadow-sm border border-border max-w-[794px] p-10"
                     dangerouslySetInnerHTML={{ __html: previewHtml }}
                   />
                 ) : null}
@@ -567,24 +611,15 @@ export default function ViewerEquipmentPage() {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </motion.div>
   );
 }
 
-// ─── KPI cell (Summary tab) ─────────────────────────────────────────
-function KpiCell({ label, value, unit, tail, signalOn, signalClassOverride }: {
-  label: string; value: string; unit: string; tail?: string;
-  signalOn?: number; signalClassOverride?: string;
-}) {
-  const cls = signalClassOverride ?? (signalOn !== undefined ? signalClass(signalOn) : "c-ink");
+function DetailRow({ label, value }: { label: string; value: string | null | undefined }) {
   return (
-    <div className="col-span-6 md:col-span-3 px-6 py-8">
-      <div className="label mb-3">{label}</div>
-      <div className="flex items-baseline gap-1">
-        <span className={`numeral text-[72px] leading-none ${cls}`}>{value}</span>
-        {unit && <span className="numeral text-[22px] c-ink-mute">{unit}</span>}
-      </div>
-      {tail && <div className="mono text-[10px] c-ink-mute uppercase tracking-[0.18em] mt-3">{tail}</div>}
-    </div>
+    <>
+      <dt className="text-text-tertiary font-medium">{label}</dt>
+      <dd className="text-text-secondary font-mono text-right truncate">{value || "—"}</dd>
+    </>
   );
 }
