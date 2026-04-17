@@ -46,6 +46,16 @@ export default auth((req) => {
   const { pathname } = req.nextUrl;
   const isApi = pathname.startsWith("/api");
 
+  // If the user hits 0.0.0.0 (shown on `next dev` network banner but
+  // non-routable), redirect to localhost so the session binds to a
+  // reachable origin.
+  const host = req.headers.get("host") || "";
+  if (host.startsWith("0.0.0.0")) {
+    const url = req.nextUrl.clone();
+    url.host = `localhost${host.includes(":") ? host.slice(host.indexOf(":")) : ""}`;
+    return NextResponse.redirect(url);
+  }
+
   // Allow NextAuth internal routes to pass through with their own logic
   if (pathname.startsWith("/api/auth")) {
     return applySecurityHeaders(NextResponse.next(), true);
