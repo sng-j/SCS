@@ -32,6 +32,8 @@ interface LogRow     { id: string; event: string; userEmail: string | null; leve
 // ─── CSV helpers ─────────────────────────────────────────────────────────────
 
 function parseCsv(text: string): Record<string, string>[] {
+  // Strip UTF-8 BOM if present (Excel often adds this when saving CSV)
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
   const lines = text.split(/\r?\n/).filter((l) => l.trim());
   if (lines.length < 2) return [];
   const parse = (line: string): string[] => {
@@ -100,7 +102,10 @@ function CsvUploadButton({ locale, endpoint, payloadKey, template, label, onDone
   };
 
   const downloadTemplate = () => {
-    const blob = new Blob([template], { type: "text/csv;charset=utf-8" });
+    // Prepend UTF-8 BOM (\uFEFF) so Excel on Korean Windows opens the file
+    // as UTF-8 instead of mis-detecting it as CP949/EUC-KR.
+    const BOM = "\uFEFF";
+    const blob = new Blob([BOM + template], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = `${payloadKey}-template.csv`; a.click();
@@ -586,7 +591,7 @@ function UsersTab({ locale }: { locale: string }) {
           endpoint="/api/admin/users/bulk"
           payloadKey="users"
           label={tx(locale, "Bulk Upload", "CSV 일괄 등록", "CSV一括登録")}
-          template="email,name,role,company,phone,password,shipyard\nvendor1@example.com,홍길동,VENDOR,테스트벤더사,010-1234-5678,Temp@1234,테스트조선소\nshipyard1@example.com,김조선,SHIPYARD,테스트조선소,010-2345-6789,Temp@1234,테스트조선소\n"
+          template={"email,name,role,company,phone,password,shipyard\nvendor1@example.com,John Doe,VENDOR,Acme Vendor Inc,010-1234-5678,Temp@1234,Test Shipyard\nshipyard1@example.com,Jane Smith,SHIPYARD,Test Shipyard,010-2345-6789,Temp@1234,Test Shipyard\n"}
           onDone={loadUsers}
         />
       </div>
@@ -1149,7 +1154,7 @@ function ShipyardsTab({ locale }: { locale: string }) {
           endpoint="/api/admin/shipyards/bulk"
           payloadKey="shipyards"
           label={tx(locale, "Bulk Upload", "CSV 일괄 등록", "CSV一括登録")}
-          template="name,address,phone,contact\n현대중공업,울산광역시 동구,052-202-2114,contact@hhi.co.kr\n삼성중공업,경상남도 거제시,055-630-3114,contact@samsungship.com\n"
+          template={"name,address,phone,contact\nHyundai Heavy Industries,Dong-gu Ulsan,052-202-2114,contact@hhi.co.kr\nSamsung Heavy Industries,Geoje Gyeongnam,055-630-3114,contact@samsungship.com\n"}
           onDone={fetchShipyards}
         />
       </div>
