@@ -190,7 +190,7 @@ export default function QnaPage() {
 
       {/* Questions list */}
       {loading ? (
-        <div className="py-12 text-center text-gray-400">{tx(locale, "Loading...", "로딩 중...", "読込中...")}</div>
+        <div className="py-12 text-center text-text-tertiary text-body-sm">{tx(locale, "Loading...", "로딩 중...", "読み込み中...")}</div>
       ) : filtered.length === 0 ? (
         <div className="py-16 text-center">
           <MessageSquare size={32} className="mx-auto text-gray-300 mb-3" />

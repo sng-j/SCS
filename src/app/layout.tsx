@@ -4,7 +4,7 @@ import { Toaster } from "sonner";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SCS — SShip Equipment Cybersecurity Compliance Assessment System",
+  title: "SCS — Ship Equipment Cybersecurity Compliance Assessment System",
   description: "선박 사이버 보안 지원 시스템 — IACS UR E26/E27 규정 준수 플랫폼",
 };
 
