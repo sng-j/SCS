@@ -6,7 +6,8 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft, Eye, Cpu, Package, FileText, Network, ClipboardCheck,
-  ChevronDown, ChevronRight, Download, CheckCircle, XCircle, AlertCircle, MinusCircle, Clock
+  ChevronDown, ChevronRight, Download, CheckCircle, XCircle, AlertCircle, MinusCircle, Clock,
+  X as IconX
 } from "lucide-react";
 import { Card, CardBody } from "@/components/ui/card";
 import { SkeletonTable } from "@/components/ui/skeleton";
@@ -22,8 +23,19 @@ interface Equipment {
   dfdDiagram: { id: string } | null;
   certificationInfo?: string;
 }
-interface Hardware { id: string; name: string; type: string; manufacturer: string | null; model: string | null; ipAddress: string | null; zone: string | null; }
-interface Software { id: string; name: string; version: string | null; vendor: string | null; swType: string; }
+interface Hardware {
+  id: string; name: string; type: string; manufacturer: string | null; model: string | null;
+  ipAddress: string | null; macAddress?: string | null; zone: string | null;
+  location?: string | null; purpose?: string | null; category?: string | null;
+  software?: { id: string; name: string; version: string | null }[];
+  _count?: { cveMatches: number };
+}
+interface Software {
+  id: string; name: string; version: string | null; vendor: string | null; swType: string;
+  cpe?: string | null; listeningPort?: string | null; purpose?: string | null;
+  hardware?: { id: string; name: string } | null;
+  _count?: { cveMatches: number };
+}
 interface Assessment { id: string; hardwareId: string; checkId: string; result: string; evidence: string | null; note: string | null; hardware?: { id: string; name: string; type: string }; }
 interface Doc { id: string; docType: string; title: string; standard: string; status: string; version: number; generatedAt: string | null; updatedAt: string; }
 
@@ -51,6 +63,30 @@ export default function ViewerEquipmentPage() {
   const [loading, setLoading] = useState(true);
   // Level 3 — expansion state for specific rows
   const [expandedAssessment, setExpandedAssessment] = useState<string | null>(null);
+  const [expandedHw, setExpandedHw] = useState<string | null>(null);
+  const [expandedSw, setExpandedSw] = useState<string | null>(null);
+  // Document preview modal
+  const [previewDoc, setPreviewDoc] = useState<Doc | null>(null);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  const openPreview = async (d: Doc) => {
+    setPreviewDoc(d); setPreviewHtml(null); setPreviewLoading(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/documents/${d.id}/preview`);
+      if (res.ok) {
+        const html = await res.text();
+        setPreviewHtml(html);
+      } else {
+        setPreviewHtml(`<div style="padding:2rem;color:#666">Preview failed (${res.status})</div>`);
+      }
+    } catch {
+      setPreviewHtml(`<div style="padding:2rem;color:#666">Preview error</div>`);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+  const closePreview = () => { setPreviewDoc(null); setPreviewHtml(null); };
 
   useEffect(() => {
     Promise.all([
@@ -217,16 +253,75 @@ export default function ViewerEquipmentPage() {
             ) : (
               <Card padding="none">
                 <div className="divide-y divide-border">
-                  {hardware.map((hw) => (
-                    <div key={hw.id} className="px-5 py-3">
-                      <p className="text-[13px] font-semibold text-text">{hw.name}</p>
-                      <p className="text-[11px] text-text-tertiary mt-0.5">
-                        {hw.type} · {[hw.manufacturer, hw.model].filter(Boolean).join(" ") || "—"}
-                        {hw.ipAddress && ` · IP ${hw.ipAddress}`}
-                        {hw.zone && ` · ${hw.zone}`}
-                      </p>
-                    </div>
-                  ))}
+                  {hardware.map((hw) => {
+                    const isExpanded = expandedHw === hw.id;
+                    return (
+                      <div key={hw.id}>
+                        <button
+                          onClick={() => setExpandedHw(isExpanded ? null : hw.id)}
+                          className="w-full flex items-center gap-3 px-5 py-3 hover:bg-surface-secondary/30 transition-colors text-left"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-[13px] font-semibold text-text truncate">{hw.name}</p>
+                              {hw.category && (
+                                <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-brand-lighter text-brand shrink-0">{hw.category}</span>
+                              )}
+                              {(hw._count?.cveMatches ?? 0) > 0 && (
+                                <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-risk-bg text-safety-high shrink-0">
+                                  {hw._count?.cveMatches} CVE
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-text-tertiary mt-0.5">
+                              {hw.type} · {[hw.manufacturer, hw.model].filter(Boolean).join(" ") || "—"}
+                              {hw.ipAddress && ` · IP ${hw.ipAddress}`}
+                              {hw.zone && ` · ${hw.zone}`}
+                            </p>
+                          </div>
+                          {isExpanded ? <ChevronDown size={14} className="text-text-tertiary shrink-0" /> : <ChevronRight size={14} className="text-text-tertiary shrink-0" />}
+                        </button>
+                        <AnimatePresence initial={false}>
+                          {isExpanded && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="px-5 pb-3 bg-surface-secondary/20">
+                                <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] pt-2">
+                                  <DetailRow label={tx(locale, "Type", "유형", "タイプ")} value={hw.type} />
+                                  <DetailRow label={tx(locale, "Manufacturer", "제조사", "製造元")} value={hw.manufacturer} />
+                                  <DetailRow label={tx(locale, "Model", "모델", "モデル")} value={hw.model} />
+                                  <DetailRow label={tx(locale, "IP Address", "IP 주소", "IPアドレス")} value={hw.ipAddress} />
+                                  <DetailRow label={tx(locale, "MAC Address", "MAC 주소", "MACアドレス")} value={hw.macAddress} />
+                                  <DetailRow label={tx(locale, "Zone", "존", "ゾーン")} value={hw.zone} />
+                                  <DetailRow label={tx(locale, "Location", "위치", "場所")} value={hw.location} />
+                                  <DetailRow label={tx(locale, "Purpose", "용도", "用途")} value={hw.purpose} />
+                                </dl>
+                                {hw.software && hw.software.length > 0 && (
+                                  <div className="mt-3 pt-2 border-t border-border">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-text-tertiary mb-1">
+                                      {tx(locale, "Installed Software", "설치된 소프트웨어", "インストール済み")}
+                                    </p>
+                                    <div className="flex flex-wrap gap-1">
+                                      {hw.software.map((s) => (
+                                        <span key={s.id} className="px-2 py-0.5 rounded-md text-[10px] bg-white border border-border text-text-secondary">
+                                          {s.name}{s.version && ` v${s.version}`}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    );
+                  })}
                 </div>
               </Card>
             )}
@@ -238,16 +333,61 @@ export default function ViewerEquipmentPage() {
             ) : (
               <Card padding="none">
                 <div className="divide-y divide-border">
-                  {software.map((sw) => (
-                    <div key={sw.id} className="px-5 py-3">
-                      <p className="text-[13px] font-semibold text-text">
-                        {sw.name} {sw.version && <span className="text-[11px] text-text-tertiary">v{sw.version}</span>}
-                      </p>
-                      <p className="text-[11px] text-text-tertiary mt-0.5">
-                        {sw.swType}{sw.vendor && ` · ${sw.vendor}`}
-                      </p>
-                    </div>
-                  ))}
+                  {software.map((sw) => {
+                    const isExpanded = expandedSw === sw.id;
+                    return (
+                      <div key={sw.id}>
+                        <button
+                          onClick={() => setExpandedSw(isExpanded ? null : sw.id)}
+                          className="w-full flex items-center gap-3 px-5 py-3 hover:bg-surface-secondary/30 transition-colors text-left"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-[13px] font-semibold text-text truncate">
+                                {sw.name} {sw.version && <span className="text-[11px] font-normal text-text-tertiary">v{sw.version}</span>}
+                              </p>
+                              <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-surface-secondary text-text-secondary shrink-0">{sw.swType}</span>
+                              {(sw._count?.cveMatches ?? 0) > 0 && (
+                                <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-risk-bg text-safety-high shrink-0">
+                                  {sw._count?.cveMatches} CVE
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-text-tertiary mt-0.5">
+                              {sw.vendor || "—"}
+                              {sw.hardware?.name && ` · ${tx(locale, "on", "에 설치", "に")} ${sw.hardware.name}`}
+                              {sw.listeningPort && ` · port ${sw.listeningPort}`}
+                            </p>
+                          </div>
+                          {isExpanded ? <ChevronDown size={14} className="text-text-tertiary shrink-0" /> : <ChevronRight size={14} className="text-text-tertiary shrink-0" />}
+                        </button>
+                        <AnimatePresence initial={false}>
+                          {isExpanded && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="px-5 pb-3 bg-surface-secondary/20">
+                                <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] pt-2">
+                                  <DetailRow label={tx(locale, "Type", "유형", "タイプ")} value={sw.swType} />
+                                  <DetailRow label={tx(locale, "Version", "버전", "バージョン")} value={sw.version} />
+                                  <DetailRow label={tx(locale, "Vendor", "벤더", "ベンダー")} value={sw.vendor} />
+                                  <DetailRow label={tx(locale, "CPE", "CPE", "CPE")} value={sw.cpe} />
+                                  <DetailRow label={tx(locale, "Listening Port", "리스닝 포트", "待受ポート")} value={sw.listeningPort} />
+                                  <DetailRow label={tx(locale, "Purpose", "용도", "用途")} value={sw.purpose} />
+                                  <DetailRow label={tx(locale, "Installed On", "설치 장비", "インストール機器")} value={sw.hardware?.name} />
+                                  <DetailRow label={tx(locale, "CVE Matches", "CVE 매칭", "CVE一致")} value={String(sw._count?.cveMatches ?? 0)} />
+                                </dl>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    );
+                  })}
                 </div>
               </Card>
             )}
@@ -336,17 +476,24 @@ export default function ViewerEquipmentPage() {
                 {documents.map((d) => (
                   <div key={d.id} className="flex items-center gap-3 px-5 py-3 hover:bg-surface-secondary/30 transition-colors">
                     <FileText size={16} className="text-text-tertiary shrink-0" />
-                    <div className="flex-1 min-w-0">
+                    <button onClick={() => openPreview(d)} className="flex-1 min-w-0 text-left group">
                       <div className="flex items-center gap-2">
                         <span className="text-[11px] font-mono font-bold text-text-tertiary">{d.docType}</span>
-                        <span className="text-[13px] font-semibold text-text truncate">{d.title}</span>
+                        <span className="text-[13px] font-semibold text-text truncate group-hover:text-brand transition-colors">{d.title}</span>
                         <span className="px-1.5 py-0.5 rounded bg-surface-secondary text-[9px] font-bold text-text-tertiary">v{d.version}</span>
                       </div>
                       <p className="text-[11px] text-text-tertiary mt-0.5">
                         {d.standard} · {d.status}
                         {d.generatedAt && ` · ${new Date(d.generatedAt).toLocaleDateString(tx(locale, "en-US", "ko-KR", "ja-JP"))}`}
                       </p>
-                    </div>
+                    </button>
+                    <button
+                      onClick={() => openPreview(d)}
+                      className="p-1.5 rounded-md text-text-tertiary hover:text-brand hover:bg-brand-lighter transition-colors shrink-0"
+                      title={tx(locale, "Preview", "미리보기", "プレビュー")}
+                    >
+                      <Eye size={14} />
+                    </button>
                     <a
                       href={`/api/projects/${projectId}/documents/${d.id}/download`}
                       className="p-1.5 rounded-md text-text-tertiary hover:text-brand hover:bg-brand-lighter transition-colors shrink-0"
@@ -361,7 +508,76 @@ export default function ViewerEquipmentPage() {
           )}
         </div>
       )}
+
+      {/* Document Preview Modal */}
+      <AnimatePresence>
+        {previewDoc && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+            onClick={closePreview}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 10 }}
+              transition={{ duration: 0.2 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal header */}
+              <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-border bg-surface-secondary/50">
+                <div className="flex items-center gap-2 min-w-0">
+                  <FileText size={16} className="text-text-tertiary shrink-0" />
+                  <span className="text-[11px] font-mono font-bold text-text-tertiary">{previewDoc.docType}</span>
+                  <h2 className="text-[14px] font-bold text-text truncate">{previewDoc.title}</h2>
+                  <span className="px-1.5 py-0.5 rounded bg-white border border-border text-[9px] font-bold text-text-tertiary">v{previewDoc.version}</span>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <a
+                    href={`/api/projects/${projectId}/documents/${previewDoc.id}/download`}
+                    className="px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-brand hover:bg-brand-lighter transition-colors inline-flex items-center gap-1"
+                  >
+                    <Download size={12} /> {tx(locale, "Download", "다운로드", "ダウンロード")}
+                  </a>
+                  <button
+                    onClick={closePreview}
+                    className="p-1.5 rounded-md text-text-tertiary hover:text-text hover:bg-surface-secondary transition-colors"
+                    title={tx(locale, "Close", "닫기", "閉じる")}
+                  >
+                    <IconX size={16} />
+                  </button>
+                </div>
+              </div>
+              {/* Modal body */}
+              <div className="flex-1 overflow-auto bg-surface-secondary/20">
+                {previewLoading ? (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-[12px] text-text-tertiary">{tx(locale, "Loading preview...", "미리보기 로딩 중...", "プレビュー読み込み中...")}</div>
+                  </div>
+                ) : previewHtml ? (
+                  <div
+                    className="bg-white mx-auto my-6 shadow-sm border border-border max-w-[794px] p-10"
+                    dangerouslySetInnerHTML={{ __html: previewHtml }}
+                  />
+                ) : null}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string | null | undefined }) {
+  return (
+    <>
+      <dt className="text-text-tertiary font-medium">{label}</dt>
+      <dd className="text-text-secondary font-mono text-right truncate">{value || "—"}</dd>
+    </>
   );
 }
 
