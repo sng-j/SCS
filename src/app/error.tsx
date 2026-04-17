@@ -20,14 +20,14 @@ export default function RootError({
       code="500"
       errKey="ERR_INTERNAL"
       title={{
-        en: "A temporary error occurred.",
-        ko: "일시적인 오류가 발생했습니다.",
-        ja: "一時的なエラーが発生しました。",
+        en: "Something went wrong",
+        ko: "오류가 발생했습니다",
+        ja: "エラーが発生しました",
       }}
       description={{
-        en: "The request could not be completed. You can retry the action or return to the home page. If the problem persists, contact your administrator with the reference below.",
-        ko: "요청을 완료하지 못했습니다. 다시 시도하거나 홈으로 돌아갈 수 있습니다. 문제가 계속되면 아래 참조 번호와 함께 관리자에게 문의하세요.",
-        ja: "リクエストを完了できませんでした。再試行するか、ホームへ戻ることができます。問題が続く場合は、以下の参照番号と共に管理者にお問い合わせください。",
+        en: "Please try again. If the problem persists, contact your administrator.",
+        ko: "다시 시도해 주세요. 문제가 계속되면 관리자에게 문의하세요.",
+        ja: "再度お試しください。問題が続く場合は管理者にお問い合わせください。",
       }}
       referenceId={error.digest}
       debug={{ message: error.message, stack: error.stack }}
