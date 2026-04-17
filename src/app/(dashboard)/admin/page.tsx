@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { motion } from "framer-motion";
-import { Users, Building2, UserCog, HelpCircle, Settings, Shield, CheckCircle, XCircle, Plus, Pencil, Trash2, Activity, Send, Package, Cpu, FileText, ChevronRight, Ship, MessageSquare, Download, AlertCircle } from "lucide-react";
+import { Users, Building2, UserCog, HelpCircle, Settings, Shield, CheckCircle, XCircle, Plus, Pencil, Trash2, Activity, Send, Package, Cpu, FileText, ChevronRight, Ship, MessageSquare, Download, AlertCircle, Upload } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardBody } from "@/components/ui/card";
@@ -28,6 +28,98 @@ interface ShipyardRow { id: string; name: string; address: string | null; phone:
 interface FaqRow     { id: number; question: string; answer: string; category: string; sortOrder: number; }
 interface SettingRow { key: string; value: string; description: string | null; }
 interface LogRow     { id: string; event: string; userEmail: string | null; level: string; detail: string | null; createdAt: string; }
+
+// ─── CSV helpers ─────────────────────────────────────────────────────────────
+
+function parseCsv(text: string): Record<string, string>[] {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length < 2) return [];
+  const parse = (line: string): string[] => {
+    const out: string[] = []; let cur = ""; let inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') { if (inQ && line[i + 1] === '"') { cur += '"'; i++; continue; } inQ = !inQ; }
+      else if (ch === "," && !inQ) { out.push(cur); cur = ""; }
+      else cur += ch;
+    }
+    out.push(cur); return out;
+  };
+  const headers = parse(lines[0]).map((h) => h.trim().toLowerCase());
+  return lines.slice(1).map((line) => {
+    const cells = parse(line);
+    const row: Record<string, string> = {};
+    headers.forEach((h, i) => { row[h] = (cells[i] || "").trim(); });
+    return row;
+  });
+}
+
+function CsvUploadButton({ locale, endpoint, payloadKey, template, label, onDone }: {
+  locale: string;
+  endpoint: string;
+  payloadKey: string; // e.g. "vendors", "shipyards", "users"
+  template: string;   // CSV template content for download
+  label: string;
+  onDone: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const text = await file.text();
+      const rows = parseCsv(text);
+      if (rows.length === 0) {
+        showToast.error(tx(locale, "No valid rows in CSV", "CSV에 유효한 행이 없습니다", "CSVに有効な行がありません"));
+        return;
+      }
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [payloadKey]: rows }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const errCount = data.errors?.length || 0;
+        showToast.success(
+          tx(locale, `${data.created} created`, `${data.created}건 등록 완료`, `${data.created}件登録完了`)
+          + (errCount ? ` (${errCount} ${tx(locale, "failed", "실패", "失敗")})` : "")
+        );
+        if (errCount) console.table(data.errors);
+        onDone();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        showToast.error((d as { error?: string }).error || "Upload failed");
+      }
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  const downloadTemplate = () => {
+    const blob = new Blob([template], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `${payloadKey}-template.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="flex items-center gap-1">
+      <button onClick={downloadTemplate}
+        className="h-8 px-2.5 rounded-md text-[11px] font-medium text-text-tertiary hover:text-text hover:bg-surface-secondary transition-colors inline-flex items-center gap-1">
+        <Download size={12} /> {tx(locale, "Template", "템플릿", "テンプレート")}
+      </button>
+      <Button size="sm" variant="outline" onClick={() => inputRef.current?.click()} loading={uploading}>
+        <Upload size={13} /> {label}
+      </Button>
+      <input ref={inputRef} type="file" accept=".csv" onChange={handleFile} className="hidden" />
+    </div>
+  );
+}
 
 const TABS = ["users", "signups", "shipyards", "projects", "submissions", "faq", "qna", "settings", "logs", "dataset", "data-health", "doc-formats", "society-kb"] as const;
 type Tab = typeof TABS[number];
@@ -477,16 +569,26 @@ function UsersTab({ locale }: { locale: string }) {
   return (
     <div className="space-y-6">
       {/* Create account buttons */}
-      <div className="flex gap-2">
-        <Button size="sm" onClick={() => { setCreateRole("ADMIN"); setCreateOpen(true); }}>
-          <Plus size={14} /> {tx(locale, "Add Admin", "관리자 추가", "管理者追加")}
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => { setCreateRole("SHIPYARD"); setCreateShipyardMode(shipyards.length > 0 ? "join" : "new"); setCreateShipyardId(""); setCreateOpen(true); }}>
-          <Plus size={14} /> {tx(locale, "Add Shipyard", "조선소 추가", "造船所追加")}
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => { setCreateRole("VENDOR"); setCreateShipyardId(""); setCreateOpen(true); }}>
-          <Plus size={14} /> {tx(locale, "Add Vendor", "벤더 추가", "ベンダー追加")}
-        </Button>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex gap-2">
+          <Button size="sm" onClick={() => { setCreateRole("ADMIN"); setCreateOpen(true); }}>
+            <Plus size={14} /> {tx(locale, "Add Admin", "관리자 추가", "管理者追加")}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => { setCreateRole("SHIPYARD"); setCreateShipyardMode(shipyards.length > 0 ? "join" : "new"); setCreateShipyardId(""); setCreateOpen(true); }}>
+            <Plus size={14} /> {tx(locale, "Add Shipyard", "조선소 추가", "造船所追加")}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => { setCreateRole("VENDOR"); setCreateShipyardId(""); setCreateOpen(true); }}>
+            <Plus size={14} /> {tx(locale, "Add Vendor", "벤더 추가", "ベンダー追加")}
+          </Button>
+        </div>
+        <CsvUploadButton
+          locale={locale}
+          endpoint="/api/admin/users/bulk"
+          payloadKey="users"
+          label={tx(locale, "Bulk Upload", "CSV 일괄 등록", "CSV一括登録")}
+          template="email,name,role,company,phone,password,shipyard\nvendor1@example.com,홍길동,VENDOR,테스트벤더사,010-1234-5678,Temp@1234,테스트조선소\nshipyard1@example.com,김조선,SHIPYARD,테스트조선소,010-2345-6789,Temp@1234,테스트조선소\n"
+          onDone={loadUsers}
+        />
       </div>
 
       <UserSection title={tx(locale, "Admins", "관리자", "管理者")} list={adminUsers} hideDelete />
@@ -1042,6 +1144,14 @@ function ShipyardsTab({ locale }: { locale: string }) {
           <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-tertiary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
         </div>
         <Button size="sm" onClick={openCreate}><Plus size={14} /> {tx(locale, "Add", "추가", "追加")}</Button>
+        <CsvUploadButton
+          locale={locale}
+          endpoint="/api/admin/shipyards/bulk"
+          payloadKey="shipyards"
+          label={tx(locale, "Bulk Upload", "CSV 일괄 등록", "CSV一括登録")}
+          template="name,address,phone,contact\n현대중공업,울산광역시 동구,052-202-2114,contact@hhi.co.kr\n삼성중공업,경상남도 거제시,055-630-3114,contact@samsungship.com\n"
+          onDone={fetchShipyards}
+        />
       </div>
 
       {filtered.length === 0 ? (
@@ -2518,40 +2628,46 @@ function SocietyKbTab({ locale }: { locale: string }) {
       {loading ? <SkeletonTable rows={5} /> : items.length === 0 ? (
         <Card><CardBody><EmptyState icon={FileText} title={tx(locale, `No items for ${society}`, `${society} 체크리스트 항목이 없습니다`, `${society}チェックリスト項目がありません`)} /></CardBody></Card>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-6">
           {[...byCategory.entries()].map(([cat, group]) => (
-            <Card key={cat} padding="none">
-              <div className="px-4 py-2 bg-brand-lighter/40 border-b border-border">
-                <span className="text-[12px] font-bold text-text">{cat}</span>
-                <span className="text-[11px] text-text-tertiary ml-2">({group.length})</span>
-              </div>
-              <div className="divide-y divide-border">
-                {group.map((item) => (
-                  <div key={item.id} className="px-4 py-3 hover:bg-surface-secondary/20 transition-colors">
-                    <div className="flex items-start gap-3">
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-surface-secondary text-text-secondary shrink-0 mt-0.5">{item.checkId}</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[12px] font-semibold text-text">{item.question}</p>
-                        {item.questionKo && <p className="text-[11px] text-text-secondary mt-0.5">{item.questionKo}</p>}
-                        {item.guidance && (
-                          <div className="mt-2 p-2 rounded-md bg-brand-lighter/30 border-l-2 border-brand">
-                            <p className="text-[10px] font-bold text-brand mb-0.5">{tx(locale, "Guidance", "가이드", "ガイド")}</p>
-                            <p className="text-[11px] text-text-secondary whitespace-pre-wrap">{item.guidance}</p>
+            <div key={cat}>
+              <h3 className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary mb-2 px-1">
+                {cat} <span className="text-text-tertiary font-normal">· {group.length}</span>
+              </h3>
+              <Card padding="none">
+                <div className="divide-y divide-border">
+                  {group.map((item) => (
+                    <div key={item.id} className="group px-5 py-4 hover:bg-surface-secondary/20 transition-colors">
+                      <div className="flex items-start gap-3">
+                        <div className="flex flex-col items-center gap-1 shrink-0 pt-0.5">
+                          <span className="text-[10px] font-mono font-bold text-text-tertiary tabular-nums">{item.checkId}</span>
+                          {!item.isRequired && (
+                            <span className="text-[9px] text-text-tertiary">{tx(locale, "opt", "선택", "任意")}</span>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0 space-y-2">
+                          <div>
+                            <p className="text-[13px] font-semibold text-text leading-snug">{item.question}</p>
+                            {item.questionKo && (
+                              <p className="text-[11px] text-text-tertiary mt-0.5">{item.questionKo}</p>
+                            )}
                           </div>
-                        )}
-                        <div className="flex items-center gap-2 mt-1.5">
-                          {!item.isRequired && <span className="text-[10px] text-text-tertiary">{tx(locale, "Optional", "선택사항", "任意")}</span>}
+                          {item.guidance && (
+                            <p className="text-[12px] text-text-secondary leading-relaxed whitespace-pre-wrap">
+                              {item.guidance}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => openEdit(item)} className="p-1.5 rounded-md text-text-tertiary hover:text-text hover:bg-surface-secondary transition-colors"><Pencil size={13} /></button>
+                          <button onClick={() => setDeleteTarget(item)} className="p-1.5 rounded-md text-text-tertiary hover:text-safety-high hover:bg-risk-bg transition-colors"><Trash2 size={13} /></button>
                         </div>
                       </div>
-                      <div className="flex gap-1 shrink-0">
-                        <button onClick={() => openEdit(item)} className="p-1.5 rounded-md text-text-tertiary hover:text-brand hover:bg-brand-lighter transition-colors"><Pencil size={13} /></button>
-                        <button onClick={() => setDeleteTarget(item)} className="p-1.5 rounded-md text-text-tertiary hover:text-safety-high hover:bg-risk-bg transition-colors"><Trash2 size={13} /></button>
-                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
+                  ))}
+                </div>
+              </Card>
+            </div>
           ))}
         </div>
       )}
