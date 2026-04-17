@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { SkeletonCards, SkeletonTable } from "@/components/ui/skeleton";
 import { ShipyardDashboard } from "@/components/dashboard/shipyard-dashboard";
@@ -10,7 +12,15 @@ import { AdminDashboard } from "@/components/dashboard/admin-dashboard";
 
 export default function DashboardPage() {
   const { data: session, status } = useSession();
+  const router = useRouter();
   const userRole = (session?.user as { role?: string })?.role || "VENDOR";
+
+  // SHIPYARD viewers get the dedicated viewer dashboard, not the shipyard mgmt view
+  useEffect(() => {
+    if (status === "authenticated" && userRole === "SHIPYARD") {
+      router.replace("/viewer");
+    }
+  }, [status, userRole, router]);
 
   // 세션 로딩 중 — 깜빡임 방지
   if (status === "loading") {
@@ -23,9 +33,10 @@ export default function DashboardPage() {
   }
 
   if (userRole === "VENDOR") return <VendorDashboard />;
-  // SUPPORT and SHIPYARD (viewer) both see the shipyard dashboard.
-  // The dashboard itself gates actions by role where needed.
-  if (userRole === "SHIPYARD" || userRole === "SUPPORT") return <ShipyardView />;
+  // SUPPORT sees the shipyard management dashboard (same role as old SHIPYARD).
+  if (userRole === "SUPPORT") return <ShipyardView />;
+  // SHIPYARD viewer will be redirected by the useEffect above — show nothing briefly.
+  if (userRole === "SHIPYARD") return null;
   return <AdminDashboard />;
 }
 

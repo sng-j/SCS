@@ -101,8 +101,34 @@ function getNavSections(role: string): NavSection[] {
     ];
   }
 
-  if (role === "SUPPORT" || role === "SHIPYARD") {
-    const isViewer = role === "SHIPYARD"; // read-only viewer
+  if (role === "SHIPYARD") {
+    // Viewer-only navigation — everything leads to /viewer/*
+    return [
+      {
+        labelEn: "Viewer", labelKo: "뷰어", labelJa: "閲覧", defaultOpen: true, items: [
+          { labelEn: "Fleet Overview", labelKo: "선대 현황", labelJa: "船隊概要", icon: LayoutDashboard, href: "/viewer" },
+        ]
+      },
+      {
+        labelEn: "Support", labelKo: "지원", labelJa: "サポート", defaultOpen: false, items: [
+          { labelEn: "Q&A", labelKo: "Q&A", labelJa: "Q&A", icon: MessageSquare, href: "/qna" },
+          { labelEn: "FAQ", labelKo: "FAQ", labelJa: "FAQ", icon: Headphones, href: "/faq" },
+        ]
+      },
+      {
+        labelEn: "Guide", labelKo: "가이드", labelJa: "ガイド", defaultOpen: false, items: [
+          {
+            labelEn: "Guidance", labelKo: "가이드라인", labelJa: "ガイダンス", icon: BookOpen, href: "/guidance", children: [
+              { labelEn: "Overview", labelKo: "개요", labelJa: "概要", href: "/guidance?tab=overview" },
+              { labelEn: "SC Checks", labelKo: "SC 점검", labelJa: "SCチェック", href: "/guidance?tab=sc-checks" },
+            ]
+          },
+        ]
+      },
+    ];
+  }
+
+  if (role === "SUPPORT") {
     return [
       {
         labelEn: "Menu", labelKo: "메뉴", labelJa: "メニュー", defaultOpen: true, items: [
@@ -111,12 +137,11 @@ function getNavSections(role: string): NavSection[] {
           { labelEn: "Vessels", labelKo: "선박 현황", labelJa: "船舶一覧", icon: Ship, href: "/fleet" },
         ]
       },
-      // Vendor Management is a write-only management screen — hidden from read-only viewers
-      ...(isViewer ? [] : [{
+      {
         labelEn: "Management", labelKo: "관리", labelJa: "管理", defaultOpen: false, items: [
           { labelEn: "Vendor Management", labelKo: "벤더 관리", labelJa: "ベンダー管理", icon: Users, href: "/shipyard" },
         ]
-      }]),
+      },
       {
         labelEn: "Support", labelKo: "지원", labelJa: "サポート", defaultOpen: false, items: [
           { labelEn: "Q&A", labelKo: "Q&A", labelJa: "Q&A", icon: MessageSquare, href: "/qna" },
