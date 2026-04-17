@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { motion } from "framer-motion";
-import { Users, Building2, UserCog, HelpCircle, Settings, Shield, CheckCircle, XCircle, Plus, Pencil, Trash2, Activity, Send, Package, Cpu, FileText, ChevronRight, Ship, MessageSquare, Download, AlertCircle, Upload } from "lucide-react";
+import { Users, Building2, UserCog, HelpCircle, Settings, Shield, CheckCircle, XCircle, Plus, Pencil, Trash2, Activity, Send, Package, Cpu, FileText, ChevronRight, Ship, MessageSquare, Download, AlertCircle, Upload, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardBody } from "@/components/ui/card";
@@ -31,26 +31,6 @@ interface LogRow     { id: string; event: string; userEmail: string | null; leve
 
 // ─── Bulk upload (Excel paste) helpers ───────────────────────────────────────
 
-/** Parse tab-separated paste from Excel into rows keyed by columns */
-function parseTsvPaste(text: string, columns: string[]): Record<string, string>[] {
-  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-  const lines = text.split(/\r?\n/).filter((l) => l.length > 0);
-  if (lines.length === 0) return [];
-
-  // Auto-detect if the first line is a header (contains any column name)
-  const firstCells = lines[0].split("\t").map((c) => c.trim().toLowerCase());
-  const colsLower = columns.map((c) => c.toLowerCase());
-  const hasHeader = firstCells.some((c) => colsLower.includes(c));
-  const dataLines = hasHeader ? lines.slice(1) : lines;
-
-  return dataLines.map((line) => {
-    const cells = line.split("\t");
-    const row: Record<string, string> = {};
-    columns.forEach((col, i) => { row[col] = (cells[i] || "").trim(); });
-    return row;
-  }).filter((row) => Object.values(row).some((v) => v.length > 0));
-}
-
 function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone }: {
   locale: string;
   endpoint: string;
@@ -60,13 +40,71 @@ function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone 
   onDone: () => void;
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [pasted, setPasted] = useState("");
+  const [rows, setRows] = useState<Record<string, string>[]>(() =>
+    Array.from({ length: 5 }, () => Object.fromEntries(columns.map((c) => [c, ""])))
+  );
   const [uploading, setUploading] = useState(false);
 
-  const rows = pasted ? parseTsvPaste(pasted, columns) : [];
+  const resetGrid = () => {
+    setRows(Array.from({ length: 5 }, () => Object.fromEntries(columns.map((c) => [c, ""]))));
+  };
+
+  const nonEmptyRows = rows.filter((r) => Object.values(r).some((v) => v && v.trim().length > 0));
+
+  const updateCell = (rowIdx: number, col: string, value: string) => {
+    setRows((prev) => {
+      const next = [...prev];
+      next[rowIdx] = { ...next[rowIdx], [col]: value };
+      return next;
+    });
+  };
+
+  const addRow = () => {
+    setRows((prev) => [...prev, Object.fromEntries(columns.map((c) => [c, ""]))]);
+  };
+
+  const removeRow = (idx: number) => {
+    setRows((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== idx) : prev));
+  };
+
+  /** Handle paste from Excel — fills a rectangular range of cells */
+  const handleCellPaste = (e: React.ClipboardEvent, startRow: number, startCol: string) => {
+    const text = e.clipboardData.getData("text");
+    if (!text) return;
+    if (!text.includes("\t") && !text.includes("\n")) return; // single cell — default paste
+
+    e.preventDefault();
+    let cleaned = text;
+    if (cleaned.charCodeAt(0) === 0xFEFF) cleaned = cleaned.slice(1);
+    const lines = cleaned.split(/\r?\n/).filter((l) => l.length > 0);
+    if (lines.length === 0) return;
+
+    // Auto-detect header row (first row with any column name)
+    const firstCells = lines[0].split("\t").map((c) => c.trim().toLowerCase());
+    const colsLower = columns.map((c) => c.toLowerCase());
+    const hasHeader = firstCells.some((c) => colsLower.includes(c));
+    const dataLines = hasHeader ? lines.slice(1) : lines;
+
+    const startColIdx = columns.indexOf(startCol);
+    setRows((prev) => {
+      const next = [...prev];
+      dataLines.forEach((line, lineIdx) => {
+        const targetRow = startRow + lineIdx;
+        while (next.length <= targetRow) next.push(Object.fromEntries(columns.map((c) => [c, ""])));
+        const cells = line.split("\t");
+        cells.forEach((cell, cellIdx) => {
+          const targetCol = columns[startColIdx + cellIdx];
+          if (targetCol) {
+            next[targetRow] = { ...next[targetRow], [targetCol]: cell.trim() };
+          }
+        });
+      });
+      return next;
+    });
+  };
 
   const handleSubmit = async () => {
-    if (rows.length === 0) {
+    if (nonEmptyRows.length === 0) {
       showToast.error(tx(locale, "No rows to import", "등록할 행이 없습니다", "登録する行がありません"));
       return;
     }
@@ -75,7 +113,7 @@ function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone 
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [payloadKey]: rows }),
+        body: JSON.stringify({ [payloadKey]: nonEmptyRows }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -86,7 +124,7 @@ function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone 
         );
         if (errCount) console.table(data.errors);
         setDialogOpen(false);
-        setPasted("");
+        resetGrid();
         onDone();
       } else {
         const d = await res.json().catch(() => ({}));
@@ -99,7 +137,7 @@ function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone 
 
   const handleClose = () => {
     setDialogOpen(false);
-    setPasted("");
+    resetGrid();
   };
 
   return (
@@ -107,123 +145,82 @@ function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone 
       <Button size="sm" variant="outline" onClick={() => setDialogOpen(true)}>
         <Upload size={13} /> {label}
       </Button>
-      <Dialog open={dialogOpen} onClose={handleClose} title={label} maxWidth="max-w-4xl">
-        <div className="space-y-4">
-          {/* Instructions */}
-          <div className="rounded-lg border border-border bg-surface-secondary/40 p-3">
-            <p className="text-[12px] font-semibold text-text mb-1">
-              {tx(locale,
-                "How to use",
-                "사용 방법",
-                "使い方")}
-            </p>
-            <ol className="text-[11px] text-text-secondary space-y-0.5 list-decimal pl-4">
-              <li>{tx(locale,
-                "Open Excel and arrange columns in the order shown below",
-                "엑셀을 열고 아래 표시된 순서대로 컬럼을 정리하세요",
-                "Excelを開き、下記の順序で列を整理してください")}</li>
-              <li>{tx(locale,
-                "Select the rows (with or without header) and press Ctrl+C",
-                "행을 선택 (헤더 포함/미포함 무관) 후 Ctrl+C",
-                "行を選択（ヘッダー含む/含まない問わず）してCtrl+C")}</li>
-              <li>{tx(locale,
-                "Click the paste area below and press Ctrl+V",
-                "아래 붙여넣기 영역을 클릭 후 Ctrl+V",
-                "下の貼り付けエリアをクリックしてCtrl+V")}</li>
-            </ol>
-          </div>
+      <Dialog open={dialogOpen} onClose={handleClose} title={label} maxWidth="max-w-5xl">
+        <div className="space-y-3">
+          <p className="text-[11px] text-text-secondary">
+            {tx(locale,
+              "Click a cell and paste from Excel (Ctrl+V) to fill multiple rows/columns at once. Or type directly into cells.",
+              "셀을 클릭하고 엑셀 데이터를 붙여넣기(Ctrl+V)하면 여러 행/열이 한번에 채워집니다. 직접 입력도 가능합니다.",
+              "セルをクリックしてExcelデータを貼り付け(Ctrl+V)すると複数行/列が一度に入力されます。直接入力も可能です。")}
+          </p>
 
-          {/* Column headers */}
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-text-tertiary mb-1.5">
-              {tx(locale, "Expected Columns", "필요한 컬럼", "必要な列")}
-            </p>
-            <div className="flex flex-wrap gap-1">
-              {columns.map((c) => (
-                <span key={c} className="px-2 py-1 rounded-md bg-brand-lighter text-brand text-[11px] font-mono font-semibold">
-                  {c}
-                </span>
-              ))}
+          {/* Spreadsheet grid */}
+          <div className="rounded-lg border border-border overflow-hidden">
+            <div className="max-h-[440px] overflow-auto">
+              <table className="border-collapse w-full">
+                <thead className="bg-surface-secondary sticky top-0 z-10">
+                  <tr>
+                    <th className="w-10 border border-border px-2 py-1.5 text-[10px] font-bold text-text-tertiary">#</th>
+                    {columns.map((c) => (
+                      <th key={c} className="border border-border px-2 py-1.5 text-left text-[11px] font-bold text-text whitespace-nowrap min-w-[140px]">
+                        {c}
+                      </th>
+                    ))}
+                    <th className="w-8 border border-border bg-surface-secondary"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row, rowIdx) => (
+                    <tr key={rowIdx} className="group">
+                      <td className="border border-border bg-surface-secondary/30 px-2 py-0.5 text-center text-[10px] text-text-tertiary tabular-nums">
+                        {rowIdx + 1}
+                      </td>
+                      {columns.map((c) => (
+                        <td key={c} className="border border-border p-0">
+                          <input
+                            type="text"
+                            value={row[c] || ""}
+                            onChange={(e) => updateCell(rowIdx, c, e.target.value)}
+                            onPaste={(e) => handleCellPaste(e, rowIdx, c)}
+                            className="w-full px-2 py-1 text-[11px] text-text bg-transparent outline-none focus:bg-brand-lighter/40 focus:ring-1 focus:ring-inset focus:ring-brand/40"
+                          />
+                        </td>
+                      ))}
+                      <td className="border border-border bg-surface-secondary/30 text-center">
+                        <button
+                          onClick={() => removeRow(rowIdx)}
+                          className="opacity-0 group-hover:opacity-100 text-text-tertiary hover:text-safety-high transition-opacity p-0.5"
+                          title={tx(locale, "Remove row", "행 삭제", "行削除")}
+                          disabled={rows.length <= 1}
+                        >
+                          <X size={12} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="px-3 py-2 border-t border-border bg-surface-secondary/30 flex items-center justify-between">
+              <button
+                onClick={addRow}
+                className="text-[11px] font-medium text-brand hover:text-brand/80 transition-colors inline-flex items-center gap-1"
+              >
+                <Plus size={12} /> {tx(locale, "Add row", "행 추가", "行追加")}
+              </button>
+              <span className="text-[11px] text-text-tertiary">
+                {tx(locale, `${nonEmptyRows.length} row(s) ready`, `${nonEmptyRows.length}행 준비됨`, `${nonEmptyRows.length}行準備完了`)}
+              </span>
             </div>
           </div>
-
-          {/* Paste area */}
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-text-tertiary mb-1.5">
-              {tx(locale, "Paste from Excel", "엑셀에서 붙여넣기", "Excelから貼り付け")}
-            </p>
-            <textarea
-              value={pasted}
-              onChange={(e) => setPasted(e.target.value)}
-              placeholder={tx(locale,
-                "Click here and press Ctrl+V to paste rows from Excel...",
-                "여기를 클릭하고 Ctrl+V로 엑셀 데이터를 붙여넣으세요...",
-                "ここをクリックしてCtrl+VでExcelデータを貼り付け...")}
-              rows={5}
-              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-[11px] font-mono text-text placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand transition-all"
-            />
-          </div>
-
-          {/* Preview */}
-          {pasted && (
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-text-tertiary">
-                  {tx(locale, "Preview", "미리보기", "プレビュー")}
-                </p>
-                <span className="text-[11px] font-semibold text-brand">
-                  {tx(locale, `${rows.length} row(s) ready`, `${rows.length}행 준비됨`, `${rows.length}行準備完了`)}
-                </span>
-              </div>
-              {rows.length === 0 ? (
-                <div className="rounded-lg border border-border bg-surface-secondary/30 p-4 text-center text-[11px] text-text-tertiary">
-                  {tx(locale, "No valid rows detected. Check that columns are tab-separated.",
-                    "유효한 행이 감지되지 않았습니다. 탭으로 구분됐는지 확인하세요.",
-                    "有効な行が検出されません。タブ区切りか確認してください。")}
-                </div>
-              ) : (
-                <div className="rounded-lg border border-border overflow-hidden">
-                  <div className="max-h-[240px] overflow-auto">
-                    <table className="w-full text-[11px]">
-                      <thead className="bg-surface-secondary/50 sticky top-0">
-                        <tr>
-                          <th className="px-2 py-1.5 text-left font-bold text-text-tertiary w-8">#</th>
-                          {columns.map((c) => (
-                            <th key={c} className="px-2 py-1.5 text-left font-bold text-text whitespace-nowrap">{c}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border">
-                        {rows.slice(0, 100).map((row, i) => (
-                          <tr key={i} className="hover:bg-surface-secondary/20">
-                            <td className="px-2 py-1 text-text-tertiary tabular-nums">{i + 1}</td>
-                            {columns.map((c) => (
-                              <td key={c} className="px-2 py-1 text-text-secondary whitespace-nowrap max-w-[180px] overflow-hidden text-ellipsis">
-                                {row[c] || <span className="text-text-tertiary italic">—</span>}
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  {rows.length > 100 && (
-                    <div className="px-2 py-1 border-t border-border bg-surface-secondary/30 text-[10px] text-text-tertiary text-center">
-                      {tx(locale, `... and ${rows.length - 100} more rows`, `... 외 ${rows.length - 100}행 더`, `...他${rows.length - 100}行`)}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Actions */}
           <div className="flex justify-end gap-2 pt-3 border-t border-border">
             <Button variant="outline" onClick={handleClose}>
               {tx(locale, "Cancel", "취소", "キャンセル")}
             </Button>
-            <Button onClick={handleSubmit} loading={uploading} disabled={rows.length === 0}>
-              {tx(locale, `Import ${rows.length} row(s)`, `${rows.length}건 등록`, `${rows.length}件登録`)}
+            <Button onClick={handleSubmit} loading={uploading} disabled={nonEmptyRows.length === 0}>
+              {tx(locale, `Import ${nonEmptyRows.length} row(s)`, `${nonEmptyRows.length}건 등록`, `${nonEmptyRows.length}件登録`)}
             </Button>
           </div>
         </div>
