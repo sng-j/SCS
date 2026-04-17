@@ -902,7 +902,14 @@ function UserMenu({ userName, userEmail }: {
             {/* Sign out */}
             <div className="py-1">
               <button
-                onClick={() => signOut({ callbackUrl: "/login" })}
+                onClick={() => {
+                  // Avoid 0.0.0.0 redirect: if current host is 0.0.0.0, rewrite to localhost
+                  const host = typeof window !== "undefined" ? window.location.host : "";
+                  const loginUrl = host.startsWith("0.0.0.0")
+                    ? `${window.location.protocol}//localhost:${window.location.port}/login`
+                    : "/login";
+                  signOut({ callbackUrl: loginUrl });
+                }}
                 className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-[#DA1E28] hover:bg-[#FFF1F1] transition-colors"
               >
                 <LogOut size={14} />
