@@ -38,4 +38,5 @@ docs/
 scratch/
 tsconfig.tsbuildinfo
 
-before/*
+# legacy reference source (previous PHP system kept locally for migration reference)
+before/
