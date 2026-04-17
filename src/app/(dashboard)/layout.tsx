@@ -523,8 +523,12 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
               className="fixed inset-y-0 left-0 w-[280px] bg-surface-sidebar border-r border-border z-50 flex flex-col lg:hidden"
             >
               <div className="absolute top-4 right-4 z-10">
-                <button onClick={() => setMobileOpen(false)} className="p-1.5 rounded-md text-text-tertiary hover:text-text hover:bg-surface-secondary transition-colors">
-                  <X size={18} />
+                <button
+                  onClick={() => setMobileOpen(false)}
+                  aria-label={tx(locale, "Close menu", "메뉴 닫기", "メニューを閉じる")}
+                  className="p-1.5 rounded-md text-text-tertiary hover:text-text hover:bg-surface-secondary transition-colors"
+                >
+                  <X size={18} aria-hidden="true" />
                 </button>
               </div>
               {sidebarContent}
@@ -542,11 +546,13 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMobileOpen(true)}
+              aria-label={tx(locale, "Open menu", "메뉴 열기", "メニューを開く")}
+              aria-expanded={mobileOpen}
               className="lg:hidden p-1.5 rounded-lg text-text-tertiary hover:bg-surface-secondary transition-colors"
             >
-              <Menu size={20} />
+              <Menu size={20} aria-hidden="true" />
             </button>
-            <nav className="hidden sm:flex items-center gap-1 text-body-xs">
+            <nav aria-label="Breadcrumb" className="hidden sm:flex items-center gap-1 text-body-xs">
               <Link href="/" className="text-text-tertiary hover:text-brand transition-colors duration-150">
                 {tx(locale, "Dashboard", "대시보드", "ダッシュボード")}
               </Link>
@@ -678,9 +684,12 @@ function LanguageButton() {
     <div ref={ddRef} className="relative">
       <button
         onClick={() => setDdOpen(!ddOpen)}
+        aria-label="Language"
+        aria-haspopup="menu"
+        aria-expanded={ddOpen}
         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border bg-white text-[11px] font-medium text-text-secondary hover:text-text hover:bg-surface-secondary transition-all"
       >
-        <Globe size={12} />
+        <Globe size={12} aria-hidden="true" />
         {current.label}
       </button>
       <AnimatePresence>
@@ -780,13 +789,16 @@ function NotificationButton() {
     <div ref={ddRef} className="relative">
       <button
         onClick={() => setDdOpen(!ddOpen)}
+        aria-label={tx(locale, "Notifications", "알림", "通知")}
+        aria-haspopup="menu"
+        aria-expanded={ddOpen}
         className={cn(
           "relative p-2 rounded-lg transition-all duration-150",
           "text-text-tertiary hover:text-text-secondary hover:bg-surface-secondary",
           ddOpen && "bg-surface-secondary text-text-secondary",
         )}
       >
-        <Bell size={18} />
+        <Bell size={18} aria-hidden="true" />
         {unreadCount > 0 && (
           <motion.span
             initial={{ scale: 0 }} animate={{ scale: 1 }}
@@ -855,8 +867,8 @@ function NotificationButton() {
                       </div>
                       <button
                         onClick={(e) => handleDismiss(e, notif.id)}
-                        className="opacity-0 group-hover:opacity-100 p-1 rounded text-text-tertiary hover:text-safety-high hover:bg-risk-bg transition-all shrink-0"
-                        title={tx(locale, "Dismiss", "삭제", "削除")}
+                        aria-label={tx(locale, "Dismiss notification", "알림 삭제", "通知削除")}
+                        className="opacity-0 focus:opacity-100 group-hover:opacity-100 p-1 rounded text-text-tertiary hover:text-safety-high hover:bg-risk-bg transition-all shrink-0"
                       >
                         <X size={12} />
                       </button>
@@ -884,6 +896,9 @@ function UserMenu({ userName, userEmail }: {
     <div ref={ddRef} className="relative">
       <button
         onClick={() => setDdOpen(!ddOpen)}
+        aria-label={tx(locale, "User menu", "사용자 메뉴", "ユーザーメニュー")}
+        aria-haspopup="menu"
+        aria-expanded={ddOpen}
         className={cn(
           "h-8 pl-1 pr-1.5 rounded-lg flex items-center gap-1.5 transition-all duration-150",
           "hover:bg-surface-secondary/80",

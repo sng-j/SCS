@@ -744,6 +744,9 @@ function UsersTab({ locale }: { locale: string }) {
                   <button
                     onClick={(e) => { e.stopPropagation(); handleToggleActive(u.id, u.isActive); }}
                     disabled={toggling === u.id}
+                    role="switch"
+                    aria-checked={u.isActive}
+                    aria-label={tx(locale, `Account active: ${u.email}`, `활성 상태: ${u.email}`, `アカウント有効: ${u.email}`)}
                     className={cn(
                       "relative w-10 h-6 rounded-full transition-colors duration-200 shrink-0",
                       u.isActive ? "bg-safety-low" : "bg-border-strong",

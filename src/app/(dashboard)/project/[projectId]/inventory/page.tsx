@@ -366,7 +366,7 @@ export default function InventoryPage() {
                               <Plus size={14} /> {tx(locale, "Add", "추가", "追加")}
                             </Button>
                           )}
-                          <Button size="sm" variant="outline" onClick={handleExport}><Download size={13} /></Button>
+                          <Button size="sm" variant="outline" onClick={handleExport} aria-label={tx(locale, "Export inventory", "인벤토리 내보내기", "インベントリエクスポート")}><Download size={13} aria-hidden="true" /></Button>
                         </div>
                       </div>
 
@@ -1023,8 +1023,12 @@ function HwSlidePanel({ hw, swList, locale, canEdit, onClose, onDelete, onAddSw,
             {dirty && <span className="text-[9px] text-brand font-semibold ml-1">{tx(locale, "Modified", "수정됨", "変更あり")}</span>}
           </div>
         </div>
-        <button onClick={onClose} className="p-1.5 rounded-lg text-text-tertiary hover:text-text hover:bg-surface-secondary transition-colors">
-          <X size={16} />
+        <button
+          onClick={onClose}
+          aria-label={tx(locale, "Close panel", "패널 닫기", "パネルを閉じる")}
+          className="p-1.5 rounded-lg text-text-tertiary hover:text-text hover:bg-surface-secondary transition-colors"
+        >
+          <X size={16} aria-hidden="true" />
         </button>
       </div>
 
