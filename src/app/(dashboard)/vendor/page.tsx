@@ -270,7 +270,7 @@ function EquipmentRow({ eq, locale, index, hasTemplates, onImportDone, onSaveTem
         "bg-white rounded-xl border p-4 transition-all hover:shadow-sm group",
         canApplyTemplate ? "border-dashed border-brand/30 bg-brand-lighter/5" : "border-border",
       )}>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-4">
           {/* Icon + Info */}
           <div className="h-10 w-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: st.bg }}>
             <Cpu size={18} style={{ color: st.color }} />
@@ -289,8 +289,8 @@ function EquipmentRow({ eq, locale, index, hasTemplates, onImportDone, onSaveTem
             </p>
           </div>
 
-          {/* Actions */}
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Actions — wrap on narrow screens so buttons don't overflow */}
+          <div className="flex flex-wrap items-center gap-2 shrink-0 w-full sm:w-auto">
             {/* Apply template hint */}
             {canApplyTemplate && (
               <button onClick={onApplyTemplate}

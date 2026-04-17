@@ -571,8 +571,8 @@ function ProjectCard({ project, locale, onDelete }: { project: ProjectData; loca
 
       {/* Delete confirm */}
       {confirmDelete && (
-        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) setConfirmDelete(false); }}>
-          <div className="bg-white rounded-xl p-6 w-[380px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setConfirmDelete(false); }}>
+          <div className="bg-white rounded-xl p-6 w-full max-w-[380px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-[15px] font-bold text-red-600 mb-2">{tx(locale, "Delete Vessel", "호선 삭제", "船舶削除")}</h3>
             <p className="text-[12px] text-text-secondary mb-4">
               {locale === "ko" ? `"${project.vesselName}" 호선과 소속 기자재를 모두 삭제합니다.` : `Delete "${project.vesselName}" and all its equipment.`}
@@ -681,8 +681,8 @@ function AddVesselButton({ groupId, groupName, shipowner, locale, onAdded }: {
         <Plus size={12} /> {tx(locale, "Add Vessel", "호선 추가", "船舶追加")}
       </button>
       {open && (
-        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
-          <div className="bg-white rounded-xl p-6 w-[400px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
+          <div className="bg-white rounded-xl p-6 w-full max-w-[400px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-[15px] font-bold text-text mb-1">{tx(locale, "Add Vessel", "호선 추가", "船舶追加")}</h3>
             <p className="text-[12px] text-text-tertiary mb-4">{groupName}</p>
             <div className="space-y-3">
@@ -739,8 +739,8 @@ function DeleteGroupButton({ groupId, groupName, locale, onDeleted }: {
         <Trash2 size={14} />
       </button>
       {confirm && (
-        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) setConfirm(false); }}>
-          <div className="bg-white rounded-xl p-6 w-[380px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setConfirm(false); }}>
+          <div className="bg-white rounded-xl p-6 w-full max-w-[380px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-[15px] font-bold text-red-600 mb-2">{tx(locale, "Delete Project", "프로젝트 삭제", "プロジェクト削除")}</h3>
             <p className="text-[12px] text-text-secondary mb-4">
               {locale === "ko" ? `"${groupName}" 프로젝트와 소속 호선, 기자재를 모두 삭제합니다. 되돌릴 수 없습니다.` : `Delete "${groupName}" and all its vessels and equipment. This cannot be undone.`}
@@ -789,8 +789,8 @@ function EditGroupButton({ groupId, currentName, currentShipowner, locale, onUpd
         <Pencil size={13} />
       </button>
       {open && (
-        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
-          <div className="bg-white rounded-xl p-6 w-[400px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
+          <div className="bg-white rounded-xl p-6 w-full max-w-[400px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-[15px] font-bold text-text mb-4">{tx(locale, "Edit Project", "프로젝트 수정", "プロジェクト編集")}</h3>
             <div className="space-y-3">
               <div>

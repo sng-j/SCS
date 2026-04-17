@@ -367,7 +367,7 @@ function VendorsTab({ locale }: { locale: string }) {
         description={tx(locale, "Create a new vendor account", "새 벤더 계정을 생성합니다", "新しいベンダーアカウントを作成します")}
       >
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <Input label={tx(locale, "Name *", "이름 *", "名前 *")} placeholder={tx(locale, "John Doe", "홍길동", "山田太郎")} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             <Input label={tx(locale, "Company", "회사", "会社")} placeholder={tx(locale, "Company name", "회사명", "会社名")} value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
           </div>

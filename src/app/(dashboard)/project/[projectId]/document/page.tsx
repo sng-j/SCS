@@ -277,7 +277,7 @@ export default function DocumentPage() {
         </Link>
 
         {/* Header */}
-        <div className="flex items-start justify-between mb-6">
+        <div className="flex items-start justify-between mb-6 flex-wrap gap-3">
           <div className="flex items-center gap-4">
             <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-brand-lighter to-brand/10 border border-brand/15 flex items-center justify-center shadow-xs">
               <FileText size={22} className="text-brand" />

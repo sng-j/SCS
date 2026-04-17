@@ -375,16 +375,19 @@ export default function AdminPage() {
         <p className="text-body-sm text-text-tertiary mt-1">{tx(locale, "Manage the entire system", "시스템 전체를 관리합니다", "システム全体を管理します")}</p>
       </div>
 
-      {/* Tab Bar */}
-      <div className="flex flex-wrap gap-1 p-1 bg-surface-secondary rounded-[8px] w-fit">
-        {TABS.map((tab) => (
-          <button key={tab} onClick={() => changeTab(tab)}
-            className={cn("px-3 py-1.5 rounded-[6px] text-body-sm font-medium transition-all duration-200",
-              activeTab === tab ? "bg-white text-text shadow-xs" : "text-text-tertiary hover:text-text-secondary"
-            )}>
-            {tabLabels[tab]}
-          </button>
-        ))}
+      {/* Tab Bar — horizontal scroll on narrow screens so the 13 tabs
+          don't wrap into an awkward multi-row blob */}
+      <div className="-mx-6 px-6 overflow-x-auto scrollbar-none">
+        <div className="flex gap-1 p-1 bg-surface-secondary rounded-[8px] w-max">
+          {TABS.map((tab) => (
+            <button key={tab} onClick={() => changeTab(tab)}
+              className={cn("px-3 py-1.5 rounded-[6px] text-body-sm font-medium transition-all duration-200 whitespace-nowrap",
+                activeTab === tab ? "bg-white text-text shadow-xs" : "text-text-tertiary hover:text-text-secondary"
+              )}>
+              {tabLabels[tab]}
+            </button>
+          ))}
+        </div>
       </div>
 
       {activeTab === "users"       && <UsersTab locale={locale} />}

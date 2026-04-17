@@ -253,6 +253,10 @@ dialog[open]::backdrop {
   border-radius: var(--radius-sm);
 }
 
+/* ── Hide scrollbar but keep scroll (used in mobile tab rows) ── */
+.scrollbar-none::-webkit-scrollbar { display: none; }
+.scrollbar-none { scrollbar-width: none; -ms-overflow-style: none; }
+
 /* ── Custom checkbox ── */
 input[type="checkbox"].checkbox-cytur {
   -webkit-appearance: none !important;

@@ -377,7 +377,7 @@ export default function InventoryPage() {
 
                       {assetTab === "hardware" && (<>
                         {/* Unified HW Table with click-to-edit panel */}
-                        <div className={cn("transition-all duration-300", editPanelHwId ? "pr-[440px]" : "")}>
+                        <div className={cn("transition-all duration-300", editPanelHwId ? "lg:pr-[440px]" : "")}>
                           <HardwareTable hardware={hardware} locale={locale} canEdit={canEdit}
                             onEdit={(hw) => setEditPanelHwId(editPanelHwId === hw.id ? null : hw.id)}
                             onDelete={(hw) => setDeleteTarget({ type: "hw", item: hw })}

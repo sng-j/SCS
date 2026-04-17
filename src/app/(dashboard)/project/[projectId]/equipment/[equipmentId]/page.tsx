@@ -368,7 +368,7 @@ export default function EquipmentDetailPage() {
                 {stepDone.filter(Boolean).length}/{WORKFLOW_PHASES.length} {tx(locale, "completed", "완료", "完了")}
               </span>
             </div>
-            <div className="grid grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
               {WORKFLOW_PHASES.map((phase, i) => {
                 const Icon = phase.icon;
                 const done = stepDone[i];

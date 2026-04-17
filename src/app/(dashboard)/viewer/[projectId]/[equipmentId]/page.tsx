@@ -190,7 +190,7 @@ export default function ViewerEquipmentPage() {
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-1 p-1 bg-surface-secondary rounded-[8px] w-fit">
+      <div className="flex gap-1 p-1 bg-surface-secondary rounded-[8px] w-full sm:w-fit overflow-x-auto scrollbar-none">
         {TABS.map((tab) => {
           const t = tabLabels[tab];
           const Icon = t.icon;
