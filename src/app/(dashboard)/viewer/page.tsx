@@ -1,16 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { motion } from "framer-motion";
-import { Eye, Ship, ChevronRight, Package, Cpu, FileText, TrendingUp } from "lucide-react";
-import { Card, CardBody } from "@/components/ui/card";
-import { SkeletonTable } from "@/components/ui/skeleton";
-import { EmptyState } from "@/components/ui/empty-state";
 import { useLocaleStore } from "@/stores/locale-store";
 import { tx } from "@/lib/i18n";
-import { cn } from "@/lib/utils";
 
 interface VesselSummary {
   id: string;
@@ -33,18 +27,28 @@ interface FleetResponse {
   projects: VesselSummary[];
 }
 
-function progressColor(pct: number) {
-  if (pct >= 80) return "#24A148"; // green
-  if (pct >= 50) return "#EB6200"; // orange
-  if (pct >= 20) return "#F1C21B"; // yellow
-  return "#DA1E28"; // red
+function signalClass(pct: number) {
+  if (pct >= 80) return "c-good";
+  if (pct >= 50) return "c-fair";
+  if (pct >= 20) return "c-idle";
+  return "c-poor";
 }
 
-function progressBg(pct: number) {
-  if (pct >= 80) return "bg-green-50 text-green-700";
-  if (pct >= 50) return "bg-orange-50 text-orange-700";
-  if (pct >= 20) return "bg-amber-50 text-amber-700";
-  return "bg-red-50 text-red-700";
+function pad(n: number, w = 2) {
+  return n.toString().padStart(w, "0");
+}
+
+function formatLogDate(d: Date, locale: string) {
+  const months = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+  const mm = months[d.getMonth()];
+  const dd = pad(d.getDate());
+  const yyyy = d.getFullYear();
+  void locale;
+  return `${dd} ${mm} ${yyyy}`;
+}
+
+function formatLogTime(d: Date) {
+  return `${pad(d.getHours())}${pad(d.getMinutes())}`;
 }
 
 export default function ViewerHomePage() {
@@ -52,6 +56,7 @@ export default function ViewerHomePage() {
   const { locale } = useLocaleStore();
   const [data, setData] = useState<FleetResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const now = useMemo(() => new Date(), []);
 
   useEffect(() => {
     fetch("/api/fleet")
@@ -59,231 +64,309 @@ export default function ViewerHomePage() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (status === "loading" || loading) {
-    return (
-      <div className="max-w-[1200px] mx-auto px-6 py-8">
-        <SkeletonTable rows={6} />
-      </div>
-    );
-  }
-
   const userRole = (session?.user as { role?: string })?.role;
-  if (userRole !== "SHIPYARD" && userRole !== "SUPPORT" && userRole !== "ADMIN") {
-    return (
-      <div className="max-w-4xl mx-auto px-6 py-8">
-        <EmptyState icon={Eye} title={tx(locale, "Access denied", "접근 권한이 없습니다", "アクセスが拒否されました")} />
-      </div>
-    );
-  }
+  const denied = userRole && userRole !== "SHIPYARD" && userRole !== "SUPPORT" && userRole !== "ADMIN";
 
   const summary = data?.summary;
   const projects = data?.projects || [];
 
-  // Group by projectGroup (선주/그룹) for cleaner overview
-  const groups = new Map<string, { name: string; shipowner: string | null; vessels: VesselSummary[] }>();
-  const ungrouped: VesselSummary[] = [];
-  projects.forEach((p) => {
-    if (p.projectGroup) {
-      const key = p.projectGroup.id;
-      if (!groups.has(key)) groups.set(key, { name: p.projectGroup.name, shipowner: p.projectGroup.shipowner, vessels: [] });
-      groups.get(key)!.vessels.push(p);
-    } else {
-      ungrouped.push(p);
-    }
-  });
+  const { groups, ungrouped } = useMemo(() => {
+    const groups = new Map<string, { name: string; shipowner: string | null; vessels: VesselSummary[] }>();
+    const ungrouped: VesselSummary[] = [];
+    projects.forEach((p) => {
+      if (p.projectGroup) {
+        const key = p.projectGroup.id;
+        if (!groups.has(key)) groups.set(key, { name: p.projectGroup.name, shipowner: p.projectGroup.shipowner, vessels: [] });
+        groups.get(key)!.vessels.push(p);
+      } else {
+        ungrouped.push(p);
+      }
+    });
+    return { groups, ungrouped };
+  }, [projects]);
 
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="max-w-[1200px] mx-auto px-6 py-8 space-y-6"
-    >
-      {/* Header — viewer badge */}
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 text-[10px] font-bold uppercase tracking-wider inline-flex items-center gap-1">
-              <Eye size={10} /> {tx(locale, "Viewer Mode", "뷰어 모드", "閲覧モード")}
-            </span>
-          </div>
-          <h1 className="text-[22px] font-extrabold text-text">
-            {tx(locale, "Fleet Overview", "선대 현황", "船隊概要")}
-          </h1>
-          <p className="text-[13px] text-text-tertiary mt-0.5">
-            {tx(locale, "Cyber security compliance status across all vessels",
-              "전체 선박 사이버 보안 컴플라이언스 현황",
-              "全船舶サイバーセキュリティ状況")}
-          </p>
+  if (status === "loading" || loading) {
+    return (
+      <div className="max-w-[1180px] mx-auto px-8 py-10">
+        <div className="masthead"><span>loading · · ·</span><span /></div>
+        <div className="mt-12 opacity-50">
+          <div className="label">Awaiting transmission</div>
         </div>
       </div>
+    );
+  }
 
-      {/* Summary stat cards */}
-      {summary && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card>
-            <CardBody>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[11px] font-medium text-text-tertiary uppercase tracking-wider">
-                    {tx(locale, "Total Vessels", "총 선박", "船舶総数")}
-                  </p>
-                  <p className="text-[28px] font-extrabold text-text mt-1 tabular-nums">{summary.totalVessels}</p>
-                </div>
-                <Ship size={24} className="text-text-tertiary" />
-              </div>
-            </CardBody>
-          </Card>
-          <Card>
-            <CardBody>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[11px] font-medium text-text-tertiary uppercase tracking-wider">
-                    {tx(locale, "Avg Compliance", "평균 컴플라이언스", "平均準拠率")}
-                  </p>
-                  <p className="text-[28px] font-extrabold mt-1 tabular-nums" style={{ color: progressColor(summary.avgCompliance) }}>
-                    {summary.avgCompliance}%
-                  </p>
-                </div>
-                <TrendingUp size={24} className="text-text-tertiary" />
-              </div>
-            </CardBody>
-          </Card>
-          <Card>
-            <CardBody>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[11px] font-medium text-text-tertiary uppercase tracking-wider">
-                    {tx(locale, "Needs Attention", "점검 필요", "要注意")}
-                  </p>
-                  <p className={cn(
-                    "text-[28px] font-extrabold mt-1 tabular-nums",
-                    summary.needsAttention > 0 ? "text-safety-high" : "text-text"
-                  )}>
-                    {summary.needsAttention}
-                  </p>
-                </div>
-                <Package size={24} className="text-text-tertiary" />
-              </div>
-            </CardBody>
-          </Card>
+  if (denied) {
+    return (
+      <div className="max-w-2xl mx-auto px-8 py-24 text-center">
+        <div className="label mb-2">{tx(locale, "Access restricted", "접근 제한", "アクセス制限")}</div>
+        <h1 className="display text-[48px] text-[color:var(--ink)]">401</h1>
+      </div>
+    );
+  }
+
+  // Order vessels by compliance ascending within each group (flag attention)
+  const orderVessels = (list: VesselSummary[]) => [...list].sort((a, b) => a.complianceScore - b.complianceScore);
+
+  // Global index counter across sections so each vessel gets a continuous No. 01, 02 …
+  let indexCounter = 0;
+  const nextIndex = () => { indexCounter++; return pad(indexCounter); };
+
+  return (
+    <div className="max-w-[1180px] mx-auto px-8 py-10">
+      {/* ── Masthead strip ─────────────────────────────────────────── */}
+      <div className="masthead reveal">
+        <div className="flex items-center gap-6">
+          <span>Admiralty Log</span>
+          <span className="c-ink-mute">·</span>
+          <span>{formatLogDate(now, locale)}</span>
+          <span className="c-ink-mute">·</span>
+          <span>{formatLogTime(now)} KST</span>
         </div>
-      )}
+        <span className="seal">
+          <span style={{ width: 4, height: 4, background: "var(--copper)", display: "inline-block" }} />
+          Viewer
+        </span>
+      </div>
 
-      {/* Vessel list grouped by project group */}
-      {projects.length === 0 ? (
-        <Card><CardBody><EmptyState icon={Ship} title={tx(locale, "No vessels yet", "등록된 선박이 없습니다", "登録された船舶がありません")} /></CardBody></Card>
-      ) : (
-        <div className="space-y-5">
-          {[...groups.entries()].map(([groupId, group]) => (
-            <div key={groupId}>
-              <div className="flex items-baseline justify-between mb-2 px-1">
-                <h2 className="text-[13px] font-bold text-text">{group.name}</h2>
-                {group.shipowner && <span className="text-[11px] text-text-tertiary">{group.shipowner}</span>}
+      {/* ── Hero: Fleet Overview ──────────────────────────────────── */}
+      <section className="grid grid-cols-12 gap-10 mt-12 mb-16 reveal reveal-delay-1">
+        {/* Title column */}
+        <div className="col-span-12 md:col-span-7">
+          <div className="kicker mb-3">§ I · Fleet Review</div>
+          <h1 className="display text-[68px] md:text-[84px] c-ink">
+            Fleet<br />
+            <span className="display-italic c-ink-soft">overview.</span>
+          </h1>
+          <p className="mt-6 text-[13px] leading-[1.65] c-ink-soft max-w-[52ch]">
+            {tx(locale,
+              "A quarterly review of cyber-security posture across all operating assets. Figures are aggregated from equipment approval, security assessments, and documentation issued under IACS UR E26 / E27.",
+              "운항 중인 모든 자산의 사이버 보안 현황을 분기별로 검토합니다. 수치는 기자재 승인, 보안 평가 및 IACS UR E26 / E27 기준 문서 발행을 기준으로 집계됩니다.",
+              "運航中の資産におけるサイバーセキュリティ体制の四半期レビュー。数値は機器承認、セキュリティ評価、およびIACS UR E26 / E27に基づく発行文書から集計されます。"
+            )}
+          </p>
+        </div>
+
+        {/* Compliance dial column */}
+        <div className="col-span-12 md:col-span-5 flex flex-col md:items-end">
+          {summary && (
+            <>
+              <div className="label mb-2">{tx(locale, "Aggregate compliance", "종합 컴플라이언스", "総合準拠率")}</div>
+              <div className="flex items-start gap-1">
+                <span className={`numeral text-[156px] md:text-[192px] leading-none ${signalClass(summary.avgCompliance)}`}>
+                  {summary.avgCompliance}
+                </span>
+                <span className="numeral text-[36px] md:text-[44px] c-ink-mute mt-4">%</span>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {group.vessels.map((v) => <VesselCard key={v.id} vessel={v} locale={locale} />)}
+              <div className="mt-3 flex items-center gap-4 text-[10px] mono c-ink-mute uppercase tracking-[0.18em]">
+                <span>q{Math.floor(now.getMonth() / 3) + 1} {now.getFullYear()}</span>
+                <span>·</span>
+                <span>n = {summary.totalVessels}</span>
               </div>
-            </div>
-          ))}
-          {ungrouped.length > 0 && (
-            <div>
-              {groups.size > 0 && (
-                <div className="mb-2 px-1">
-                  <h2 className="text-[13px] font-bold text-text">{tx(locale, "Other Vessels", "기타 선박", "その他船舶")}</h2>
-                </div>
-              )}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {ungrouped.map((v) => <VesselCard key={v.id} vessel={v} locale={locale} />)}
-              </div>
-            </div>
+            </>
           )}
         </div>
+      </section>
+
+      {/* ── Register strip (summary metadata) ─────────────────────── */}
+      {summary && (
+        <div className="reveal reveal-delay-2">
+          <hr className="rule-ink" />
+          <div className="grid grid-cols-4 divide-x divide-[color:var(--line)]">
+            <RegisterCell
+              label={tx(locale, "Vessels under watch", "감시 중인 선박", "監視中船舶")}
+              value={pad(summary.totalVessels, 2)}
+              footnote={tx(locale, "active", "활성", "稼働")}
+            />
+            <RegisterCell
+              label={tx(locale, "Flag", "깃발", "旗")}
+              value={summary.avgCompliance >= 80 ? "A" : summary.avgCompliance >= 50 ? "B" : "C"}
+              footnote={
+                summary.avgCompliance >= 80 ? tx(locale, "satisfactory", "양호", "良好") :
+                summary.avgCompliance >= 50 ? tx(locale, "conditional", "조건부", "条件付き") :
+                tx(locale, "review", "재검토", "再検討")
+              }
+              signal={signalClass(summary.avgCompliance)}
+            />
+            <RegisterCell
+              label={tx(locale, "Requires attention", "조치 필요", "要対応")}
+              value={pad(summary.needsAttention, 2)}
+              footnote={tx(locale, "flagged", "플래그", "フラグ")}
+              signal={summary.needsAttention > 0 ? "c-poor" : "c-idle"}
+            />
+            <RegisterCell
+              label={tx(locale, "Last reconciled", "최종 집계", "最終集計")}
+              value={formatLogTime(now)}
+              footnote="UTC+9"
+            />
+          </div>
+          <hr className="rule" />
+        </div>
       )}
-    </motion.div>
+
+      {/* ── Vessel register ────────────────────────────────────────── */}
+      <section className="mt-16 reveal reveal-delay-3">
+        <div className="flex items-baseline justify-between mb-8">
+          <div>
+            <div className="kicker">§ II · Vessel Register</div>
+            <h2 className="display text-[32px] mt-1">{tx(locale, "The fleet", "선대", "船隊")}</h2>
+          </div>
+          <div className="mono text-[10px] c-ink-mute uppercase tracking-[0.2em]">
+            {tx(locale, `${projects.length} entries`, `${projects.length}건`, `${projects.length}件`)}
+          </div>
+        </div>
+
+        {projects.length === 0 ? (
+          <div className="py-24 text-center border-y border-[color:var(--line)]">
+            <div className="label">{tx(locale, "No entries in register", "등록된 선박 없음", "登録なし")}</div>
+            <p className="display-italic c-ink-soft text-[20px] mt-2">{tx(locale, "The logbook is blank.", "항해일지가 비어 있습니다.", "航海日誌は白紙です。")}</p>
+          </div>
+        ) : (
+          <div className="space-y-10">
+            {[...groups.entries()].map(([groupId, group]) => (
+              <GroupBlock key={groupId} name={group.name} shipowner={group.shipowner} locale={locale}>
+                {orderVessels(group.vessels).map((v) => (
+                  <VesselEntry key={v.id} vessel={v} index={nextIndex()} locale={locale} />
+                ))}
+              </GroupBlock>
+            ))}
+            {ungrouped.length > 0 && (
+              <GroupBlock name={groups.size > 0 ? tx(locale, "Unassigned", "미분류", "未分類") : tx(locale, "All vessels", "전체 선박", "全船舶")} shipowner={null} locale={locale}>
+                {orderVessels(ungrouped).map((v) => (
+                  <VesselEntry key={v.id} vessel={v} index={nextIndex()} locale={locale} />
+                ))}
+              </GroupBlock>
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* ── Colophon ────────────────────────────────────────────────── */}
+      <footer className="mt-24 pt-6 border-t border-[color:var(--ink)] flex items-center justify-between text-[10px] mono uppercase tracking-[0.22em] c-ink-mute">
+        <span>— end of log —</span>
+        <span>Compiled for viewer · read-only</span>
+      </footer>
+    </div>
   );
 }
 
-function VesselCard({ vessel, locale }: { vessel: VesselSummary; locale: string }) {
+// ────────────────────────────────────────────────────────────────────
+
+function RegisterCell({ label, value, footnote, signal }: {
+  label: string; value: string; footnote?: string; signal?: string;
+}) {
+  return (
+    <div className="px-5 py-4">
+      <div className="label">{label}</div>
+      <div className={`numeral text-[44px] mt-2 ${signal || "c-ink"}`}>{value}</div>
+      {footnote && <div className="mono text-[10px] c-ink-mute uppercase tracking-[0.16em] mt-1">{footnote}</div>}
+    </div>
+  );
+}
+
+function GroupBlock({ name, shipowner, locale, children }: {
+  name: string; shipowner: string | null; locale: string; children: React.ReactNode;
+}) {
+  void locale;
+  return (
+    <div>
+      <div className="flex items-baseline gap-4 mb-4">
+        <hr className="rule flex-1" />
+        <span className="mono text-[10px] uppercase tracking-[0.24em] c-ink px-2">
+          {name}
+          {shipowner && <span className="c-ink-mute ml-2 normal-case tracking-normal">— {shipowner}</span>}
+        </span>
+        <hr className="rule flex-1" />
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-px bg-[color:var(--line)]">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function VesselEntry({ vessel, index, locale }: { vessel: VesselSummary; index: string; locale: string }) {
   const approvalPct = vessel.equipmentCount > 0
     ? Math.round((vessel.equipmentApproved / vessel.equipmentCount) * 100)
     : 0;
   const docPct = vessel.totalDocuments > 0
     ? Math.round((vessel.documentCount / vessel.totalDocuments) * 100)
     : 0;
+  const sig = signalClass(vessel.complianceScore);
 
   return (
-    <Link href={`/viewer/${vessel.id}`} className="group">
-      <Card className="hover:border-brand/40 hover:shadow-sm transition-all">
-        <CardBody>
-          <div className="flex items-start justify-between mb-3">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <p className="text-[14px] font-bold text-text truncate">{vessel.vesselName}</p>
-                {vessel.classification && (
-                  <span className="px-1.5 py-0.5 rounded-md bg-surface-secondary text-[10px] font-bold text-text-secondary shrink-0">
-                    {vessel.classification}
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-text-tertiary">
-                {tx(locale, `${vessel.equipmentCount} equipment · ${vessel.hardwareCount} HW · ${vessel.softwareCount} SW`,
-                  `기자재 ${vessel.equipmentCount}개 · HW ${vessel.hardwareCount} · SW ${vessel.softwareCount}`,
-                  `機器 ${vessel.equipmentCount} · HW ${vessel.hardwareCount} · SW ${vessel.softwareCount}`)}
-              </p>
+    <Link href={`/viewer/${vessel.id}`} className="group block bg-[color:var(--paper)] hover:bg-[color:var(--paper-edge)] transition-colors duration-200">
+      <article className="p-7 relative">
+        {/* Index + classification row */}
+        <div className="flex items-start justify-between mb-6">
+          <div>
+            <div className="index-no mb-2"><span>No.</span><strong>{index}</strong></div>
+            <h3 className="display text-[28px] leading-[1.1] c-ink group-hover:c-copper transition-colors">
+              {vessel.vesselName}
+            </h3>
+          </div>
+          {vessel.classification && (
+            <div className="text-right">
+              <div className="label">{vessel.classification}</div>
+              <div className="mono text-[10px] c-ink-mute uppercase tracking-[0.16em] mt-1">{vessel.status}</div>
             </div>
-            <ChevronRight size={16} className="text-text-tertiary group-hover:text-brand group-hover:translate-x-0.5 transition-all" />
-          </div>
+          )}
+        </div>
 
-          {/* Compliance score — big */}
-          <div className="flex items-baseline gap-2 mb-3">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-text-tertiary">
-              {tx(locale, "Compliance", "컴플라이언스", "準拠率")}
-            </span>
-            <span className="text-[22px] font-extrabold tabular-nums" style={{ color: progressColor(vessel.complianceScore) }}>
-              {vessel.complianceScore}%
-            </span>
+        {/* Compliance numeral + meta */}
+        <div className="flex items-end justify-between mb-6">
+          <div className="flex items-baseline gap-2">
+            <span className={`numeral text-[64px] leading-none ${sig}`}>{vessel.complianceScore}</span>
+            <span className="numeral text-[22px] c-ink-mute">%</span>
           </div>
+          <div className="text-right">
+            <div className="label">{tx(locale, "Inventory", "인벤토리", "資産")}</div>
+            <div className="mono text-[11px] c-ink mt-1">
+              {vessel.equipmentCount}eq / {vessel.hardwareCount}hw / {vessel.softwareCount}sw
+            </div>
+          </div>
+        </div>
 
-          {/* Progress breakdown — 3 bars */}
-          <div className="space-y-2">
-            <ProgressRow
-              label={tx(locale, "Equipment Approved", "기자재 승인", "機器承認")}
-              pct={approvalPct}
-              current={vessel.equipmentApproved}
-              total={vessel.equipmentCount}
-            />
-            <ProgressRow
-              label={tx(locale, "Assessments", "보안 평가", "評価")}
-              pct={vessel.assessmentCompletion}
-            />
-            <ProgressRow
-              label={tx(locale, "Documents", "문서", "文書")}
-              pct={docPct}
-              current={vessel.documentCount}
-              total={vessel.totalDocuments}
-            />
-          </div>
-        </CardBody>
-      </Card>
+        {/* Scale bars */}
+        <div className="space-y-3.5">
+          <Scale
+            label={tx(locale, "Equipment approved", "기자재 승인", "機器承認")}
+            value={`${vessel.equipmentApproved}/${vessel.equipmentCount}`}
+            pct={approvalPct}
+          />
+          <Scale
+            label={tx(locale, "Security assessment", "보안 평가", "評価")}
+            value={`${vessel.assessmentCompletion}%`}
+            pct={vessel.assessmentCompletion}
+          />
+          <Scale
+            label={tx(locale, "Documents issued", "문서 발행", "文書発行")}
+            value={`${vessel.documentCount}/${vessel.totalDocuments}`}
+            pct={docPct}
+          />
+        </div>
+
+        {/* Chevron-less indicator — a tiny mono "open →" in the corner */}
+        <div className="mt-6 flex justify-end">
+          <span className="mono text-[10px] uppercase tracking-[0.22em] c-ink-mute group-hover:c-copper transition-colors">
+            open entry →
+          </span>
+        </div>
+      </article>
     </Link>
   );
 }
 
-function ProgressRow({ label, pct, current, total }: { label: string; pct: number; current?: number; total?: number }) {
+function Scale({ label, value, pct }: { label: string; value: string; pct: number }) {
+  const sig = signalClass(pct);
   return (
     <div>
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-[11px] text-text-secondary">{label}</span>
-        <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded", progressBg(pct))}>
-          {current !== undefined && total !== undefined ? `${current}/${total}` : `${pct}%`}
-        </span>
+      <div className="flex items-baseline justify-between mb-1.5">
+        <span className="label">{label}</span>
+        <span className={`mono text-[11px] ${sig}`}>{value}</span>
       </div>
-      <div className="h-1.5 rounded-full bg-surface-secondary overflow-hidden">
-        <div
-          className="h-full rounded-full transition-all duration-500"
-          style={{ width: `${pct}%`, backgroundColor: progressColor(pct) }}
-        />
+      <div className="scale">
+        <div className={`scale-fill scale-in-bar ${sig}`} style={{ width: `${Math.max(2, pct)}%` }} />
       </div>
     </div>
   );

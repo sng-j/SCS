@@ -1,0 +1,328 @@
+/* ──────────────────────────────────────────────────────────────────
+   Admiralty Log — viewer-only aesthetic scope.
+   Triggered by the `.admiralty` class wrapping every viewer page.
+   Inspired by nautical charts, editorial magazine layout, and
+   marine chronometer instrumentation.
+   ────────────────────────────────────────────────────────────────── */
+
+.admiralty {
+  /* Palette */
+  --paper:        #F4EFE6;           /* warm ivory — the "page" */
+  --paper-edge:   #EAE2D2;           /* subtle warm edge for grouping */
+  --paper-strong: #E3D8C2;           /* stronger tint for hover / highlights */
+  --ink:          #0D1B2A;           /* deep midnight navy — the "ink" */
+  --ink-soft:     #27384B;           /* secondary ink (body, labels) */
+  --ink-mute:     #8A8270;           /* tertiary ink (metadata, coords) */
+
+  --copper:       #B87333;           /* signature accent — imprimatur */
+  --copper-deep:  #8C5524;
+  --copper-glow:  #E8D3B8;           /* copper-tinted wash */
+
+  --line:         rgba(13, 27, 42, 0.14); /* hairlines */
+  --line-strong:  rgba(13, 27, 42, 0.28);
+
+  /* Compliance signalling — muted, editorial (not SaaS neon) */
+  --signal-good:  #3E7548;           /* deep sage */
+  --signal-fair:  #C88A2E;           /* ochre */
+  --signal-poor:  #A84526;           /* terracotta */
+  --signal-idle:  #8B8578;           /* warm gray */
+
+  /* Fonts */
+  --font-display: var(--font-display), "Fraunces", "Georgia", "Times New Roman", serif;
+
+  /* Warm paper backdrop with a faint fibrous noise so the surface
+     feels printed, not rendered. */
+  background: var(--paper);
+  background-image:
+    radial-gradient(circle at 20% 10%, rgba(184, 115, 51, 0.04), transparent 55%),
+    radial-gradient(circle at 85% 80%, rgba(13, 27, 42, 0.035), transparent 60%),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.6' numOctaves='2' seed='7' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.05 0 0 0 0 0.11 0 0 0 0 0.16 0 0 0 0.035 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  color: var(--ink);
+  min-height: 100vh;
+}
+
+/* ── Typography ─────────────────────────────────────────────────── */
+.admiralty .display {
+  font-family: var(--font-display);
+  font-feature-settings: "ss01", "ss03", "onum";
+  font-weight: 400;
+  letter-spacing: -0.018em;
+  line-height: 1.04;
+}
+.admiralty .display-italic {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+}
+
+.admiralty .mono {
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+  font-feature-settings: "tnum", "ss02";
+}
+
+.admiralty .label {
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--ink-mute);
+  font-weight: 500;
+}
+
+.admiralty .kicker {
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--copper);
+  font-weight: 500;
+}
+
+/* ── Rules & dividers ───────────────────────────────────────────── */
+.admiralty .rule         { height: 1px; background: var(--line);        border: none; }
+.admiralty .rule-strong  { height: 1px; background: var(--line-strong); border: none; }
+.admiralty .rule-ink     { height: 1px; background: var(--ink);         border: none; }
+
+.admiralty .dotted-rule {
+  height: 1px;
+  background-image: linear-gradient(to right, var(--line-strong) 50%, transparent 50%);
+  background-size: 6px 1px;
+  background-repeat: repeat-x;
+}
+
+/* ── Masthead (page-top metadata strip) ─────────────────────────── */
+.admiralty .masthead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 14px 0 10px;
+  border-bottom: 1px solid var(--ink);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.admiralty .masthead .seal {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--copper);
+  color: var(--copper);
+  letter-spacing: 0.26em;
+  font-weight: 600;
+}
+
+/* ── Paper cards ────────────────────────────────────────────────── */
+.admiralty .paper-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  position: relative;
+  transition: border-color 180ms cubic-bezier(0.16, 1, 0.3, 1),
+              background 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.admiralty .paper-card:hover {
+  border-color: var(--ink);
+}
+
+/* Corner-crop registration marks — subtle surveying/engineering detail */
+.admiralty .crop-marks::before,
+.admiralty .crop-marks::after {
+  content: "";
+  position: absolute;
+  width: 10px; height: 10px;
+  border-color: var(--ink);
+}
+.admiralty .crop-marks::before {
+  top: -1px; left: -1px;
+  border-top: 1px solid; border-left: 1px solid;
+}
+.admiralty .crop-marks::after {
+  bottom: -1px; right: -1px;
+  border-bottom: 1px solid; border-right: 1px solid;
+}
+
+/* ── Progress "scale" bar (like a mercury/chart scale, not SaaS bar) */
+.admiralty .scale {
+  position: relative;
+  height: 6px;
+  background:
+    linear-gradient(to right, var(--line-strong) 1px, transparent 1px) 0 0 / 10% 100% no-repeat,
+    linear-gradient(to right, var(--line-strong) 1px, transparent 1px) 20% 0 / 10% 100% no-repeat,
+    linear-gradient(to right, var(--line-strong) 1px, transparent 1px) 40% 0 / 10% 100% no-repeat,
+    linear-gradient(to right, var(--line-strong) 1px, transparent 1px) 60% 0 / 10% 100% no-repeat,
+    linear-gradient(to right, var(--line-strong) 1px, transparent 1px) 80% 0 / 10% 100% no-repeat,
+    linear-gradient(to right, var(--line-strong) 1px, transparent 1px) 100% 0 / 1px 100% no-repeat;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.admiralty .scale-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-right: 2px solid currentColor;
+}
+.admiralty .scale-fill::after {
+  content: "";
+  position: absolute;
+  right: -4px;
+  top: 50%;
+  width: 6px; height: 6px;
+  background: currentColor;
+  transform: translateY(-50%) rotate(45deg);
+}
+
+/* ── Status indicators (circles replaced with more editorial marks) */
+.admiralty .mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* ── Seal badge (Viewer Mode / classification) ──────────────────── */
+.admiralty .seal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px 3px 10px;
+  border: 1px solid var(--copper);
+  color: var(--copper);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  background: color-mix(in srgb, var(--copper-glow) 30%, transparent);
+  border-radius: 1px;
+}
+
+/* ── Index marker (No. 01 / No. 02 …) ───────────────────────────── */
+.admiralty .index-no {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  color: var(--ink-mute);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.admiralty .index-no strong {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* ── Tab bar (editorial underline — not pill) ───────────────────── */
+.admiralty .tab-bar {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--ink);
+}
+.admiralty .tab {
+  padding: 10px 18px 12px;
+  font-family: var(--font-display);
+  font-size: 14px;
+  color: var(--ink-soft);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  transition: color 150ms ease, border-color 150ms ease;
+}
+.admiralty .tab:hover { color: var(--ink); }
+.admiralty .tab[data-active="true"] {
+  color: var(--copper);
+  border-bottom-color: var(--copper);
+  font-weight: 500;
+}
+
+/* ── Back link ──────────────────────────────────────────────────── */
+.admiralty .back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  text-decoration: none;
+  padding: 4px 0;
+  transition: color 150ms ease, gap 200ms ease;
+}
+.admiralty .back-link:hover { color: var(--copper); gap: 12px; }
+
+/* ── Animations ─────────────────────────────────────────────────── */
+@keyframes admiralty-reveal {
+  from { opacity: 0; transform: translateY(6px); filter: blur(2px); }
+  to   { opacity: 1; transform: translateY(0);   filter: blur(0); }
+}
+@keyframes admiralty-scale-in {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+.admiralty .reveal { animation: admiralty-reveal 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.admiralty .reveal-delay-1 { animation-delay: 80ms; }
+.admiralty .reveal-delay-2 { animation-delay: 160ms; }
+.admiralty .reveal-delay-3 { animation-delay: 240ms; }
+.admiralty .reveal-delay-4 { animation-delay: 320ms; }
+.admiralty .reveal-delay-5 { animation-delay: 400ms; }
+
+.admiralty .scale-in-bar {
+  animation: admiralty-scale-in 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: left center;
+}
+
+/* ── Utility color classes tied to compliance ───────────────────── */
+.admiralty .c-good { color: var(--signal-good); }
+.admiralty .c-fair { color: var(--signal-fair); }
+.admiralty .c-poor { color: var(--signal-poor); }
+.admiralty .c-idle { color: var(--signal-idle); }
+.admiralty .c-copper { color: var(--copper); }
+.admiralty .c-ink    { color: var(--ink); }
+.admiralty .c-ink-soft { color: var(--ink-soft); }
+.admiralty .c-ink-mute { color: var(--ink-mute); }
+.admiralty .bg-paper-edge { background: var(--paper-edge); }
+
+/* A large numeric display — chronograph-inspired */
+.admiralty .numeral {
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-variant-numeric: tabular-nums oldstyle-nums;
+  letter-spacing: -0.03em;
+  line-height: 0.9;
+}
+
+/* Data grid (dl) */
+.admiralty dl.datasheet {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 18px;
+  row-gap: 6px;
+  font-size: 12px;
+}
+.admiralty dl.datasheet dt {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  white-space: nowrap;
+}
+.admiralty dl.datasheet dd {
+  color: var(--ink);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  word-break: break-all;
+}
+
+/* Prevent Tailwind's pill-style buttons from inheriting through the theme */
+.admiralty button:focus-visible { outline: 1px solid var(--copper); outline-offset: 2px; }
