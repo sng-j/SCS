@@ -31,13 +31,17 @@ interface LogRow     { id: string; event: string; userEmail: string | null; leve
 
 // ─── Bulk upload (Excel paste) helpers ───────────────────────────────────────
 
-function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone }: {
+function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone, validate, requiredColumns }: {
   locale: string;
   endpoint: string;
   payloadKey: string;
   columns: string[];
   label: string;
   onDone: () => void;
+  /** Client-side validator. Returns { [colName]: errorMessage } for each invalid field. */
+  validate?: (row: Record<string, string>) => Record<string, string>;
+  /** Column names to mark with * in the header. */
+  requiredColumns?: string[];
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [rows, setRows] = useState<Record<string, string>[]>(() =>
@@ -45,8 +49,35 @@ function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone 
   );
   const [uploading, setUploading] = useState(false);
 
+  // Range selection state (Excel-style drag select)
+  const [selStart, setSelStart] = useState<[number, number] | null>(null);
+  const [selEnd, setSelEnd] = useState<[number, number] | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  // Per-cell validation errors, indexed by "rowIdx:colName"
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [errorSummary, setErrorSummary] = useState<string | null>(null);
+
   const resetGrid = () => {
     setRows(Array.from({ length: 5 }, () => Object.fromEntries(columns.map((c) => [c, ""]))));
+    setSelStart(null); setSelEnd(null);
+    setErrors({}); setErrorSummary(null);
+  };
+
+  const selectionBounds = (() => {
+    if (!selStart || !selEnd) return null;
+    const [r1, c1] = selStart; const [r2, c2] = selEnd;
+    if (r1 === r2 && c1 === c2) return null; // single-cell focus, don't show selection
+    return {
+      rMin: Math.min(r1, r2), rMax: Math.max(r1, r2),
+      cMin: Math.min(c1, c2), cMax: Math.max(c1, c2),
+    };
+  })();
+
+  const isCellSelected = (rowIdx: number, colIdx: number) => {
+    if (!selectionBounds) return false;
+    return rowIdx >= selectionBounds.rMin && rowIdx <= selectionBounds.rMax &&
+           colIdx >= selectionBounds.cMin && colIdx <= selectionBounds.cMax;
   };
 
   const nonEmptyRows = rows.filter((r) => Object.values(r).some((v) => v && v.trim().length > 0));
@@ -55,6 +86,14 @@ function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone 
     setRows((prev) => {
       const next = [...prev];
       next[rowIdx] = { ...next[rowIdx], [col]: value };
+      return next;
+    });
+    // Clear error for this cell as user types
+    setErrors((prev) => {
+      const key = `${rowIdx}:${col}`;
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
       return next;
     });
   };
@@ -108,6 +147,34 @@ function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone 
       showToast.error(tx(locale, "No rows to import", "등록할 행이 없습니다", "登録する行がありません"));
       return;
     }
+
+    // Client-side validation before sending
+    if (validate) {
+      const newErrors: Record<string, string> = {};
+      let invalidRows = 0;
+      rows.forEach((row, rowIdx) => {
+        const isEmpty = Object.values(row).every((v) => !v || !v.trim());
+        if (isEmpty) return; // skip empty rows
+        const rowErrors = validate(row);
+        const keys = Object.keys(rowErrors);
+        if (keys.length > 0) {
+          invalidRows++;
+          keys.forEach((col) => { newErrors[`${rowIdx}:${col}`] = rowErrors[col]; });
+        }
+      });
+      if (Object.keys(newErrors).length > 0) {
+        setErrors(newErrors);
+        setErrorSummary(tx(locale,
+          `${invalidRows} row(s) have errors. Fix the highlighted cells.`,
+          `${invalidRows}개 행에 오류가 있습니다. 빨간색으로 표시된 셀을 확인하세요.`,
+          `${invalidRows}行にエラーがあります。赤色のセルを確認してください。`
+        ));
+        return;
+      }
+    }
+
+    // Clear errors on successful validation
+    setErrors({}); setErrorSummary(null);
     setUploading(true);
     try {
       const res = await fetch(endpoint, {
@@ -117,15 +184,42 @@ function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone 
       });
       if (res.ok) {
         const data = await res.json();
-        const errCount = data.errors?.length || 0;
-        showToast.success(
-          tx(locale, `${data.created} created`, `${data.created}건 등록 완료`, `${data.created}件登録完了`)
-          + (errCount ? ` · ${errCount} ${tx(locale, "failed (check console)", "실패 (콘솔 확인)", "失敗 (コンソール確認)")}` : "")
-        );
-        if (errCount) console.table(data.errors);
-        setDialogOpen(false);
-        resetGrid();
-        onDone();
+        const serverErrors = data.errors || [];
+        if (serverErrors.length > 0) {
+          // Map server errors back to specific cells when possible
+          const newErrors: Record<string, string> = {};
+          const validRows = rows.filter((r) => Object.values(r).some((v) => v && v.trim()));
+          serverErrors.forEach((err: { row: number; error: string }) => {
+            const serverRowIdx = err.row - 1; // 1-based
+            const actualRow = validRows[serverRowIdx];
+            if (!actualRow) return;
+            const realIdx = rows.indexOf(actualRow);
+            if (realIdx < 0) return;
+            // Heuristic: which column does the error reference?
+            const lower = err.error.toLowerCase();
+            for (const col of columns) {
+              if (lower.includes(col.toLowerCase())) {
+                newErrors[`${realIdx}:${col}`] = err.error;
+                return;
+              }
+            }
+            // Fallback: mark first column
+            newErrors[`${realIdx}:${columns[0]}`] = err.error;
+          });
+          setErrors(newErrors);
+          setErrorSummary(tx(locale,
+            `${data.created} succeeded, ${serverErrors.length} failed. See highlighted cells.`,
+            `${data.created}건 성공, ${serverErrors.length}건 실패. 빨간 셀을 확인하세요.`,
+            `${data.created}件成功、${serverErrors.length}件失敗。赤色のセルを確認してください。`
+          ));
+          if (data.created > 0) onDone();
+          showToast.error(tx(locale, `${serverErrors.length} failed`, `${serverErrors.length}건 실패`, `${serverErrors.length}件失敗`));
+        } else {
+          showToast.success(tx(locale, `${data.created} created`, `${data.created}건 등록 완료`, `${data.created}件登録完了`));
+          setDialogOpen(false);
+          resetGrid();
+          onDone();
+        }
       } else {
         const d = await res.json().catch(() => ({}));
         showToast.error((d as { error?: string }).error || "Upload failed");
@@ -149,13 +243,40 @@ function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone 
         <div className="space-y-3">
           <p className="text-[11px] text-text-secondary">
             {tx(locale,
-              "Click a cell and paste from Excel (Ctrl+V) to fill multiple rows/columns at once. Or type directly into cells.",
-              "셀을 클릭하고 엑셀 데이터를 붙여넣기(Ctrl+V)하면 여러 행/열이 한번에 채워집니다. 직접 입력도 가능합니다.",
-              "セルをクリックしてExcelデータを貼り付け(Ctrl+V)すると複数行/列が一度に入力されます。直接入力も可能です。")}
+              "Paste from Excel (Ctrl+V) to fill cells. Drag to select a range, then press Delete to clear. Required fields are marked with *.",
+              "엑셀에서 붙여넣기(Ctrl+V)로 셀을 채우거나 직접 입력하세요. 드래그로 범위 선택 후 Delete로 지우기. 필수 항목은 * 표시.",
+              "Excelから貼り付け(Ctrl+V)でセル入力。ドラッグで範囲選択後Deleteで削除。必須項目は*表示。")}
           </p>
 
+          {/* Error summary banner */}
+          {errorSummary && (
+            <div className="rounded-lg border border-safety-high/40 bg-risk-bg px-3 py-2 flex items-start gap-2">
+              <AlertCircle size={14} className="text-safety-high shrink-0 mt-0.5" />
+              <p className="text-[12px] text-safety-high font-medium">{errorSummary}</p>
+            </div>
+          )}
+
           {/* Spreadsheet grid */}
-          <div className="rounded-lg border border-border overflow-hidden">
+          <div
+            className="rounded-lg border border-border overflow-hidden"
+            onMouseLeave={() => setIsDragging(false)}
+            onMouseUp={() => setIsDragging(false)}
+            onKeyDown={(e) => {
+              if ((e.key === "Delete" || e.key === "Backspace") && selectionBounds) {
+                e.preventDefault();
+                const { rMin, rMax, cMin, cMax } = selectionBounds;
+                setRows((prev) => prev.map((row, rI) => {
+                  if (rI < rMin || rI > rMax) return row;
+                  const next = { ...row };
+                  for (let cI = cMin; cI <= cMax; cI++) next[columns[cI]] = "";
+                  return next;
+                }));
+              } else if (e.key === "Escape") {
+                setSelStart(null); setSelEnd(null);
+              }
+            }}
+            tabIndex={-1}
+          >
             <div className="max-h-[440px] overflow-auto">
               <table className="border-collapse w-full">
                 <thead className="bg-surface-secondary sticky top-0 z-10">
@@ -163,7 +284,7 @@ function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone 
                     <th className="w-10 border border-border px-2 py-1.5 text-[10px] font-bold text-text-tertiary">#</th>
                     {columns.map((c) => (
                       <th key={c} className="border border-border px-2 py-1.5 text-left text-[11px] font-bold text-text whitespace-nowrap min-w-[140px]">
-                        {c}
+                        {c}{requiredColumns?.includes(c) && <span className="text-safety-high ml-0.5">*</span>}
                       </th>
                     ))}
                     <th className="w-8 border border-border bg-surface-secondary"></th>
@@ -172,20 +293,57 @@ function CsvUploadButton({ locale, endpoint, payloadKey, columns, label, onDone 
                 <tbody>
                   {rows.map((row, rowIdx) => (
                     <tr key={rowIdx} className="group">
-                      <td className="border border-border bg-surface-secondary/30 px-2 py-0.5 text-center text-[10px] text-text-tertiary tabular-nums">
+                      <td className="border border-border bg-surface-secondary/30 px-2 py-0.5 text-center text-[10px] text-text-tertiary tabular-nums select-none">
                         {rowIdx + 1}
                       </td>
-                      {columns.map((c) => (
-                        <td key={c} className="border border-border p-0">
-                          <input
-                            type="text"
-                            value={row[c] || ""}
-                            onChange={(e) => updateCell(rowIdx, c, e.target.value)}
-                            onPaste={(e) => handleCellPaste(e, rowIdx, c)}
-                            className="w-full px-2 py-1 text-[11px] text-text bg-transparent outline-none focus:bg-brand-lighter/40 focus:ring-1 focus:ring-inset focus:ring-brand/40"
-                          />
-                        </td>
-                      ))}
+                      {columns.map((c, colIdx) => {
+                        const selected = isCellSelected(rowIdx, colIdx);
+                        const errKey = `${rowIdx}:${c}`;
+                        const errMsg = errors[errKey];
+                        return (
+                          <td
+                            key={c}
+                            className={cn(
+                              "border p-0 relative transition-colors",
+                              errMsg ? "border-safety-high bg-risk-bg/50" :
+                                selected ? "border-border bg-brand/20" : "border-border"
+                            )}
+                            title={errMsg || ""}
+                            onMouseDown={(e) => {
+                              if (e.shiftKey && selStart) {
+                                e.preventDefault();
+                                setSelEnd([rowIdx, colIdx]);
+                              } else {
+                                setSelStart([rowIdx, colIdx]);
+                                setSelEnd([rowIdx, colIdx]);
+                                setIsDragging(true);
+                              }
+                            }}
+                            onMouseEnter={() => {
+                              if (isDragging) setSelEnd([rowIdx, colIdx]);
+                            }}
+                          >
+                            <input
+                              type="text"
+                              value={row[c] || ""}
+                              onChange={(e) => updateCell(rowIdx, c, e.target.value)}
+                              onPaste={(e) => handleCellPaste(e, rowIdx, c)}
+                              onFocus={() => {
+                                if (selectionBounds) { setSelStart([rowIdx, colIdx]); setSelEnd([rowIdx, colIdx]); }
+                              }}
+                              className={cn(
+                                "w-full px-2 py-1 text-[11px] bg-transparent outline-none transition-colors",
+                                errMsg ? "text-safety-high placeholder:text-safety-high/50" : "text-text",
+                                !selected && !errMsg && "focus:bg-brand-lighter/40 focus:ring-1 focus:ring-inset focus:ring-brand/40",
+                                errMsg && "focus:ring-1 focus:ring-inset focus:ring-safety-high/60"
+                              )}
+                            />
+                            {errMsg && (
+                              <div className="absolute top-0 right-0 h-1.5 w-1.5 rounded-full bg-safety-high m-0.5" />
+                            )}
+                          </td>
+                        );
+                      })}
                       <td className="border border-border bg-surface-secondary/30 text-center">
                         <button
                           onClick={() => removeRow(rowIdx)}
@@ -695,6 +853,22 @@ function UsersTab({ locale }: { locale: string }) {
           payloadKey="users"
           label={tx(locale, "Bulk Upload", "엑셀 붙여넣기 등록", "Excel貼り付け登録")}
           columns={["email", "name", "role", "company", "phone", "password", "shipyard"]}
+          requiredColumns={["email", "name", "role", "password"]}
+          validate={(row) => {
+            const e: Record<string, string> = {};
+            if (!row.email?.trim()) e.email = tx(locale, "Required", "필수", "必須");
+            else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email.trim())) e.email = tx(locale, "Invalid email", "이메일 형식 오류", "メール形式エラー");
+            if (!row.name?.trim()) e.name = tx(locale, "Required", "필수", "必須");
+            const role = row.role?.trim().toUpperCase();
+            if (!role) e.role = tx(locale, "Required", "필수", "必須");
+            else if (!["ADMIN", "SHIPYARD", "VENDOR"].includes(role)) e.role = tx(locale, "ADMIN/SHIPYARD/VENDOR only", "ADMIN/SHIPYARD/VENDOR만 가능", "ADMIN/SHIPYARD/VENDORのみ");
+            if (!row.password?.trim()) e.password = tx(locale, "Required", "필수", "必須");
+            else if (row.password.length < 8) e.password = tx(locale, "Min 8 chars", "8자 이상", "8文字以上");
+            if ((role === "SHIPYARD" || role === "VENDOR") && !row.shipyard?.trim()) {
+              e.shipyard = tx(locale, "Required for SHIPYARD/VENDOR", "SHIPYARD/VENDOR는 필수", "SHIPYARD/VENDORは必須");
+            }
+            return e;
+          }}
           onDone={loadUsers}
         />
       </div>
@@ -1258,6 +1432,12 @@ function ShipyardsTab({ locale }: { locale: string }) {
           payloadKey="shipyards"
           label={tx(locale, "Bulk Upload", "엑셀 붙여넣기 등록", "Excel貼り付け登録")}
           columns={["name", "address", "phone", "contact"]}
+          requiredColumns={["name"]}
+          validate={(row) => {
+            const e: Record<string, string> = {};
+            if (!row.name?.trim()) e.name = tx(locale, "Required", "필수", "必須");
+            return e;
+          }}
           onDone={fetchShipyards}
         />
       </div>
