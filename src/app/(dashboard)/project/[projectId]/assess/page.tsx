@@ -186,20 +186,6 @@ export default function AssessPage() {
           <ArrowLeft size={14} /> {equipmentId ? (tx(locale, "Equipment", "기자재", "機器")) : (tx(locale, "Project", "프로젝트", "プロジェクト"))}
         </Link>
 
-        {/* 테스트 기능 안내 배너 */}
-        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 flex items-center gap-3">
-          <div className="h-7 w-7 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
-            <span className="text-[12px] font-bold text-amber-700">β</span>
-          </div>
-          <p className="text-[12px] text-amber-800">
-            {tx(locale,
-              "This feature is in testing. You can skip without completing all items.",
-              "이 기능은 테스트 중입니다. 모든 항목을 입력하지 않아도 다음 단계로 넘어갈 수 있습니다.",
-              "この機能はテスト中です。全項目を入力しなくても次のステップに進めます。"
-            )}
-          </p>
-        </div>
-
         <div className="flex items-start justify-between mb-6">
           <div className="flex items-center gap-4">
             <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-orange-50 to-safety-elevated/10 border border-safety-elevated/15 flex items-center justify-center shadow-xs">

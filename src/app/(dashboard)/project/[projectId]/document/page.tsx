@@ -275,20 +275,6 @@ export default function DocumentPage() {
           {equipmentId ? (tx(locale, "Equipment", "기자재", "機器")) : (tx(locale, "Project", "프로젝트", "プロジェクト"))}
         </Link>
 
-        {/* 테스트 기능 안내 배너 */}
-        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 flex items-center gap-3">
-          <div className="h-7 w-7 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
-            <span className="text-[12px] font-bold text-amber-700">β</span>
-          </div>
-          <p className="text-[12px] text-amber-800">
-            {tx(locale,
-              "This feature is in testing. Documents can be generated at any time.",
-              "이 기능은 테스트 중입니다. 문서는 언제든지 생성할 수 있습니다.",
-              "この機能はテスト中です。文書はいつでも生成できます。"
-            )}
-          </p>
-        </div>
-
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div className="flex items-center gap-4">
