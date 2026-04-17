@@ -29,7 +29,7 @@ interface FaqRow     { id: number; question: string; answer: string; category: s
 interface SettingRow { key: string; value: string; description: string | null; }
 interface LogRow     { id: string; event: string; userEmail: string | null; level: string; detail: string | null; createdAt: string; }
 
-const TABS = ["users", "signups", "shipyards", "projects", "submissions", "faq", "qna", "settings", "logs", "dataset", "data-health", "doc-formats"] as const;
+const TABS = ["users", "signups", "shipyards", "projects", "submissions", "faq", "qna", "settings", "logs", "dataset", "data-health", "doc-formats", "society-kb"] as const;
 type Tab = typeof TABS[number];
 
 // ─── Page ────────────────────────────────────────────────────────────────────
@@ -76,6 +76,7 @@ export default function AdminPage() {
     dataset: tx(locale, "AI Dataset", "AI 데이터셋", "AIデータセット"),
     "data-health": tx(locale, "Data Health", "데이터 정합성", "データ整合性"),
     "doc-formats": tx(locale, "Doc Formats", "문서 포맷", "ドキュメント形式"),
+    "society-kb": tx(locale, "Society KB", "선급 가이드", "船級ガイド"),
   };
 
   return (
@@ -114,6 +115,7 @@ export default function AdminPage() {
       {activeTab === "dataset"     && <DatasetTab locale={locale} />}
       {activeTab === "data-health" && <DataHealthTab locale={locale} />}
       {activeTab === "doc-formats" && <DocFormatsTab locale={locale} />}
+      {activeTab === "society-kb"  && <SocietyKbTab locale={locale} />}
     </motion.div>
   );
 }
@@ -2408,6 +2410,193 @@ function DocFormatsTab({ locale }: { locale: string }) {
       <ConfirmDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete}
         title={tx(locale, "Delete Format", "포맷 삭제", "形式削除")}
         description={tx(locale, `Delete "${deleteTarget?.code}"? This cannot be undone.`, `"${deleteTarget?.code}" 포맷을 삭제하시겠습니까?`, `「${deleteTarget?.code}」を削除しますか？`)} />
+    </div>
+  );
+}
+
+// ─── Society KB Tab ──────────────────────────────────────────────────────────
+
+interface SocietyKbRow { id: number; classification: string; checkId: string; category: string; question: string; questionKo: string | null; guidance: string | null; isRequired: boolean; }
+
+const SOCIETIES = ["KR", "LR", "DNV", "ABS", "BV", "CCS", "NK"];
+
+function SocietyKbTab({ locale }: { locale: string }) {
+  const [items, setItems] = useState<SocietyKbRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [society, setSociety] = useState<string>("KR");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editItem, setEditItem] = useState<SocietyKbRow | null>(null);
+  const [form, setForm] = useState({ classification: "KR", checkId: "", category: "", question: "", questionKo: "", guidance: "", isRequired: true });
+  const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<SocietyKbRow | null>(null);
+
+  const fetchItems = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/society-checklist?classification=${society}`);
+      if (res.ok) setItems(await res.json());
+    } finally { setLoading(false); }
+  }, [society]);
+
+  useEffect(() => { fetchItems(); }, [fetchItems]);
+
+  const openCreate = () => {
+    setEditItem(null);
+    setForm({ classification: society, checkId: "", category: "", question: "", questionKo: "", guidance: "", isRequired: true });
+    setDialogOpen(true);
+  };
+
+  const openEdit = (item: SocietyKbRow) => {
+    setEditItem(item);
+    setForm({
+      classification: item.classification, checkId: item.checkId, category: item.category,
+      question: item.question, questionKo: item.questionKo || "", guidance: item.guidance || "",
+      isRequired: item.isRequired,
+    });
+    setDialogOpen(true);
+  };
+
+  const handleSave = async () => {
+    if (!form.classification || !form.checkId || !form.category || !form.question) {
+      showToast.error(tx(locale, "All required fields must be filled", "필수 항목을 모두 입력하세요", "必須項目を入力してください"));
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/society-checklist", {
+        method: editItem ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editItem ? { id: editItem.id, ...form } : form),
+      });
+      if (res.ok) {
+        showToast.success(tx(locale, "Saved", "저장되었습니다", "保存されました"));
+        setDialogOpen(false);
+        fetchItems();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        showToast.error((d as { error?: string }).error || "Failed");
+      }
+    } finally { setSaving(false); }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    const res = await fetch(`/api/society-checklist?id=${deleteTarget.id}`, { method: "DELETE" });
+    if (res.ok) {
+      showToast.success(tx(locale, "Deleted", "삭제되었습니다", "削除されました"));
+      fetchItems();
+    }
+    setDeleteTarget(null);
+  };
+
+  const byCategory = new Map<string, SocietyKbRow[]>();
+  items.forEach((it) => {
+    if (!byCategory.has(it.category)) byCategory.set(it.category, []);
+    byCategory.get(it.category)!.push(it);
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-body-sm font-bold text-text">
+          {tx(locale, `Society Checklist KB (${items.length})`, `선급 체크리스트 가이드 (${items.length})`, `船級チェックリスト (${items.length})`)}
+        </h2>
+        <div className="flex items-center gap-2">
+          <div className="flex gap-1 p-1 bg-surface-secondary rounded-[8px]">
+            {SOCIETIES.map((s) => (
+              <button key={s} onClick={() => setSociety(s)}
+                className={cn("px-3 py-1 rounded-[6px] text-[11px] font-medium transition-all",
+                  society === s ? "bg-white text-text shadow-xs" : "text-text-tertiary")}>
+                {s}
+              </button>
+            ))}
+          </div>
+          <Button size="sm" onClick={openCreate}><Plus size={14} /> {tx(locale, "Add", "추가", "追加")}</Button>
+        </div>
+      </div>
+
+      {loading ? <SkeletonTable rows={5} /> : items.length === 0 ? (
+        <Card><CardBody><EmptyState icon={FileText} title={tx(locale, `No items for ${society}`, `${society} 체크리스트 항목이 없습니다`, `${society}チェックリスト項目がありません`)} /></CardBody></Card>
+      ) : (
+        <div className="space-y-3">
+          {[...byCategory.entries()].map(([cat, group]) => (
+            <Card key={cat} padding="none">
+              <div className="px-4 py-2 bg-brand-lighter/40 border-b border-border">
+                <span className="text-[12px] font-bold text-text">{cat}</span>
+                <span className="text-[11px] text-text-tertiary ml-2">({group.length})</span>
+              </div>
+              <div className="divide-y divide-border">
+                {group.map((item) => (
+                  <div key={item.id} className="px-4 py-3 hover:bg-surface-secondary/20 transition-colors">
+                    <div className="flex items-start gap-3">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-surface-secondary text-text-secondary shrink-0 mt-0.5">{item.checkId}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[12px] font-semibold text-text">{item.question}</p>
+                        {item.questionKo && <p className="text-[11px] text-text-secondary mt-0.5">{item.questionKo}</p>}
+                        {item.guidance && (
+                          <div className="mt-2 p-2 rounded-md bg-brand-lighter/30 border-l-2 border-brand">
+                            <p className="text-[10px] font-bold text-brand mb-0.5">{tx(locale, "Guidance", "가이드", "ガイド")}</p>
+                            <p className="text-[11px] text-text-secondary whitespace-pre-wrap">{item.guidance}</p>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2 mt-1.5">
+                          {!item.isRequired && <span className="text-[10px] text-text-tertiary">{tx(locale, "Optional", "선택사항", "任意")}</span>}
+                        </div>
+                      </div>
+                      <div className="flex gap-1 shrink-0">
+                        <button onClick={() => openEdit(item)} className="p-1.5 rounded-md text-text-tertiary hover:text-brand hover:bg-brand-lighter transition-colors"><Pencil size={13} /></button>
+                        <button onClick={() => setDeleteTarget(item)} className="p-1.5 rounded-md text-text-tertiary hover:text-safety-high hover:bg-risk-bg transition-colors"><Trash2 size={13} /></button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)}
+        title={editItem ? tx(locale, "Edit Item", "항목 수정", "項目編集") : tx(locale, "Add Item", "항목 추가", "項目追加")}
+        maxWidth="max-w-lg">
+        <div className="space-y-3">
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-[11px] font-bold text-text-tertiary mb-1">Society *</label>
+              <select value={form.classification} onChange={(e) => setForm({ ...form, classification: e.target.value })}
+                className="w-full h-9 rounded-lg border border-border bg-white px-3 text-[12px] text-text">
+                {SOCIETIES.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <Input label="Check ID *" placeholder="CYB-01" value={form.checkId} onChange={(e) => setForm({ ...form, checkId: e.target.value })} disabled={!!editItem} />
+            <Input label="Category *" placeholder="Access Control" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
+          </div>
+          <Input label="Question (EN) *" value={form.question} onChange={(e) => setForm({ ...form, question: e.target.value })} />
+          <Input label={tx(locale, "Question (KO)", "질문 (한국어)", "質問 (韓国語)")} value={form.questionKo} onChange={(e) => setForm({ ...form, questionKo: e.target.value })} />
+          <div>
+            <label className="block text-[11px] font-bold text-text-tertiary mb-1">
+              {tx(locale, "Guidance (how to comply)", "가이드 (컴플라이언스 방법)", "ガイド")}
+            </label>
+            <textarea value={form.guidance} onChange={(e) => setForm({ ...form, guidance: e.target.value })} rows={4}
+              placeholder={tx(locale, "e.g., Implement RBAC with min 8-char password policy. Reference E27 SC-1.",
+                "예: RBAC 구현, 최소 8자 비밀번호 정책 적용. E27 SC-1 참조.",
+                "例: RBACを実装、最小8文字のパスワードポリシー。E27 SC-1参照。")}
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-[12px] text-text focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand transition-all" />
+          </div>
+          <label className="flex items-center gap-2 text-[12px] text-text-secondary">
+            <input type="checkbox" checked={form.isRequired} onChange={(e) => setForm({ ...form, isRequired: e.target.checked })} className="rounded" />
+            {tx(locale, "Required (not optional)", "필수 항목", "必須項目")}
+          </label>
+          <div className="flex justify-end gap-3 pt-2 border-t border-border">
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>{tx(locale, "Cancel", "취소", "キャンセル")}</Button>
+            <Button onClick={handleSave} loading={saving}>{tx(locale, "Save", "저장", "保存")}</Button>
+          </div>
+        </div>
+      </Dialog>
+
+      <ConfirmDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete}
+        title={tx(locale, "Delete Item", "항목 삭제", "項目削除")}
+        description={tx(locale, `Delete "${deleteTarget?.checkId}"?`, `"${deleteTarget?.checkId}" 항목을 삭제하시겠습니까?`, `「${deleteTarget?.checkId}」を削除しますか？`)} />
     </div>
   );
 }
