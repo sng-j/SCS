@@ -63,7 +63,9 @@ export default function InventoryPage() {
   const { locale } = useLocaleStore();
 
   const userRole = (session?.user as { role?: string })?.role || "VENDOR";
-  const isReadOnly = userRole === "SHIPYARD";
+  // Both SUPPORT and SHIPYARD (viewer) see inventory as read-only;
+  // HW/SW registration is the vendor's responsibility.
+  const isReadOnly = userRole === "SHIPYARD" || userRole === "SUPPORT";
 
   const tabParam = searchParams.get("tab");
   const equipmentId = searchParams.get("equipmentId");

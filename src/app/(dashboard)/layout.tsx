@@ -101,7 +101,8 @@ function getNavSections(role: string): NavSection[] {
     ];
   }
 
-  if (role === "SHIPYARD") {
+  if (role === "SUPPORT" || role === "SHIPYARD") {
+    const isViewer = role === "SHIPYARD"; // read-only viewer
     return [
       {
         labelEn: "Menu", labelKo: "메뉴", labelJa: "メニュー", defaultOpen: true, items: [
@@ -110,11 +111,12 @@ function getNavSections(role: string): NavSection[] {
           { labelEn: "Vessels", labelKo: "선박 현황", labelJa: "船舶一覧", icon: Ship, href: "/fleet" },
         ]
       },
-      {
+      // Vendor Management is a write-only management screen — hidden from read-only viewers
+      ...(isViewer ? [] : [{
         labelEn: "Management", labelKo: "관리", labelJa: "管理", defaultOpen: false, items: [
           { labelEn: "Vendor Management", labelKo: "벤더 관리", labelJa: "ベンダー管理", icon: Users, href: "/shipyard" },
         ]
-      },
+      }]),
       {
         labelEn: "Support", labelKo: "지원", labelJa: "サポート", defaultOpen: false, items: [
           { labelEn: "Q&A", labelKo: "Q&A", labelJa: "Q&A", icon: MessageSquare, href: "/qna" },
@@ -420,7 +422,8 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
 
   const roleLabels: Record<string, Record<string, string>> = {
     ADMIN: { en: "Admin", ko: "관리자", ja: "管理者" },
-    SHIPYARD: { en: "Shipyard", ko: "조선소", ja: "造船所" },
+    SUPPORT: { en: "Support", ko: "조선소 담당자", ja: "造船所担当" },
+    SHIPYARD: { en: "Viewer", ko: "조선소 뷰어", ja: "造船所閲覧" },
     VENDOR: { en: "Vendor", ko: "벤더", ja: "ベンダー" },
   };
 

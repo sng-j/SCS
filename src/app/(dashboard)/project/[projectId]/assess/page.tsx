@@ -571,7 +571,8 @@ interface ChangeEvent {
 function ChangeHistoryTab({ projectId, locale }: { projectId: string; locale: string }) {
   const { data: session } = useSession();
   const userRole = (session?.user as { role?: string })?.role;
-  const canResolve = userRole === "SHIPYARD" || userRole === "ADMIN";
+  // Write (resolve change events): only SUPPORT or ADMIN — viewer cannot
+  const canResolve = userRole === "SUPPORT" || userRole === "ADMIN";
 
   const [changes, setChanges] = useState<ChangeEvent[]>([]);
   const [unresolvedCount, setUnresolvedCount] = useState(0);

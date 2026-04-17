@@ -71,15 +71,16 @@ export default function DocumentPage() {
 
   const userRole = (session?.user as { role?: string })?.role || "VENDOR";
 
-  const canEdit = userRole === "VENDOR" || userRole === "SHIPYARD" || userRole === "ADMIN";
-  const isShipyard = userRole === "SHIPYARD";
+  // VENDOR and SUPPORT can generate/edit. SHIPYARD is read-only viewer.
+  const canEdit = userRole === "VENDOR" || userRole === "SUPPORT" || userRole === "ADMIN";
+  const isShipyardLike = userRole === "SHIPYARD" || userRole === "SUPPORT";
 
   // VENDOR: E27 only (장비 레벨)
-  // SHIPYARD: E26 + IEC + NIST + ISO (선박/조직 레벨)
+  // SUPPORT/SHIPYARD: E26 + IEC + NIST + ISO (선박/조직 레벨)
   // ADMIN: all 5
   const visibleStandards = DOC_STANDARDS.filter((s) => {
     if (userRole === "ADMIN") return true;
-    if (isShipyard) return s.id !== "E27";
+    if (isShipyardLike) return s.id !== "E27";
     return s.id === "E27";
   });
 

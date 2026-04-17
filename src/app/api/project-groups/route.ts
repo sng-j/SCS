@@ -30,7 +30,8 @@ export async function GET() {
 export async function POST(request: Request) {
   const user = await getSessionUser();
   if (!user) return apiError("Unauthorized", 401);
-  if (user.role !== "SHIPYARD" && user.role !== "ADMIN") return apiError("Forbidden", 403);
+  // Write (create group): only SUPPORT or ADMIN. SHIPYARD is read-only now.
+  if (user.role !== "SUPPORT" && user.role !== "ADMIN") return apiError("Forbidden", 403);
 
   try {
     const body = await request.json();

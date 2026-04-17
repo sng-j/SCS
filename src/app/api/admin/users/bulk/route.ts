@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
       errors.push({ row: i + 1, email, error: "email, name, role, password required" });
       continue;
     }
-    if (!["ADMIN", "SHIPYARD", "VENDOR"].includes(role)) {
+    if (!["ADMIN", "SUPPORT", "SHIPYARD", "VENDOR"].includes(role)) {
       errors.push({ row: i + 1, email, error: `invalid role: ${role}` });
       continue;
     }
@@ -69,10 +69,10 @@ export async function POST(req: NextRequest) {
     }
 
     let shipyardId: string | null = null;
-    if (role === "SHIPYARD" || role === "VENDOR") {
+    if (role === "SHIPYARD" || role === "SUPPORT" || role === "VENDOR") {
       const syName = (r.shipyard || "").trim().toLowerCase();
       if (!syName) {
-        errors.push({ row: i + 1, email, error: "shipyard name required for SHIPYARD/VENDOR" });
+        errors.push({ row: i + 1, email, error: "shipyard name required for SUPPORT/SHIPYARD/VENDOR" });
         continue;
       }
       const id = syByName.get(syName);
@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
           email,
           name,
           password: hash,
-          role: role as "ADMIN" | "SHIPYARD" | "VENDOR",
+          role: role as "ADMIN" | "SUPPORT" | "SHIPYARD" | "VENDOR",
           company: r.company?.trim() || null,
           phone: r.phone?.trim() || null,
           shipyardId,

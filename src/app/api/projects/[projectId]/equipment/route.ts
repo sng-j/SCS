@@ -42,11 +42,14 @@ export async function GET(_request: Request, { params }: Params) {
   return NextResponse.json(equipment);
 }
 
-/** POST /api/projects/[projectId]/equipment — create equipment (SHIPYARD/ADMIN only) */
+/** POST /api/projects/[projectId]/equipment — create equipment (SUPPORT/ADMIN only) */
 export async function POST(request: Request, { params }: Params) {
   const user = await getSessionUser();
   if (!user) return apiError("Unauthorized", 401);
-  if (user.role === "VENDOR") return apiError("Vendors cannot create equipment", 403);
+  // Write: only SUPPORT or ADMIN. VENDOR and SHIPYARD (viewer) cannot create.
+  if (user.role !== "SUPPORT" && user.role !== "ADMIN") {
+    return apiError("Only support and admin can create equipment", 403);
+  }
 
   const { projectId } = await params;
   const hasAccess = await verifyProjectAccess(user.id, projectId, user.role, user.shipyardId);
@@ -70,8 +73,8 @@ export async function POST(request: Request, { params }: Params) {
       return apiError("One or more invalid vendors", 400);
     }
 
-    // For SHIPYARD users, verify vendors belong to same shipyard
-    if (user.role === "SHIPYARD") {
+    // For SUPPORT users, verify vendors belong to same shipyard
+    if (user.role === "SUPPORT") {
       const invalidVendor = vendors.find(v => v.shipyardId !== user.shipyardId);
       if (invalidVendor) return apiError("Vendor does not belong to your shipyard", 403);
     }
@@ -154,11 +157,12 @@ export async function PATCH(request: Request, { params }: Params) {
     if (name !== undefined) data.name = name.trim();
     if (description !== undefined) data.description = description?.trim() || null;
     if (status !== undefined) data.status = status;
-    if (vendorIds !== undefined && user.role !== "VENDOR") {
+    // Only SUPPORT/ADMIN can reassign vendors or edit certification info. SHIPYARD is read-only.
+    if (vendorIds !== undefined && (user.role === "SUPPORT" || user.role === "ADMIN")) {
       data.vendors = { set: vendorIds.map((id: string) => ({ id })) };
       data.vendorId = vendorIds[0] || ""; // Legacy
     }
-    if (certificationInfo !== undefined && user.role !== "VENDOR") data.certificationInfo = certificationInfo;
+    if (certificationInfo !== undefined && (user.role === "SUPPORT" || user.role === "ADMIN")) data.certificationInfo = certificationInfo;
     // CBS fields — VENDOR can only modify their own equipment CBS fields
     if (user.role !== "VENDOR" || vendorIdsOfEq.includes(user.id)) {
       if (securityCategory !== undefined) data.securityCategory = securityCategory;
@@ -224,11 +228,14 @@ export async function PATCH(request: Request, { params }: Params) {
   }
 }
 
-/** DELETE /api/projects/[projectId]/equipment — delete equipment (SHIPYARD/ADMIN only) */
+/** DELETE /api/projects/[projectId]/equipment — delete equipment (SUPPORT/ADMIN only) */
 export async function DELETE(request: Request, { params }: Params) {
   const user = await getSessionUser();
   if (!user) return apiError("Unauthorized", 401);
-  if (user.role === "VENDOR") return apiError("Vendors cannot delete equipment", 403);
+  // Write: only SUPPORT or ADMIN. VENDOR and SHIPYARD (viewer) cannot delete.
+  if (user.role !== "SUPPORT" && user.role !== "ADMIN") {
+    return apiError("Only support and admin can delete equipment", 403);
+  }
 
   const { projectId } = await params;
   const hasAccess = await verifyProjectAccess(user.id, projectId, user.role, user.shipyardId);

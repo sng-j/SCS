@@ -66,7 +66,8 @@ export default function ReviewPage() {
   const [reviewNote, setReviewNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const canReview = (userRole === "SHIPYARD" || userRole === "ADMIN") && eq?.status === "SUBMITTED";
+  // Write (approve/revise): only SUPPORT or ADMIN
+  const canReview = (userRole === "SUPPORT" || userRole === "ADMIN") && eq?.status === "SUBMITTED";
 
   useEffect(() => {
     if (!equipmentId) { setLoading(false); return; }

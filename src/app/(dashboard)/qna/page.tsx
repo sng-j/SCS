@@ -90,7 +90,7 @@ export default function QnaPage() {
       { value: "SHIPYARD", label: tx(locale, "Shipyard", "조선소", "造船所") },
       { value: "ADMIN", label: tx(locale, "Admin (System)", "관리자 (시스템)", "管理者") },
     ];
-    if (userRole === "SHIPYARD") return [
+    if (userRole === "SUPPORT" || userRole === "SHIPYARD") return [
       { value: "ADMIN", label: tx(locale, "Admin (System)", "관리자 (시스템)", "管理者") },
     ];
     return []; // Admin doesn't ask, only answers
@@ -99,7 +99,9 @@ export default function QnaPage() {
   // Who can this user answer?
   const canAnswer = (item: QnaItem) => {
     if (userRole === "ADMIN") return true; // Admin can answer everything
-    if (userRole === "SHIPYARD" && item.targetRole === "SHIPYARD") return true; // Shipyard answers vendor questions
+    // SUPPORT (replaces old SHIPYARD mgmt role) answers vendor questions.
+    // SHIPYARD (viewer) cannot answer — read-only.
+    if (userRole === "SUPPORT" && item.targetRole === "SHIPYARD") return true;
     return false;
   };
 
@@ -153,7 +155,8 @@ export default function QnaPage() {
           <h1 className="text-[22px] font-extrabold text-gray-900 tracking-tight">Q&A</h1>
           <p className="text-[13px] text-gray-500 mt-1">
             {userRole === "VENDOR" && tx(locale, "Ask questions to shipyard or admin", "조선소 또는 관리자에게 질문하세요", "造船所・管理者に質問")}
-            {userRole === "SHIPYARD" && tx(locale, "Answer vendor questions & ask admin", "벤더 질문에 답변하고 관리자에게 질문하세요", "ベンダーに回答・管理者に質問")}
+            {userRole === "SUPPORT" && tx(locale, "Answer vendor questions & ask admin", "벤더 질문에 답변하고 관리자에게 질문하세요", "ベンダーに回答・管理者に質問")}
+            {userRole === "SHIPYARD" && tx(locale, "View Q&A history (read-only)", "Q&A 이력 열람 (읽기 전용)", "Q&A閲覧 (読み取り専用)")}
             {userRole === "ADMIN" && tx(locale, "Answer all questions", "모든 질문에 답변하세요", "全質問に回答")}
           </p>
         </div>

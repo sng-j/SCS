@@ -24,10 +24,11 @@ interface CsvRow {
 export async function POST(req: NextRequest) {
   const user = await getSessionUser();
   if (!user) return apiError("Unauthorized", 401);
-  if (user.role !== "SHIPYARD" && user.role !== "ADMIN") return apiError("Forbidden", 403);
+  // Write (bulk create): only SUPPORT or ADMIN. SHIPYARD is now read-only.
+  if (user.role !== "SUPPORT" && user.role !== "ADMIN") return apiError("Forbidden", 403);
 
   const shipyardId = user.shipyardId;
-  if (!shipyardId && user.role === "SHIPYARD") return apiError("Shipyard not assigned", 400);
+  if (!shipyardId && user.role === "SUPPORT") return apiError("Shipyard not assigned", 400);
 
   const body = await req.json();
   const vendors: CsvRow[] = body.vendors;

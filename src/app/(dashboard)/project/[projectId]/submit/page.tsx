@@ -73,7 +73,8 @@ export default function SubmitPage() {
 function EquipmentSubmitView({ projectId, equipmentId, locale, userRole }: {
   projectId: string; equipmentId: string; locale: string; userRole: string;
 }) {
-  const canReview = userRole === "SHIPYARD" || userRole === "ADMIN";
+  // Write (approve/revise): only SUPPORT or ADMIN. SHIPYARD is read-only viewer.
+  const canReview = userRole === "SUPPORT" || userRole === "ADMIN";
   const [eq, setEq] = useState<EquipmentSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -438,7 +439,8 @@ function EquipmentSubmitView({ projectId, equipmentId, locale, userRole }: {
 function OverviewDashboard({ projectId, locale, userRole, session }: {
   projectId: string; locale: string; userRole: string; session: ReturnType<typeof useSession>["data"];
 }) {
-  const canReview = userRole === "SHIPYARD" || userRole === "ADMIN";
+  // Write (approve/revise): only SUPPORT or ADMIN. SHIPYARD is read-only viewer.
+  const canReview = userRole === "SUPPORT" || userRole === "ADMIN";
   const [equipments, setEquipments] = useState<EquipmentSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [reviewTarget, setReviewTarget] = useState<EquipmentSummary | null>(null);

@@ -60,9 +60,9 @@ export async function PATCH(request: Request, { params }: Params) {
   const hasAccess = await verifyProjectAccess(user.id, projectId, user.role, user.shipyardId);
   if (!hasAccess) return apiError("Forbidden", 403);
 
-  // Only SHIPYARD and ADMIN can resolve
-  if (user.role !== "SHIPYARD" && user.role !== "ADMIN") {
-    return apiError("Only shipyard or admin can resolve change events", 403);
+  // Write (resolve/reopen): only SUPPORT or ADMIN. SHIPYARD is read-only now.
+  if (user.role !== "SUPPORT" && user.role !== "ADMIN") {
+    return apiError("Only support or admin can resolve change events", 403);
   }
 
   const { searchParams } = new URL(request.url);

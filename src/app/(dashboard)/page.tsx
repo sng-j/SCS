@@ -23,7 +23,9 @@ export default function DashboardPage() {
   }
 
   if (userRole === "VENDOR") return <VendorDashboard />;
-  if (userRole === "SHIPYARD") return <ShipyardView />;
+  // SUPPORT and SHIPYARD (viewer) both see the shipyard dashboard.
+  // The dashboard itself gates actions by role where needed.
+  if (userRole === "SHIPYARD" || userRole === "SUPPORT") return <ShipyardView />;
   return <AdminDashboard />;
 }
 

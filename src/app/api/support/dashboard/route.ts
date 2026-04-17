@@ -9,7 +9,8 @@ export async function GET() {
   const user = await getSessionUser();
   if (!user) return apiError("Unauthorized", 401);
 
-  if (user.role !== "SHIPYARD" && user.role !== "ADMIN") {
+  // Read: ADMIN, SUPPORT, and SHIPYARD (viewer) can all see support dashboard
+  if (user.role !== "SUPPORT" && user.role !== "SHIPYARD" && user.role !== "ADMIN") {
     return apiError("Forbidden", 403);
   }
 

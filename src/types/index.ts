@@ -1,5 +1,5 @@
 // ── Role types ──
-export type Role = "ADMIN" | "SHIPYARD" | "VENDOR";
+export type Role = "ADMIN" | "SUPPORT" | "SHIPYARD" | "VENDOR";
 export type Classification = "KR" | "LR" | "DNV" | "ABS" | "BV" | "CCS" | "NK";
 
 // ── Phase workflow ──

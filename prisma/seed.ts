@@ -94,8 +94,14 @@ async function main() {
     data: { email: "admin@cytur.net", password: adminPw, name: "관리자", company: "CYTUR", role: "ADMIN", isActive: true },
   });
 
+  // 기존 shipyard@cytur.kr을 SUPPORT 역할로 시드 (조선소 운영 담당)
   await prisma.user.create({
-    data: { email: "shipyard@cytur.kr", password: pw, name: "테스트조선", company: "테스트조선소", phone: "010-1234-5678", role: "SHIPYARD", shipyardId: shipyard.id, isActive: true },
+    data: { email: "shipyard@cytur.kr", password: pw, name: "테스트서포트", company: "테스트조선소", phone: "010-1234-5678", role: "SUPPORT", shipyardId: shipyard.id, isActive: true },
+  });
+
+  // SHIPYARD 역할은 읽기 전용 뷰어 — 조선소 내용을 열람만 가능
+  await prisma.user.create({
+    data: { email: "viewer@cytur.kr", password: pw, name: "테스트뷰어", company: "테스트조선소", phone: "010-0000-0000", role: "SHIPYARD", shipyardId: shipyard.id, isActive: true },
   });
 
   const vendor = await prisma.user.create({

@@ -8,10 +8,11 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const user = await getSessionUser();
   if (!user) return apiError("Unauthorized", 401);
-  if (user.role !== "SHIPYARD" && user.role !== "ADMIN") return apiError("Forbidden", 403);
+  // Read: ADMIN, SUPPORT, SHIPYARD (viewer) can all see review queue
+  if (user.role !== "SHIPYARD" && user.role !== "SUPPORT" && user.role !== "ADMIN") return apiError("Forbidden", 403);
 
   let where: Record<string, unknown>;
-  if (user.role === "SHIPYARD") {
+  if (user.role === "SHIPYARD" || user.role === "SUPPORT") {
     if (!user.shipyardId) return NextResponse.json([]); // No shipyard = no results
     where = { project: { shipyardId: user.shipyardId }, status: "SUBMITTED" };
   } else {
@@ -36,7 +37,8 @@ export async function GET() {
 export async function PATCH(request: Request) {
   const user = await getSessionUser();
   if (!user) return apiError("Unauthorized", 401);
-  if (user.role !== "SHIPYARD" && user.role !== "ADMIN") return apiError("Forbidden", 403);
+  // Write (approve/revise): only SUPPORT or ADMIN
+  if (user.role !== "SUPPORT" && user.role !== "ADMIN") return apiError("Forbidden", 403);
 
   try {
     const body = await request.json();
@@ -55,7 +57,7 @@ export async function PATCH(request: Request) {
       select: { certificationInfo: true, project: { select: { shipyardId: true } } },
     });
     if (!eq) return apiError("Equipment not found", 404);
-    if (user.role === "SHIPYARD" && eq.project?.shipyardId !== user.shipyardId) {
+    if (user.role === "SUPPORT" && eq.project?.shipyardId !== user.shipyardId) {
       return apiError("Forbidden", 403);
     }
     const existing = eq;

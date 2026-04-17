@@ -57,7 +57,8 @@ export async function POST(
 ) {
   const user = await getSessionUser();
   if (!user) return apiError("Unauthorized", 401);
-  if (user.role !== "SHIPYARD" && user.role !== "ADMIN") return apiError("Forbidden", 403);
+  // E26 generation is a write action — only SUPPORT or ADMIN
+  if (user.role !== "SUPPORT" && user.role !== "ADMIN") return apiError("Forbidden", 403);
   const { projectId } = await params;
 
   const hasAccess = await verifyProjectAccess(user.id, projectId, user.role, user.shipyardId);

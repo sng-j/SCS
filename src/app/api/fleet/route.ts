@@ -14,7 +14,8 @@ export async function GET() {
 
   // Build project filter based on role
   let whereClause: Record<string, unknown> = {};
-  if (user.role === "SHIPYARD") {
+  if (user.role === "SHIPYARD" || user.role === "SUPPORT") {
+    // SHIPYARD (viewer) and SUPPORT both scope by shipyardId
     whereClause = user.shipyardId ? { shipyardId: user.shipyardId } : { id: "__none__" };
   } else if (user.role === "VENDOR") {
     whereClause = { equipments: { some: { deletedAt: null, vendors: { some: { id: user.id } } } } };

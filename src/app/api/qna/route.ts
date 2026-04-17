@@ -21,9 +21,9 @@ export async function GET(request: Request) {
   let where = {};
   if (user.role === "ADMIN") {
     where = {}; // Admin sees ALL
-  } else if (user.role === "SHIPYARD") {
-    // Shipyard sees: questions directed to them (TO_SHIPYARD) + own questions + all questions 
-    // from their shipyard's vendors. Filtered by shipyardId for isolation.
+  } else if (user.role === "SHIPYARD" || user.role === "SUPPORT") {
+    // SHIPYARD (viewer) and SUPPORT: questions directed to them (TO_SHIPYARD) + own questions +
+    // all questions from their shipyard's vendors. Filtered by shipyardId for isolation.
     where = {
       user: { shipyardId: user.shipyardId },
       OR: [

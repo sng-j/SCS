@@ -11,7 +11,8 @@ export async function GET() {
 
   // Build project filter based on role
   let projectFilter: Record<string, unknown> = {};
-  if (user.role === "SHIPYARD") {
+  if (user.role === "SHIPYARD" || user.role === "SUPPORT") {
+    // SHIPYARD (viewer) and SUPPORT both scope to their shipyardId
     projectFilter = user.shipyardId ? { shipyardId: user.shipyardId } : { id: "__none__" };
   } else if (user.role === "VENDOR") {
     projectFilter = { equipments: { some: { deletedAt: null, vendors: { some: { id: user.id } } } } };
@@ -80,7 +81,7 @@ export async function GET() {
   let eqWhere: Record<string, unknown> = {};
   if (user.role === "VENDOR") {
     eqWhere = { deletedAt: null, vendors: { some: { id: user.id } } };
-  } else if (user.role === "SHIPYARD" && user.shipyardId) {
+  } else if ((user.role === "SHIPYARD" || user.role === "SUPPORT") && user.shipyardId) {
     eqWhere = { deletedAt: null, project: { shipyardId: user.shipyardId } };
   } else if (user.role === "ADMIN") {
     eqWhere = { deletedAt: null };

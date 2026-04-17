@@ -11,7 +11,8 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const user = await getSessionUser();
   if (!user) return apiError("Unauthorized", 401);
-  if (user.role !== "SHIPYARD" && user.role !== "ADMIN") return apiError("Forbidden", 403);
+  // Read: ADMIN, SUPPORT, SHIPYARD (viewer) can all list vendors in scope
+  if (user.role !== "SHIPYARD" && user.role !== "SUPPORT" && user.role !== "ADMIN") return apiError("Forbidden", 403);
 
   const where = user.role === "ADMIN"
     ? { role: "VENDOR" as const }
@@ -40,7 +41,8 @@ export async function GET() {
 export async function POST(request: Request) {
   const user = await getSessionUser();
   if (!user) return apiError("Unauthorized", 401);
-  if (user.role !== "SHIPYARD" && user.role !== "ADMIN") return apiError("Forbidden", 403);
+  // Write: only SUPPORT (replaces old SHIPYARD mgmt role) or ADMIN can create vendors
+  if (user.role !== "SUPPORT" && user.role !== "ADMIN") return apiError("Forbidden", 403);
 
   try {
     const body = await request.json();
@@ -97,7 +99,8 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   const user = await getSessionUser();
   if (!user) return apiError("Unauthorized", 401);
-  if (user.role !== "SHIPYARD" && user.role !== "ADMIN") return apiError("Forbidden", 403);
+  // Write: only SUPPORT or ADMIN
+  if (user.role !== "SUPPORT" && user.role !== "ADMIN") return apiError("Forbidden", 403);
 
   try {
     const body = await request.json();
@@ -111,7 +114,7 @@ export async function PATCH(request: Request) {
       select: { role: true, shipyardId: true },
     });
     if (!vendor || vendor.role !== "VENDOR") return apiError("Vendor not found", 404);
-    if (user.role === "SHIPYARD" && vendor.shipyardId !== user.shipyardId) {
+    if (user.role === "SUPPORT" && vendor.shipyardId !== user.shipyardId) {
       return apiError("Forbidden", 403);
     }
 
@@ -155,7 +158,8 @@ export async function PATCH(request: Request) {
 export async function DELETE(request: Request) {
   const user = await getSessionUser();
   if (!user) return apiError("Unauthorized", 401);
-  if (user.role !== "SHIPYARD" && user.role !== "ADMIN") return apiError("Forbidden", 403);
+  // Write: only SUPPORT or ADMIN
+  if (user.role !== "SUPPORT" && user.role !== "ADMIN") return apiError("Forbidden", 403);
 
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
@@ -164,7 +168,7 @@ export async function DELETE(request: Request) {
   // Verify the vendor belongs to this shipyard
   const vendor = await prisma.user.findUnique({ where: { id }, select: { role: true, shipyardId: true } });
   if (!vendor || vendor.role !== "VENDOR") return apiError("Vendor not found", 404);
-  if (user.role === "SHIPYARD" && vendor.shipyardId !== user.shipyardId) return apiError("Forbidden", 403);
+  if (user.role === "SUPPORT" && vendor.shipyardId !== user.shipyardId) return apiError("Forbidden", 403);
 
   // Collect equipment IDs outside the transaction.
   const equipmentIds = (

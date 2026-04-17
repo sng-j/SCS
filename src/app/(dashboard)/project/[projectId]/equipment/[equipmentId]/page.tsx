@@ -81,9 +81,9 @@ export default function EquipmentDetailPage() {
   const router = useRouter();
   const userRole = (session?.user as { role?: string })?.role || "VENDOR";
 
-  // SHIPYARD → redirect to vessel detail (조선소는 호선 상세에서 검토)
+  // SHIPYARD(viewer) / SUPPORT → redirect to vessel detail (호선 상세에서 검토)
   useEffect(() => {
-    if (sessionStatus === "authenticated" && (userRole === "SHIPYARD")) {
+    if (sessionStatus === "authenticated" && (userRole === "SHIPYARD" || userRole === "SUPPORT")) {
       router.replace(`/project/${projectId}`);
     }
   }, [sessionStatus, userRole, projectId, router]);
@@ -376,11 +376,12 @@ export default function EquipmentDetailPage() {
                 const isInventory = phase.segment === "inventory";
                 const isDfdCard = phase.segment === "inventory?tab=dfd";
                 let label = locale === "ko" ? phase.labelKo : locale === "ja" ? phase.labelJa : phase.labelEn;
-                // Shipyard sees "Summary" instead of "Submit"
-                if (phase.segment === "submit" && (userRole === "SHIPYARD" || userRole === "ADMIN")) {
+                // SUPPORT / SHIPYARD (viewer) / ADMIN see "Summary" instead of "Submit"
+                const isShipyardLike = userRole === "SUPPORT" || userRole === "SHIPYARD" || userRole === "ADMIN";
+                if (phase.segment === "submit" && isShipyardLike) {
                   label = tx(locale, "Summary", "종합 요약", "サマリー");
                 }
-                const linkTarget = phase.segment === "submit" && (userRole === "SHIPYARD" || userRole === "ADMIN")
+                const linkTarget = phase.segment === "submit" && isShipyardLike
                   ? `/project/${projectId}/review?equipmentId=${equipmentId}`
                   : `/project/${projectId}/${phase.segment}${phase.segment.includes("?") ? "&" : "?"}equipmentId=${equipmentId}`;
                 const cbsBlocked = userRole === "VENDOR" && !hasCbs;

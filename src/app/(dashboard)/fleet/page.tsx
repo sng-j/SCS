@@ -81,7 +81,8 @@ export default function FleetPage() {
     );
   }
 
-  if (userRole !== "SHIPYARD" && userRole !== "ADMIN") {
+  // Read: SUPPORT, SHIPYARD (viewer), ADMIN
+  if (userRole !== "SHIPYARD" && userRole !== "SUPPORT" && userRole !== "ADMIN") {
     return (
       <div className="max-w-5xl mx-auto px-6 py-8">
         <EmptyState icon={Ship} title={tx(locale, "Access denied", "접근 권한이 없습니다", "アクセスが拒否されました")} />

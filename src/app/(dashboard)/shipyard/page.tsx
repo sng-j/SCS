@@ -63,7 +63,8 @@ export default function ShipyardPage() {
     );
   }
 
-  if (userRole !== "SHIPYARD" && userRole !== "ADMIN") {
+  // Vendor management is write-heavy — only SUPPORT (replaces old SHIPYARD mgmt role) and ADMIN
+  if (userRole !== "SUPPORT" && userRole !== "ADMIN") {
     return (
       <div className="max-w-5xl mx-auto px-6 py-8">
         <EmptyState icon={Users} title={tx(locale, "Access denied", "접근 권한이 없습니다", "アクセスが拒否されました")} />

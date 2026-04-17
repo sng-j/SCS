@@ -457,9 +457,9 @@ function UsersTab({ locale }: { locale: string }) {
     if (editForm.email !== editUser.email) body.email = editForm.email;
     if (editForm.company !== (editUser.company || "")) body.company = editForm.company;
     if (editForm.newPassword) body.newPassword = editForm.newPassword;
-    // Only send shipyardId for SHIPYARD/VENDOR users and only if it changed.
+    // Only send shipyardId for SUPPORT/SHIPYARD/VENDOR users and only if it changed.
     if (
-      (editUser.role === "SHIPYARD" || editUser.role === "VENDOR") &&
+      (editUser.role === "SUPPORT" || editUser.role === "SHIPYARD" || editUser.role === "VENDOR") &&
       editForm.shipyardId !== (editUser.shipyardId || "")
     ) {
       body.shipyardId = editForm.shipyardId || null;
@@ -578,7 +578,7 @@ function UsersTab({ locale }: { locale: string }) {
   };
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [createRole, setCreateRole] = useState<"ADMIN" | "SHIPYARD" | "VENDOR">("SHIPYARD");
+  const [createRole, setCreateRole] = useState<"ADMIN" | "SUPPORT" | "SHIPYARD" | "VENDOR">("SUPPORT");
   const [createMode, setCreateMode] = useState<"single" | "bulk">("single");
   const [createForm, setCreateForm] = useState({ name: "", email: "", password: "", company: "" });
   // For SHIPYARD users: "join" attaches to an existing shipyard, "new" creates one.
@@ -603,8 +603,8 @@ function UsersTab({ locale }: { locale: string }) {
       showToast.error(passwordRuleMessage(pw.code, locale));
       return;
     }
-    // Validate shipyard selection for SHIPYARD users
-    if (createRole === "SHIPYARD") {
+    // Validate shipyard selection for SUPPORT/SHIPYARD users
+    if (createRole === "SUPPORT" || createRole === "SHIPYARD") {
       if (createShipyardMode === "join" && !createShipyardId) {
         showToast.error(tx(locale, "Select a shipyard to join", "합류할 조선소를 선택하세요", "参加する造船所を選択してください"));
         return;
@@ -648,7 +648,7 @@ function UsersTab({ locale }: { locale: string }) {
           company: createForm.company,
           role: createRole,
         };
-        if (createRole === "SHIPYARD" && createShipyardMode === "join") {
+        if ((createRole === "SUPPORT" || createRole === "SHIPYARD") && createShipyardMode === "join") {
           payload.shipyardId = createShipyardId;
         }
         res = await fetch("/api/admin/users", {
@@ -679,6 +679,7 @@ function UsersTab({ locale }: { locale: string }) {
     } finally { setCreateSaving(false); }
   };
 
+  const supportUsers = users.filter((u) => u.role === "SUPPORT");
   const shipyardUsers = users.filter((u) => u.role === "SHIPYARD");
   const vendorUsers = users.filter((u) => u.role === "VENDOR");
   const adminUsers = users.filter((u) => u.role === "ADMIN");
@@ -720,7 +721,8 @@ function UsersTab({ locale }: { locale: string }) {
                   <span className={cn(
                     "px-2.5 py-1 rounded-lg text-[11px] font-semibold",
                     u.role === "ADMIN" ? "bg-brand-lighter text-brand" :
-                    u.role === "SHIPYARD" ? "bg-blue-50 text-blue-700" :
+                    u.role === "SUPPORT" ? "bg-blue-50 text-blue-700" :
+                    u.role === "SHIPYARD" ? "bg-purple-50 text-purple-700" :
                     "bg-gray-100 text-gray-600"
                   )}>
                     {u.role}
@@ -766,8 +768,11 @@ function UsersTab({ locale }: { locale: string }) {
         <Button size="sm" onClick={() => { setCreateRole("ADMIN"); setCreateMode("single"); setCreateOpen(true); }}>
           <Plus size={14} /> {tx(locale, "Add Admin", "관리자 추가", "管理者追加")}
         </Button>
+        <Button size="sm" variant="outline" onClick={() => { setCreateRole("SUPPORT"); setCreateShipyardMode(shipyards.length > 0 ? "join" : "new"); setCreateShipyardId(""); setCreateMode("single"); setCreateOpen(true); }}>
+          <Plus size={14} /> {tx(locale, "Add Support (Shipyard Staff)", "조선소 담당자 추가", "造船所担当追加")}
+        </Button>
         <Button size="sm" variant="outline" onClick={() => { setCreateRole("SHIPYARD"); setCreateShipyardMode(shipyards.length > 0 ? "join" : "new"); setCreateShipyardId(""); setCreateMode("single"); setCreateOpen(true); }}>
-          <Plus size={14} /> {tx(locale, "Add Shipyard User", "조선소 계정 추가", "造船所アカウント追加")}
+          <Plus size={14} /> {tx(locale, "Add Viewer", "조선소 뷰어 추가", "閲覧ユーザー追加")}
         </Button>
         <Button size="sm" variant="outline" onClick={() => { setCreateRole("VENDOR"); setCreateShipyardId(""); setCreateMode("single"); setCreateOpen(true); }}>
           <Plus size={14} /> {tx(locale, "Add Vendor", "벤더 추가", "ベンダー追加")}
@@ -775,7 +780,8 @@ function UsersTab({ locale }: { locale: string }) {
       </div>
 
       <UserSection title={tx(locale, "Admins", "관리자", "管理者")} list={adminUsers} hideDelete />
-      <UserSection title={tx(locale, "Shipyard Accounts", "조선소 계정", "造船所アカウント")} list={shipyardUsers} onRowClick={handleShipyardClick} />
+      <UserSection title={tx(locale, "Support Accounts (Shipyard Staff)", "조선소 담당자 계정", "造船所担当アカウント")} list={supportUsers} onRowClick={handleShipyardClick} />
+      <UserSection title={tx(locale, "Shipyard Viewer Accounts (Read-only)", "조선소 뷰어 계정 (읽기 전용)", "造船所閲覧アカウント (読み取り専用)")} list={shipyardUsers} onRowClick={handleShipyardClick} />
       <UserSection title={tx(locale, "Vendor Accounts", "벤더 계정", "ベンダーアカウント")} list={vendorUsers} onRowClick={handleVendorClick} />
 
       {/* Create user dialog */}
@@ -785,12 +791,14 @@ function UsersTab({ locale }: { locale: string }) {
         title={
           createRole === "ADMIN" ? tx(locale, "Create Admin", "관리자 계정 생성", "管理者アカウント作成") :
           createRole === "VENDOR" ? tx(locale, "Create Vendor", "벤더 계정 생성", "ベンダーアカウント作成") :
-          tx(locale, "Create Shipyard", "조선소 계정 생성", "造船所アカウント作成")
+          createRole === "SHIPYARD" ? tx(locale, "Create Viewer", "조선소 뷰어 계정 생성", "閲覧アカウント作成") :
+          tx(locale, "Create Support", "조선소 담당자 계정 생성", "担当アカウント作成")
         }
         description={createMode === "single" ? (
           createRole === "ADMIN" ? tx(locale, "Create an account with system admin privileges", "시스템 관리 권한을 가진 계정을 생성합니다", "システム管理権限を持つアカウントを作成します") :
           createRole === "VENDOR" ? tx(locale, "Create a vendor account assigned to a shipyard", "조선소에 배정된 벤더 계정을 생성합니다", "造船所に配属されたベンダーアカウントを作成します") :
-          tx(locale, "Create a shipyard account to manage projects and vendors", "프로젝트와 벤더를 관리할 조선소 계정을 생성합니다", "プロジェクトとベンダーを管理する造船所アカウントを作成します")
+          createRole === "SHIPYARD" ? tx(locale, "Create a read-only viewer for this shipyard (no edit permissions)", "조선소 내용을 열람만 할 수 있는 뷰어 계정을 생성합니다 (편집 불가)", "閲覧専用アカウントを作成します（編集不可）") :
+          tx(locale, "Create a support account to manage projects, vendors, and reviews", "프로젝트, 벤더, 리뷰를 관리할 조선소 담당자 계정을 생성합니다", "プロジェクト・ベンダー・レビューを管理する担当者アカウントを作成します")
         ) : undefined}
         maxWidth={createMode === "bulk" ? "max-w-5xl" : undefined}
       >
@@ -837,8 +845,8 @@ function UsersTab({ locale }: { locale: string }) {
           <Input label={tx(locale, "Email *", "이메일 *", "メール *")} type="email" placeholder="user@example.com" value={createForm.email} onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })} />
           <Input label={tx(locale, "Password *", "비밀번호 *", "パスワード *")} type="password" placeholder={tx(locale, "6+ characters", "6자 이상", "6文字以上")} value={createForm.password} onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })} />
 
-          {/* Shipyard selector — only for SHIPYARD role */}
-          {createRole === "SHIPYARD" && (
+          {/* Shipyard selector — for SUPPORT (manager) and SHIPYARD (viewer) roles */}
+          {(createRole === "SUPPORT" || createRole === "SHIPYARD") && (
             <div className="space-y-2">
               <label className="text-body-xs font-semibold text-text-secondary">
                 {tx(locale, "Shipyard *", "조선소 *", "造船所 *")}
@@ -1447,7 +1455,8 @@ function ShipyardsTab({ locale }: { locale: string }) {
                                     </div>
                                     <span className={cn("text-[9px] font-bold px-2 py-0.5 rounded-full",
                                       u.role === "ADMIN" ? "bg-brand-lighter text-brand" :
-                                      u.role === "SHIPYARD" ? "bg-green-50 text-green-700" :
+                                      u.role === "SUPPORT" ? "bg-blue-50 text-blue-700" :
+                                      u.role === "SHIPYARD" ? "bg-purple-50 text-purple-700" :
                                       "bg-surface-secondary text-text-tertiary"
                                     )}>{u.role}</span>
                                   </div>
