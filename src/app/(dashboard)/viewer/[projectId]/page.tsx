@@ -18,7 +18,10 @@ interface Equipment {
   id: string;
   name: string;
   status: string;
-  vendor: { id: string; name: string; company: string | null } | null;
+  // /api/projects/[id]/equipment returns the M2M relation as `vendors` (array).
+  // The legacy singular `vendor` field is unused here — relying on it always
+  // produced "벤더 미배정" even when vendors were assigned.
+  vendors: { id: string; name: string; company: string | null }[];
   _count: { hardware: number; software: number };
   dfdDiagram: { id: string } | null;
 }
@@ -101,99 +104,136 @@ export default function ViewerProjectPage() {
       {/* Back link */}
       <Link
         href="/viewer"
-        className="inline-flex items-center gap-1 text-body-xs text-text-tertiary hover:text-brand transition-colors"
+        className="group inline-flex items-center gap-1 text-body-xs text-text-tertiary hover:text-brand transition-colors"
       >
-        <ArrowLeft size={14} /> {tx(locale, "Fleet Overview", "선대 현황", "船隊概要")}
+        <ArrowLeft size={14} className="transition-transform group-hover:-translate-x-0.5" />
+        {tx(locale, "Fleet Overview", "선대 현황", "船隊概要")}
       </Link>
 
-      {/* Vessel header */}
-      <div>
-        <div className="flex items-center gap-2 mb-1.5">
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-border bg-surface text-text-tertiary text-[10px] font-bold uppercase tracking-wider">
-            <Eye size={10} /> {tx(locale, "Viewer Mode", "뷰어 모드", "閲覧モード")}
+      {/* Vessel header — bridge console aesthetic, matches equipment page */}
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: [0.2, 0.8, 0.2, 1] }}
+        className="relative"
+      >
+        {/* Status color strip — vessel-level signal mirrors approval health */}
+        <div
+          aria-hidden
+          className="absolute left-[-12px] top-1 bottom-1 w-[2px] rounded-full"
+          style={{ backgroundColor: signalColor(progressPct) }}
+        />
+        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-border bg-surface text-text-tertiary text-[10px] font-bold uppercase tracking-[0.1em]">
+            <Eye size={10} /> {tx(locale, "Viewer", "뷰어", "閲覧")}
           </span>
           {project.classification && (
-            <span className="px-1.5 py-0.5 rounded-md bg-surface-secondary text-[10px] font-bold text-text-secondary">
+            <span className="px-1.5 py-0.5 rounded-md bg-surface-secondary text-[10px] font-bold text-text-secondary uppercase tracking-[0.06em]">
               {project.classification}
             </span>
           )}
-        </div>
-        <h1 className="text-h4 font-extrabold text-text">{project.vesselName}</h1>
-        <p className="text-body-sm text-text-tertiary mt-1">
-          {[project.shipowner, project.systemName].filter(Boolean).join(" · ") || "—"}
-        </p>
-      </div>
-
-      {/* Overall progress */}
-      <Card>
-        <CardBody>
-          <div className="flex items-baseline justify-between mb-3">
-            <div>
-              <p className="text-[11px] font-medium uppercase tracking-wider text-text-tertiary">
-                {tx(locale, "Equipment Approval Progress", "기자재 승인 진행률", "機器承認進捗")}
-              </p>
-              <p className="text-body-sm text-text-secondary mt-1">
-                {tx(locale,
-                  `${approvedCount} of ${equipments.length} equipment approved`,
-                  `전체 ${equipments.length}개 중 ${approvedCount}개 승인 완료`,
-                  `${equipments.length}中 ${approvedCount} 承認済み`)}
-              </p>
-            </div>
-            <span className="text-[32px] font-extrabold tabular-nums" style={{ color: signalColor(progressPct) }}>
-              {progressPct}%
+          {/* live-pulse dot */}
+          <span className="ml-0.5 inline-flex items-center gap-1 text-[9px] font-mono text-text-tertiary uppercase tracking-[0.1em]">
+            <span className="relative inline-flex h-1.5 w-1.5">
+              <span className="absolute inset-0 rounded-full bg-safety-low opacity-60 animate-ping" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-safety-low" />
             </span>
-          </div>
-          <div className="h-2 rounded-full bg-surface-secondary overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-700"
-              style={{ width: `${progressPct}%`, backgroundColor: signalColor(progressPct) }}
-            />
-          </div>
-        </CardBody>
-      </Card>
+            Live
+          </span>
+        </div>
+        <h1 className="text-h4 font-extrabold text-text leading-tight">{project.vesselName}</h1>
+        <div className="flex items-center gap-3 mt-1 text-[11px] font-mono text-text-tertiary">
+          <span className="tracking-tight">
+            {[project.shipowner, project.systemName].filter(Boolean).join(" · ") || "—"}
+          </span>
+        </div>
+      </motion.div>
 
-      {/* Equipment list */}
+      {/* Overall progress — readout panel */}
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.1, ease: [0.2, 0.8, 0.2, 1] }}
+      >
+        <Card padding="none">
+          <div className="p-4">
+            <div className="flex items-baseline justify-between mb-2">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-text-tertiary">
+                  {tx(locale, "Equipment Approval Progress", "기자재 승인 진행률", "機器承認進捗")}
+                </p>
+                <p className="text-body-xs text-text-secondary mt-1 font-mono">
+                  {tx(locale,
+                    `${approvedCount} of ${equipments.length} approved`,
+                    `${equipments.length}개 중 ${approvedCount}개 승인 완료`,
+                    `${equipments.length}中 ${approvedCount} 承認済み`)}
+                </p>
+              </div>
+              <span className="text-[28px] font-extrabold tabular-nums" style={{ color: signalColor(progressPct) }}>
+                {progressPct}<span className="text-[14px] font-medium text-text-tertiary">%</span>
+              </span>
+            </div>
+            <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: `${signalColor(progressPct)}25` }}>
+              <div className="h-full transition-[width] duration-700" style={{ width: `${progressPct}%`, backgroundColor: signalColor(progressPct) }} />
+            </div>
+          </div>
+        </Card>
+      </motion.div>
+
+      {/* Equipment list — numbered console rows */}
       {equipments.length === 0 ? (
         <Card><CardBody><EmptyState icon={Package} title={tx(locale, "No equipment registered", "등록된 기자재가 없습니다", "登録された機器がありません")} /></CardBody></Card>
       ) : (
-        <div>
-          <h2 className="text-body-sm font-bold text-text mb-2 px-1">
-            {tx(locale,
-              `Equipment (${equipments.length})`,
-              `기자재 (${equipments.length}개)`,
-              `機器 (${equipments.length})`)}
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.18, ease: [0.2, 0.8, 0.2, 1] }}
+        >
+          <h2 className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-text-tertiary mb-2 px-1">
+            <Package size={11} strokeWidth={2.25} />
+            <span>{tx(locale, "Equipment", "기자재", "機器")}</span>
+            <span className="font-mono tabular-nums">[{String(equipments.length).padStart(2, "0")}]</span>
           </h2>
           <Card padding="none">
             <div className="divide-y divide-border">
-              {sortedEq.map((eq) => {
+              {sortedEq.map((eq, idx) => {
                 const st = STATUS_META[eq.status] || STATUS_META.PENDING;
                 const Icon = st.icon;
                 return (
                   <Link
                     key={eq.id}
                     href={`/viewer/${projectId}/${eq.id}`}
-                    className="flex items-center gap-4 px-5 py-4 hover:bg-surface-secondary/30 transition-colors group"
+                    className="relative flex items-center gap-4 px-5 py-3.5 hover:bg-surface-secondary/30 transition-colors group"
                   >
+                    {/* Left status stripe */}
+                    <span aria-hidden className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r" style={{ backgroundColor: st.color }} />
+                    {/* Mono index */}
+                    <span className="font-mono text-[10px] font-bold tabular-nums tracking-[0.05em] text-text-tertiary w-6 shrink-0">
+                      {String(idx + 1).padStart(2, "0")}
+                    </span>
                     <div
-                      className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0"
+                      className="h-9 w-9 rounded-lg flex items-center justify-center shrink-0"
                       style={{ backgroundColor: st.bg }}
                     >
-                      <Icon size={18} style={{ color: st.color }} />
+                      <Icon size={16} style={{ color: st.color }} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <p className="text-body-md font-bold text-text truncate group-hover:text-brand transition-colors">{eq.name}</p>
+                      <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                        <p className="text-body-sm font-bold text-text truncate group-hover:text-brand transition-colors">{eq.name}</p>
                         <span
-                          className="px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0"
+                          className="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-[0.06em] shrink-0"
                           style={{ backgroundColor: st.bg, color: st.color }}
                         >
                           {st.label[locale as "en" | "ko" | "ja"] || st.label.en}
                         </span>
                       </div>
-                      <p className="text-body-xs text-text-tertiary">
-                        {eq.vendor?.company || eq.vendor?.name || tx(locale, "No vendor assigned", "벤더 미배정", "ベンダー未割当")}
-                        {` · HW ${eq._count.hardware} · SW ${eq._count.software}`}
-                        {eq.dfdDiagram ? ` · ${tx(locale, "DFD ✓", "DFD ✓", "DFD ✓")}` : ""}
+                      <p className="text-body-xs text-text-tertiary font-mono tracking-tight">
+                        {eq.vendors.length > 0
+                          ? eq.vendors.map((v) => v.company || v.name).join(", ")
+                          : tx(locale, "No vendor assigned", "벤더 미배정", "ベンダー未割当")}
+                        <span className="opacity-50 mx-1.5">·</span>HW {eq._count.hardware}
+                        <span className="opacity-50 mx-1.5">·</span>SW {eq._count.software}
+                        {eq.dfdDiagram && <><span className="opacity-50 mx-1.5">·</span><span className="text-safety-low">DFD ✓</span></>}
                       </p>
                     </div>
                     <ChevronRight size={16} className="text-text-tertiary group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0" />
@@ -202,7 +242,7 @@ export default function ViewerProjectPage() {
               })}
             </div>
           </Card>
-        </div>
+        </motion.div>
       )}
     </motion.div>
   );

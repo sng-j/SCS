@@ -28,7 +28,10 @@ import { AuditRunsList } from "@/components/audit/audit-runs-list";
 
 interface Equipment {
   id: string; name: string; status: string;
-  vendor: { id: string; name: string; company: string | null } | null;
+  // API returns `vendors` (M2M array). The legacy singular `vendor` was always
+  // null at this endpoint, which made the header show "벤더 미배정" even when
+  // vendors were assigned.
+  vendors: { id: string; name: string; company: string | null }[];
   _count: { hardware: number; software: number };
   dfdDiagram: { id: string } | null;
 }
@@ -395,7 +398,9 @@ export default function ViewerEquipmentPage() {
         <h1 className="text-h4 font-extrabold text-text leading-tight">{equipment.name}</h1>
         <div className="flex items-center gap-3 mt-1 text-[11px] font-mono text-text-tertiary">
           <span className="tracking-tight">
-            {equipment.vendor?.company || equipment.vendor?.name || tx(locale, "— no vendor —", "— 벤더 미배정 —", "— ベンダーなし —")}
+            {equipment.vendors.length > 0
+              ? equipment.vendors.map((v) => v.company || v.name).join(", ")
+              : tx(locale, "— no vendor —", "— 벤더 미배정 —", "— ベンダーなし —")}
           </span>
           <span className="h-3 w-px bg-border/80" />
           <span className="tabular-nums">HW {hardware.length}</span>
