@@ -1,29 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser, verifyProjectAccess, apiError } from "@/lib/auth-helpers";
+import { scoreRisk } from "@/lib/risk-scoring";
 
 export const dynamic = "force-dynamic";
-
-/** Convert CVSS baseScore → likelihood (1-5) */
-function scoreToLikelihood(score: number | null): number {
-  if (!score) return 1;
-  if (score >= 9.0) return 5;
-  if (score >= 7.0) return 4;
-  if (score >= 4.0) return 3;
-  if (score >= 2.0) return 2;
-  return 1;
-}
-
-/** Convert baseSeverity → impact (1-5) */
-function severityToImpact(severity: string | null): number {
-  switch (severity?.toUpperCase()) {
-    case "CRITICAL": return 5;
-    case "HIGH": return 4;
-    case "MEDIUM": return 3;
-    case "LOW": return 2;
-    default: return 1;
-  }
-}
 
 /** POST /api/projects/[projectId]/risks/generate-from-cve */
 export async function POST(
@@ -37,12 +17,13 @@ export async function POST(
   const hasAccess = await verifyProjectAccess(user.id, projectId, user.role, user.shipyardId);
   if (!hasAccess) return apiError("Forbidden", 403);
 
-  // Get all CveMatches for this project's software
+  // Get all CveMatches for this project's software; carry the host HW's category
+  // so the scorer can weight impact by asset criticality (CAT I/II/III).
   const software = await prisma.software.findMany({
     where: { projectId, deletedAt: null },
     select: {
       id: true, name: true, version: true,
-      hardware: { select: { id: true, name: true } },
+      hardware: { select: { id: true, name: true, category: true } },
       cveMatches: {
         where: { deletedAt: null },
         select: { cveId: true },
@@ -50,14 +31,14 @@ export async function POST(
     },
   });
 
-  // Collect unique CVE IDs with asset info
-  const cveAssetMap = new Map<string, string>(); // cveId → assetRef
+  // Collect unique CVE IDs with asset info + HW category for scoring
+  const cveAssetMap = new Map<string, { assetRef: string; hwCategory: string | null }>();
   for (const sw of software) {
     const hwName = sw.hardware?.name || "";
     const assetRef = hwName ? `${hwName} → ${sw.name}${sw.version ? ` v${sw.version}` : ""}` : `${sw.name}${sw.version ? ` v${sw.version}` : ""}`;
     for (const match of sw.cveMatches) {
       if (!cveAssetMap.has(match.cveId)) {
-        cveAssetMap.set(match.cveId, assetRef);
+        cveAssetMap.set(match.cveId, { assetRef, hwCategory: sw.hardware?.category ?? null });
       }
     }
   }
@@ -93,9 +74,16 @@ export async function POST(
 
   const cveDetails = await prisma.cveLocal.findMany({
     where: { cveId: { in: cveIds } },
-    select: { cveId: true, baseScore: true, baseSeverity: true, description: true },
+    select: { cveId: true, baseScore: true, baseSeverity: true, cvssVector: true, description: true },
   });
   const cveMap = new Map(cveDetails.map(c => [c.cveId, c]));
+
+  // Resolve CISA KEV presence once for all CVEs being generated.
+  const kevHits = await prisma.exploitRef.findMany({
+    where: { type: "kev", cveId: { in: cveIds } },
+    select: { cveId: true },
+  });
+  const kevSet = new Set(kevHits.map((k) => k.cveId).filter(Boolean) as string[]);
 
   // Create risk entries
   let created = 0;
@@ -105,18 +93,25 @@ export async function POST(
 
     maxNum++;
     const threatId = `T-${String(maxNum).padStart(3, "0")}`;
-    const likelihood = scoreToLikelihood(cve.baseScore);
-    const impact = severityToImpact(cve.baseSeverity);
+    const ctx = cveAssetMap.get(cveId);
+    const { likelihood, impact, riskLevel, reasoning } = scoreRisk({
+      baseScore: cve.baseScore,
+      baseSeverity: cve.baseSeverity,
+      cvssVector: cve.cvssVector,
+      kevKnown: kevSet.has(cveId),
+      hwCategory: ctx?.hwCategory ?? null,
+    });
 
     await prisma.riskEntry.create({
       data: {
         projectId,
         cveId,
         threatId,
-        assetRef: cveAssetMap.get(cveId) || null,
+        assetRef: ctx?.assetRef || null,
         likelihood,
         impact,
-        riskLevel: likelihood * impact,
+        riskLevel,
+        reasoning: JSON.stringify(reasoning),
         status: "OPEN",
       },
     });

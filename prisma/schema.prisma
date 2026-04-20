@@ -362,6 +362,12 @@ model RiskEntry {
   impact     Int
   riskLevel  Int
   mitigation String?   @db.Text
+  // JSON snapshot of the inputs used to compute likelihood/impact at creation time
+  // (CVSS vector, CISA KEV flag, HW category weight, rules applied). Displayed as
+  // a SUPPORT/ADMIN-only hover tooltip so reviewers can audit the auto-calculation
+  // without exposing raw scoring internals to vendors. Recomputed when fields
+  // change via the PATCH route.
+  reasoning  String?   @db.Text
   status     String    @default("OPEN")
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
@@ -381,6 +387,14 @@ model CveLocal {
   baseSeverity String?
   vendor       String?
   product      String?
+  // CPE 2.3 "part" field: "o" = operating system, "a" = application, "h" = hardware.
+  // Used by the matcher to prevent, e.g., an Office-scoped CVE from being attached
+  // to a Windows 10 OS asset.
+  part         String?
+  // CVSS v3.1 vector string ("CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H") — parsed
+  // at risk-scoring time to derive an exploitability-weighted likelihood that is
+  // more faithful than the flat baseScore → likelihood mapping.
+  cvssVector   String?
   versionStart String?
   versionEnd   String?
   publishedAt  DateTime?
@@ -389,6 +403,7 @@ model CveLocal {
   createdAt    DateTime  @default(now())
 
   @@index([vendor, product])
+  @@index([part])
 }
 
 model CveCache {

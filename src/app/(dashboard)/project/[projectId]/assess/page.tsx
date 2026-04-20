@@ -303,7 +303,7 @@ export default function AssessPage() {
         ) : tab === "society" ? (
           <SocietyChecklistTab locale={locale} assessments={assessments} anchorHwId={anchorHwId} />
         ) : (
-          <RiskTab projectId={projectId} canEdit={canEdit} locale={locale} />
+          <RiskTab projectId={projectId} canEdit={canEdit} locale={locale} userRole={userRole} />
         )}
 
       </motion.div>
@@ -737,6 +737,85 @@ interface RiskEntry {
   id: string; cveId?: string | null; threatId: string; assetRef: string | null;
   likelihood: number; impact: number; riskLevel: number;
   mitigation: string | null; status: string; createdAt: string;
+  /** JSON-serialized Reasoning from @/lib/risk-scoring; only shown to reviewers. */
+  reasoning?: string | null;
+}
+
+interface ReasoningPayload {
+  summary?: string;
+  rules?: Array<{ rule: string; effect: string }>;
+  inputs?: {
+    baseScore: number | null;
+    baseSeverity: string | null;
+    cvssVector: string | null;
+    kevKnown: boolean;
+    hwCategory: string | null;
+    metrics: { AV?: string; AC?: string; PR?: string; UI?: string };
+  };
+  userOverride?: {
+    previousLikelihood: number;
+    previousImpact: number;
+    newLikelihood: number;
+    newImpact: number;
+    at: string;
+    by: string;
+  };
+}
+
+/**
+ * Hover tooltip that explains how a risk's likelihood/impact were derived.
+ * Only rendered for SUPPORT/ADMIN — vendors see just the final numbers.
+ */
+function RiskReasoningHover({ reasoning, locale }: { reasoning: ReasoningPayload; locale: string }) {
+  const hasAuto = !!reasoning.summary && !!reasoning.rules?.length;
+  const override = reasoning.userOverride;
+  return (
+    <div className="absolute z-50 left-full top-0 ml-2 w-80 rounded-lg border border-border bg-white shadow-lg p-3 text-left pointer-events-none">
+      {override && (
+        <div className="mb-2 rounded-md border border-safety-elevated/30 bg-orange-50 px-2 py-1.5">
+          <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-safety-elevated">
+            {tx(locale, "Manually adjusted", "수동 조정됨", "手動調整済み")}
+          </p>
+          <p className="text-[10px] text-text-secondary mt-0.5">
+            L {override.previousLikelihood} → {override.newLikelihood} · I {override.previousImpact} → {override.newImpact}
+          </p>
+          <p className="text-[9px] text-text-tertiary mt-0.5 font-mono">{override.by}</p>
+        </div>
+      )}
+      {hasAuto && (
+        <>
+          <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-text-tertiary mb-1.5">
+            {tx(locale, "Auto-calculation", "자동 산출 근거", "自動算出根拠")}
+          </p>
+          <p className="font-mono text-[11px] text-text mb-2 break-words">{reasoning.summary}</p>
+          <div className="space-y-1 border-t border-border/60 pt-2">
+            {reasoning.rules!.map((r, i) => (
+              r.effect ? (
+                <div key={i} className="flex items-start gap-2 text-[10px] leading-tight">
+                  <span className="font-mono text-text-secondary shrink-0">{r.rule}</span>
+                  <span className="text-text-tertiary flex-1">{r.effect}</span>
+                </div>
+              ) : (
+                <div key={i} className="text-[9px] font-bold text-text-tertiary uppercase tracking-wider pt-1">
+                  {r.rule}
+                </div>
+              )
+            ))}
+          </div>
+          {reasoning.inputs?.cvssVector && (
+            <p className="mt-2 pt-2 border-t border-border/60 font-mono text-[9px] text-text-tertiary break-all">
+              {reasoning.inputs.cvssVector}
+            </p>
+          )}
+        </>
+      )}
+      {!hasAuto && !override && (
+        <p className="text-[10px] text-text-tertiary italic">
+          {tx(locale, "Manually entered risk — no auto-calculation data", "수동 입력 리스크 — 자동 산출 데이터 없음", "手動入力リスク — 自動算出データなし")}
+        </p>
+      )}
+    </div>
+  );
 }
 
 const RISK_COLORS: Record<string, { bg: string; text: string }> = {
@@ -755,7 +834,8 @@ function getRiskLabel(score: number): string {
   return "NEGLIGIBLE";
 }
 
-function RiskTab({ projectId, canEdit, locale }: { projectId: string; canEdit: boolean; locale: string }) {
+function RiskTab({ projectId, canEdit, locale, userRole }: { projectId: string; canEdit: boolean; locale: string; userRole: string }) {
+  const canSeeReasoning = userRole === "SUPPORT" || userRole === "ADMIN";
   const [risks, setRisks] = useState<RiskEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
@@ -947,9 +1027,41 @@ function RiskTab({ projectId, canEdit, locale }: { projectId: string; canEdit: b
                           </select>
                         ) : <span className="font-bold">{r.impact}</span>}
                       </td>
-                      {/* Risk Score */}
+                      {/* Risk Score — SUPPORT/ADMIN get a hover explaining the auto-calc */}
                       <td className="px-3 py-3 text-center align-top">
-                        <span className="inline-flex items-center justify-center h-7 w-7 rounded-lg text-[10px] font-bold text-white" style={{ background: rc.bg }}>{r.riskLevel}</span>
+                        {(() => {
+                          let parsed: ReasoningPayload | null = null;
+                          if (canSeeReasoning && r.reasoning) {
+                            try { parsed = JSON.parse(r.reasoning) as ReasoningPayload; } catch { parsed = null; }
+                          }
+                          const showHover = !!parsed;
+                          return (
+                            <span className={cn("relative inline-block group/score", showHover && "cursor-help")}
+                              tabIndex={showHover ? 0 : -1}
+                              aria-describedby={showHover ? `reasoning-${r.id}` : undefined}
+                            >
+                              <span
+                                className={cn(
+                                  "inline-flex items-center justify-center h-7 w-7 rounded-lg text-[10px] font-bold text-white relative",
+                                  showHover && "ring-1 ring-white/40 ring-offset-1 ring-offset-transparent"
+                                )}
+                                style={{ background: rc.bg }}
+                              >
+                                {r.riskLevel}
+                                {showHover && parsed?.inputs?.kevKnown && (
+                                  <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-safety-high ring-2 ring-white" title="CISA KEV" />
+                                )}
+                              </span>
+                              {showHover && parsed && (
+                                <span id={`reasoning-${r.id}`}
+                                  className="invisible opacity-0 group-hover/score:visible group-hover/score:opacity-100 group-focus-within/score:visible group-focus-within/score:opacity-100 transition-opacity duration-100"
+                                >
+                                  <RiskReasoningHover reasoning={parsed} locale={locale} />
+                                </span>
+                              )}
+                            </span>
+                          );
+                        })()}
                       </td>
                       {/* Status dropdown */}
                       <td className="px-3 py-3 text-center align-top">

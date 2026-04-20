@@ -60,9 +60,26 @@ export async function PATCH(request: Request, { params }: Params) {
       updateData.impact = newImpact;
     }
 
-    // Recalculate riskLevel if likelihood or impact changed
+    // Recalculate riskLevel if likelihood or impact changed.
+    // Also append a userOverride note to reasoning so the SUPPORT/ADMIN hover
+    // makes it obvious the displayed score no longer matches the auto-calc.
     if (likelihood !== undefined || impact !== undefined) {
       updateData.riskLevel = newLikelihood * newImpact;
+      let existingReasoning: Record<string, unknown> = {};
+      if (existing.reasoning) {
+        try { existingReasoning = JSON.parse(existing.reasoning) as Record<string, unknown>; } catch { /* keep empty */ }
+      }
+      updateData.reasoning = JSON.stringify({
+        ...existingReasoning,
+        userOverride: {
+          previousLikelihood: existing.likelihood,
+          previousImpact: existing.impact,
+          newLikelihood,
+          newImpact,
+          at: new Date().toISOString(),
+          by: user.email || user.id,
+        },
+      });
     }
 
     const updated = await prisma.riskEntry.update({
