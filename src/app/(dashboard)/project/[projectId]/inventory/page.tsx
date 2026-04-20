@@ -25,6 +25,8 @@ import { DfdEditor } from "@/components/dfd/dfd-editor";
 import { ScanImportDialog } from "@/components/inventory/scan-import-dialog";
 import { DiagramImportDialog } from "@/components/inventory/diagram-import-dialog";
 import { CveBadge, CveMeter, emptySeverity, addToSeverity, type SeverityCounts } from "@/components/inventory/cve-badge";
+import { AuditResultViewer } from "@/components/audit/audit-result-viewer";
+import { buildE27 } from "@/lib/audit-e27";
 import { type Hardware, type Software, type HwForm, type SwForm, HW_TYPES, SW_TYPES, isHwComplete, DEVICE_FIELD_CONFIG, isFieldVisible, getMissingRequiredHw, isValidIp, isValidMac } from "@/components/inventory/inventory-types";
 import { useLocaleStore } from "@/stores/locale-store";
 import { tx } from "@/lib/i18n";
@@ -457,6 +459,9 @@ export default function InventoryPage() {
                             projectId={projectId} equipmentId={equipmentId} onRefresh={fetchAssets}
                             activeHwId={editPanelHwId}
                             onCveClick={openCveSidebar}
+                            cveBySwId={cveBySwId}
+                            cveByHwId={cveByHwId}
+                            software={software}
                           />
                         </div>
 
@@ -474,7 +479,7 @@ export default function InventoryPage() {
                               >
                                 <HwSlidePanel
                                   hw={panelHw} swList={panelSw} locale={locale} canEdit={canEdit}
-                                  projectId={projectId} onRefresh={fetchAssets}
+                                  projectId={projectId} equipmentId={equipmentId} onRefresh={fetchAssets}
                                   onClose={() => setEditPanelHwId(null)}
                                   onDelete={() => setDeleteTarget({ type: "hw", item: panelHw })}
                                   onAddSw={() => { setPreSelectedHwId(panelHw.id); setEditSw(null); setSwDialogOpen(true); }}
@@ -717,11 +722,14 @@ export default function InventoryPage() {
 
 // ─── Hardware Table ─────────────────────────────────────────────────────────
 
-function HardwareTable({ hardware, locale, canEdit, onEdit, onDelete, onAddSw, projectId, equipmentId, onRefresh, activeHwId, onCveClick }: {
+function HardwareTable({ hardware, locale, canEdit, onEdit, onDelete, onAddSw, projectId, equipmentId, onRefresh, activeHwId, onCveClick, cveBySwId, cveByHwId, software }: {
   hardware: Hardware[]; locale: string; canEdit: boolean;
   onEdit: (hw: Hardware) => void; onDelete: (hw: Hardware) => void; onAddSw?: (hwId: string) => void;
   projectId: string; equipmentId?: string | null; onRefresh: () => void; activeHwId?: string | null;
   onCveClick?: (hwId: string) => void;
+  cveBySwId: Map<string, SeverityCounts>;
+  cveByHwId: Map<string, SeverityCounts>;
+  software: Software[];
 }) {
   if (hardware.length === 0) return <EmptyState icon={Cpu} title={tx(locale, "No hardware", "등록된 하드웨어가 없습니다", "ハードウェアがありません")} subtitle={tx(locale, "Use the buttons above to add hardware", "위 버튼으로 하드웨어를 등록하세요", "上のボタンでハードウェアを追加してください")} />;
 
@@ -745,7 +753,24 @@ function HardwareTable({ hardware, locale, canEdit, onEdit, onDelete, onAddSw, p
         const catLabel = hw.category === "1" ? "I" : hw.category === "2" ? "II" : hw.category === "3" ? "III" : "—";
         const catColor = hw.category === "1" ? "bg-red-50 text-red-700" : hw.category === "2" ? "bg-orange-50 text-orange-700" : hw.category === "3" ? "bg-blue-50 text-blue-700" : "bg-gray-50 text-gray-400";
         const swCount = hw.software?.length || 0;
-        const cveCount = (hw._count?.cveMatches || 0) + (hw.swCveCount || 0);
+        // Aggregate severity: HW-direct matches + every linked SW's matches.
+        // Parent computes cveByHwId/cveBySwId from the cve-matches payload; re-using that
+        // map keeps the HW pill color-aligned with the SbomView meter.
+        const hwSev = ((): SeverityCounts => {
+          const acc = { ...(cveByHwId.get(hw.id) || emptySeverity()) };
+          for (const s of software.filter((sw) => sw.hardwareId === hw.id)) {
+            const c = cveBySwId.get(s.id);
+            if (!c) continue;
+            acc.total += c.total;
+            acc.critical += c.critical;
+            acc.high += c.high;
+            acc.medium += c.medium;
+            acc.low += c.low;
+            acc.unknown += c.unknown;
+          }
+          return acc;
+        })();
+        const cveCount = hwSev.total || (hw._count?.cveMatches || 0) + (hw.swCveCount || 0);
         const isActive = activeHwId === hw.id;
         const hasMissing = !isHwComplete(hw);
 
@@ -783,14 +808,15 @@ function HardwareTable({ hardware, locale, canEdit, onEdit, onDelete, onAddSw, p
             <div className="flex justify-center">
               {swCount > 0 ? <span className="px-1.5 py-px rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold">{swCount}</span> : <span className="text-[10px] text-text-tertiary">—</span>}
             </div>
-            {/* CVE */}
+            {/* CVE — clickable CveBadge opens the detailed sidebar */}
             <div className="flex justify-center">
               {cveCount > 0 ? (
                 <button
                   onClick={(e) => { e.stopPropagation(); onCveClick?.(hw.id); }}
-                  className="px-1.5 py-px rounded-full bg-red-50 text-red-600 text-[10px] font-bold hover:bg-red-100 hover:text-red-700 transition-colors cursor-pointer"
+                  className="inline-flex items-center rounded-full transition-transform hover:scale-105 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 cursor-pointer"
+                  aria-label={tx(locale, "View CVE details", "CVE 상세 보기", "CVE詳細を表示")}
                 >
-                  {cveCount}
+                  <CveBadge counts={hwSev} />
                 </button>
               ) : <span className="text-[10px] text-text-tertiary">—</span>}
             </div>
@@ -1124,15 +1150,16 @@ function SoftwareTable({ software, locale, canEdit, onEdit, onDelete, projectId,
 
 // ─── HW Slide Panel (편집용 사이드 패널) ─────────────────────────────────────
 
-function HwSlidePanel({ hw, swList, locale, canEdit, onClose, onDelete, onAddSw, onEditSw, onDeleteSw, projectId, onRefresh }: {
+function HwSlidePanel({ hw, swList, locale, canEdit, onClose, onDelete, onAddSw, onEditSw, onDeleteSw, projectId, equipmentId, onRefresh }: {
   hw: Hardware; swList: Software[]; locale: string; canEdit: boolean;
   onClose: () => void; onDelete: () => void;
   onAddSw: () => void; onEditSw: (sw: Software) => void; onDeleteSw: (sw: Software) => void;
-  projectId: string; onRefresh: () => void;
+  projectId: string; equipmentId?: string | null; onRefresh: () => void;
 }) {
   const Icon = HW_ICONS[hw.type] || HardDrive;
   const typeColor = HW_TYPE_COLORS[hw.type] || "bg-gray-100 text-gray-600";
   const [swOpen, setSwOpen] = useState(true);
+  const [auditOpen, setAuditOpen] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
 
@@ -1145,6 +1172,73 @@ function HwSlidePanel({ hw, swList, locale, canEdit, onClose, onDelete, onAddSw,
   // Known SW suggestions for sysSoftwareCategory
   const [swSuggestions, setSwSuggestions] = useState<Record<string, Array<{ label: string; vendor: string; product: string; cpePrefix: string; swType: string; category: string }>>>({});
   const [showSwSuggestions, setShowSwSuggestions] = useState(false);
+
+  // Audit runs + CVE matches for this HW — feed into AuditResultViewer
+  interface AuditRunSummary {
+    id: string;
+    platform: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    results: any;
+    createdAt: string;
+  }
+  interface ViewerCveMatch {
+    name: string;
+    version: string;
+    cves: { cveId: string; severity: string | null; score: number | null; description: string }[];
+  }
+  const [auditRuns, setAuditRuns] = useState<AuditRunSummary[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [hwCveMatches, setHwCveMatches] = useState<ViewerCveMatch[]>([]);
+
+  useEffect(() => {
+    if (!equipmentId) return;
+    setAuditLoading(true);
+    (async () => {
+      const [runsRes, cveRes] = await Promise.all([
+        fetch(`/api/vendor/audit-tools/upload?equipmentId=${equipmentId}&hardwareId=${hw.id}`).catch(() => null),
+        fetch(`/api/projects/${projectId}/cve-matches`).catch(() => null),
+      ]);
+      if (runsRes?.ok) {
+        const raw = await runsRes.json();
+        const list = Array.isArray(raw) ? raw : (raw.runs ?? []);
+        const parsed: AuditRunSummary[] = list.map((r: { id: string; platform?: string; results?: string | object; createdAt: string }) => ({
+          id: r.id,
+          platform: r.platform || "UNKNOWN",
+          results: typeof r.results === "string" ? (() => { try { return JSON.parse(r.results as string); } catch { return {}; } })() : (r.results ?? {}),
+          createdAt: r.createdAt,
+        }));
+        setAuditRuns(parsed);
+      }
+      if (cveRes?.ok) {
+        const all = await cveRes.json() as Array<{
+          cveId: string;
+          softwareId: string | null;
+          hardwareId: string | null;
+          software: { id: string; name: string; version: string | null } | null;
+          hardware: { id: string } | null;
+          cveDetail: { description: string | null; baseScore: number | null; baseSeverity: string | null } | null;
+        }>;
+        const swIds = new Set(swList.map((s) => s.id));
+        const grouped = new Map<string, ViewerCveMatch>();
+        for (const m of all) {
+          const belongs = (m.softwareId && swIds.has(m.softwareId)) || m.hardwareId === hw.id;
+          if (!belongs) continue;
+          const key = m.software ? `${m.software.name}::${m.software.version ?? ""}` : `${hw.name}::${hw.model ?? ""}`;
+          const name = m.software?.name ?? hw.name;
+          const version = m.software?.version ?? hw.model ?? "";
+          if (!grouped.has(key)) grouped.set(key, { name, version, cves: [] });
+          grouped.get(key)!.cves.push({
+            cveId: m.cveId,
+            severity: m.cveDetail?.baseSeverity ?? null,
+            score: m.cveDetail?.baseScore ?? null,
+            description: m.cveDetail?.description ?? "",
+          });
+        }
+        setHwCveMatches([...grouped.values()]);
+      }
+      setAuditLoading(false);
+    })();
+  }, [equipmentId, hw.id, hw.name, hw.model, projectId, swList]);
 
   // Editable form — initialized from hw data
   const [f, setF] = useState({
@@ -1504,6 +1598,67 @@ function HwSlidePanel({ hw, swList, locale, canEdit, onClose, onDelete, onAddSw,
               )}
             </AnimatePresence>
           </div>
+        )}
+
+        {/* ── Audit Runs (보안 점검 결과) ───────────────────────────── */}
+        {equipmentId && (
+          <>
+            <div className="h-px bg-border mx-5" />
+            <div className="px-5 py-4">
+              <button onClick={() => setAuditOpen(!auditOpen)} className="flex items-center justify-between w-full">
+                <p className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider flex items-center gap-1.5">
+                  <Shield size={11} className="text-brand" />
+                  {tx(locale, "Audit Runs", "보안 점검 결과", "セキュリティ監査結果")}
+                  <span className="font-mono text-[10px] tabular-nums text-text-tertiary">({auditRuns.length})</span>
+                </p>
+                <ChevronDown size={14} className={cn("text-text-tertiary transition-transform", auditOpen && "rotate-180")} />
+              </button>
+              <AnimatePresence initial={false}>
+                {auditOpen && (
+                  <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.15 }} className="overflow-hidden">
+                    {auditLoading ? (
+                      <div className="py-4 flex items-center justify-center gap-2 text-[11px] text-text-tertiary">
+                        <div className="h-3 w-3 border-[1.5px] border-border border-t-brand rounded-full animate-spin" />
+                        {tx(locale, "Loading…", "불러오는 중…", "読み込み中…")}
+                      </div>
+                    ) : auditRuns.length === 0 ? (
+                      <div className="py-5 text-center">
+                        <Shield size={18} className="mx-auto text-text-tertiary mb-1.5" />
+                        <p className="text-[11px] text-text-tertiary">
+                          {tx(locale, "No audit runs", "업로드된 점검 결과 없음", "アップロードされた監査結果なし")}
+                        </p>
+                        <p className="text-[10px] text-text-tertiary/70 mt-0.5">
+                          {tx(locale, "Upload .scsaudit from the HW table", "HW 테이블에서 .scsaudit 업로드", "HWテーブルから.scsauditをアップロード")}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="mt-3 space-y-3">
+                        {auditRuns.map((run) => {
+                          const e27 = buildE27(run.results);
+                          const report = run.results as Parameters<typeof AuditResultViewer>[0]["report"];
+                          const sysinfo = report?.SystemInfo || {};
+                          const deviceName = (sysinfo.ComputerName as string) || hw.name;
+                          const runDate = new Date(run.createdAt).toLocaleString(locale === "ko" ? "ko-KR" : locale === "ja" ? "ja-JP" : "en-US", {
+                            year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+                          });
+                          return (
+                            <AuditResultViewer
+                              key={run.id}
+                              e27={e27}
+                              report={report}
+                              cveMatches={hwCveMatches}
+                              deviceName={deviceName}
+                              runDate={runDate}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </>
         )}
       </div>
 
