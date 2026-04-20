@@ -386,14 +386,6 @@ export default function ViewerEquipmentPage() {
           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-[0.06em]" style={{ backgroundColor: st.bg, color: st.color }}>
             {st.label[locale as "en" | "ko" | "ja"] || st.label.en}
           </span>
-          {/* live-pulse dot — sync heartbeat */}
-          <span className="ml-0.5 inline-flex items-center gap-1 text-[9px] font-mono text-text-tertiary uppercase tracking-[0.1em]">
-            <span className="relative inline-flex h-1.5 w-1.5">
-              <span className="absolute inset-0 rounded-full bg-safety-low opacity-60 animate-ping" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-safety-low" />
-            </span>
-            Live
-          </span>
         </div>
         <h1 className="text-h4 font-extrabold text-text leading-tight">{equipment.name}</h1>
         <div className="flex items-center gap-3 mt-1 text-[11px] font-mono text-text-tertiary">

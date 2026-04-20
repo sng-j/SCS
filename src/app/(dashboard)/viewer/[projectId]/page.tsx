@@ -132,14 +132,6 @@ export default function ViewerProjectPage() {
               {project.classification}
             </span>
           )}
-          {/* live-pulse dot */}
-          <span className="ml-0.5 inline-flex items-center gap-1 text-[9px] font-mono text-text-tertiary uppercase tracking-[0.1em]">
-            <span className="relative inline-flex h-1.5 w-1.5">
-              <span className="absolute inset-0 rounded-full bg-safety-low opacity-60 animate-ping" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-safety-low" />
-            </span>
-            Live
-          </span>
         </div>
         <h1 className="text-h4 font-extrabold text-text leading-tight">{project.vesselName}</h1>
         <div className="flex items-center gap-3 mt-1 text-[11px] font-mono text-text-tertiary">
