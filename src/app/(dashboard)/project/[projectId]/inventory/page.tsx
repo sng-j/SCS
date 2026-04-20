@@ -25,6 +25,7 @@ import { DfdEditor } from "@/components/dfd/dfd-editor";
 import { ScanImportDialog } from "@/components/inventory/scan-import-dialog";
 import { DiagramImportDialog } from "@/components/inventory/diagram-import-dialog";
 import { CveBadge, CveMeter, emptySeverity, addToSeverity, type SeverityCounts } from "@/components/inventory/cve-badge";
+import { CveSidebar } from "@/components/inventory/cve-sidebar";
 import { AuditResultViewer } from "@/components/audit/audit-result-viewer";
 import { AuditRunsList } from "@/components/audit/audit-runs-list";
 import { buildE27 } from "@/lib/audit-e27";
@@ -123,35 +124,6 @@ export default function InventoryPage() {
   const [addMethodOpen, setAddMethodOpen] = useState(false);
   const [simpleInitialView, setSimpleInitialView] = useState<"choose" | "manual-count">("choose");
   const [cveHwId, setCveHwId] = useState<string | null>(null);
-  const [cveList, setCveList] = useState<Array<{ id: number; cveId: string; matchType: string; software?: { name: string; version: string | null }; cveDetail?: { description: string | null; baseScore: number | null; baseSeverity: string | null; publishedAt: string | null } | null }>>([]);
-  const [cveLoading, setCveLoading] = useState(false);
-
-  const openCveSidebar = async (hwId: string) => {
-    setCveHwId(hwId);
-    setCveLoading(true);
-    try {
-      // Get SW IDs for this HW, then get their CVE matches with details
-      const hw = hardware.find(h => h.id === hwId);
-      const swIds = hw?.software?.map((s: { id: string }) => s.id) || [];
-      const res = await fetch(`/api/projects/${projectId}/cve-matches`);
-      if (res.ok) {
-        const allMatches = await res.json();
-        const filtered = (Array.isArray(allMatches) ? allMatches : [])
-          .filter((m: { softwareId?: string; hardwareId?: string }) => (m.softwareId && swIds.includes(m.softwareId)) || m.hardwareId === hwId);
-        setCveList(filtered);
-      }
-    } finally {
-      setCveLoading(false);
-    }
-  };
-
-  const deleteCveMatch = async (matchId: number) => {
-    const res = await fetch(`/api/projects/${projectId}/cve-matches?id=${matchId}`, { method: "DELETE" });
-    if (res.ok) {
-      setCveList(prev => prev.filter(c => c.id !== matchId));
-      await fetchAssets(); // refresh HW counts
-    }
-  };
 
   const handleRegenerateDfd = async () => {
     setDfdGenerating(true);
@@ -524,7 +496,7 @@ export default function InventoryPage() {
                             onAddSw={(hwId) => { setPreSelectedHwId(hwId); setEditSw(null); setSwDialogOpen(true); }}
                             projectId={projectId} equipmentId={equipmentId} onRefresh={fetchAssets}
                             activeHwId={editPanelHwId}
-                            onCveClick={openCveSidebar}
+                            onCveClick={setCveHwId}
                             cveBySwId={cveBySwId}
                             cveByHwId={cveByHwId}
                             software={software}
@@ -647,75 +619,18 @@ export default function InventoryPage() {
         {/* Hidden file input — always rendered */}
         <input ref={importRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImport} />
 
-        {/* Delete confirm */}
-        {/* CVE Sidebar */}
-        {cveHwId && (
-          <div className="fixed inset-0 z-50 flex justify-end">
-            <div className="absolute inset-0 bg-black/20" onClick={() => setCveHwId(null)} />
-            <div className="relative w-full max-w-md bg-white shadow-2xl border-l border-border overflow-y-auto animate-in slide-in-from-right">
-              <div className="sticky top-0 bg-white border-b border-border px-5 py-4 flex items-center justify-between z-10">
-                <div>
-                  <h3 className="text-[15px] font-bold text-text">
-                    {tx(locale, "CVE Matches", "CVE 매칭 목록", "CVEマッチング")}
-                  </h3>
-                  <p className="text-[11px] text-text-tertiary mt-0.5">
-                    {hardware.find(h => h.id === cveHwId)?.name || ""}
-                    {" · "}{cveList.length}{tx(locale, " vulnerabilities", "건의 취약점", "件の脆弱性")}
-                  </p>
-                </div>
-                <button onClick={() => setCveHwId(null)} className="h-8 w-8 rounded-lg flex items-center justify-center text-text-tertiary hover:bg-surface-secondary transition-colors">
-                  <X size={16} />
-                </button>
-              </div>
-              <div className="p-4 space-y-2">
-                {cveLoading ? (
-                  <div className="flex justify-center py-12"><div className="h-6 w-6 border-2 border-brand border-t-transparent rounded-full animate-spin" /></div>
-                ) : cveList.length === 0 ? (
-                  <p className="text-center text-[12px] text-text-tertiary py-8">{tx(locale, "No CVE matches", "CVE 매칭 없음", "CVEマッチングなし")}</p>
-                ) : (
-                  cveList.map((cve) => {
-                    const d = cve.cveDetail;
-                    const sev = d?.baseSeverity;
-                    const sevColor = sev === "CRITICAL" ? "bg-red-100 text-red-700" : sev === "HIGH" ? "bg-orange-100 text-orange-700" : sev === "MEDIUM" ? "bg-yellow-100 text-yellow-800" : sev === "LOW" ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600";
-                    return (
-                      <div key={cve.id} className="p-3 rounded-xl border border-border bg-surface-secondary/30 hover:bg-surface-secondary/60 transition-colors group">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            {/* CVE ID + Severity + Score */}
-                            <div className="flex items-center gap-2 mb-1.5">
-                              <a href={`https://nvd.nist.gov/vuln/detail/${cve.cveId}`} target="_blank" rel="noopener noreferrer" className="text-[12px] font-bold font-mono text-brand hover:underline">{cve.cveId}</a>
-                              {sev && <span className={`px-1.5 py-px rounded text-[9px] font-bold ${sevColor}`}>{sev}</span>}
-                              {d?.baseScore != null && <span className="text-[11px] font-bold text-text-secondary">{d.baseScore}</span>}
-                            </div>
-                            {/* Software info */}
-                            {cve.software && (
-                              <p className="text-[10px] text-violet-600 font-medium mb-1">
-                                {cve.software.name}{cve.software.version ? ` v${cve.software.version}` : ""}
-                              </p>
-                            )}
-                            {/* Description */}
-                            <p className="text-[11px] text-text-tertiary line-clamp-3 leading-relaxed">{d?.description || "—"}</p>
-                            {/* Published date */}
-                            {d?.publishedAt && (
-                              <p className="text-[9px] text-text-tertiary mt-1.5">{new Date(d.publishedAt).toLocaleDateString()}</p>
-                            )}
-                          </div>
-                          <button
-                            onClick={() => deleteCveMatch(cve.id)}
-                            className="h-7 w-7 rounded-lg flex items-center justify-center text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-red-500 hover:bg-red-50 transition-all shrink-0 mt-1"
-                            title={tx(locale, "Remove (not applicable)", "삭제 (해당 없음)", "削除")}
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+        {/* CVE Sidebar — shared component; vendors can delete matches, reviewers see read-only */}
+        <CveSidebar
+          open={!!cveHwId}
+          hwId={cveHwId}
+          hwName={hardware.find((h) => h.id === cveHwId)?.name || ""}
+          projectId={projectId}
+          locale={locale}
+          canDelete={canEdit}
+          hardwareSoftwareIds={cveHwId ? (hardware.find((h) => h.id === cveHwId)?.software?.map((s) => s.id) || []) : []}
+          onClose={() => setCveHwId(null)}
+          onMutate={fetchAssets}
+        />
 
         <ConfirmDialog
           open={!!deleteTarget}

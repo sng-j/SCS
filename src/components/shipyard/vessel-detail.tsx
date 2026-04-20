@@ -24,6 +24,7 @@ import {
   type SeverityCounts,
 } from "@/components/inventory/cve-badge";
 import { AuditRunsList } from "@/components/audit/audit-runs-list";
+import { CveSidebar } from "@/components/inventory/cve-sidebar";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -670,6 +671,7 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
               <EmptyTab icon={Cpu} text={tx(locale, "No assets registered by vendor", "벤더가 아직 자산을 등록하지 않았습니다", "ベンダー未登録")} />
             ) : (
               <AssetReviewPanel
+                projectId={projectId}
                 hardware={hardware}
                 software={software}
                 cveBySwId={cveBySwId}
@@ -997,6 +999,7 @@ const SW_TYPE_SHORT: Record<string, string> = {
 };
 
 function AssetReviewPanel({
+  projectId,
   hardware,
   software,
   cveBySwId,
@@ -1009,6 +1012,7 @@ function AssetReviewPanel({
   onSubTabChange,
   locale,
 }: {
+  projectId: string;
   hardware: HwItem[];
   software: SwItem[];
   cveBySwId: Map<string, SeverityCounts>;
@@ -1021,6 +1025,10 @@ function AssetReviewPanel({
   onSubTabChange: (v: "inventory" | "audit") => void;
   locale: string;
 }) {
+  // CVE detail sidebar — reviewer sees the same list the vendor sees, but
+  // read-only (canDelete=false) so removing "not applicable" matches stays
+  // scoped to vendors who own the submission.
+  const [cveSidebarHwId, setCveSidebarHwId] = useState<string | null>(null);
   // Aggregated CVE footprint for the summary bar + audit subtab badge
   const aggregate = emptySeverity();
   for (const c of cveByHwId.values()) {
@@ -1136,7 +1144,26 @@ function AssetReviewPanel({
                       <span>SW {swList.length}</span>
                     </div>
                   </div>
-                  {hwSev.total > 0 ? <CveBadge counts={hwSev} /> : <span className="text-[10px] text-gray-300">—</span>}
+                  {hwSev.total > 0 ? (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); setCveSidebarHwId(hw.id); }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setCveSidebarHwId(hw.id);
+                        }
+                      }}
+                      className="inline-flex items-center rounded-full hover:scale-105 active:scale-95 transition-transform cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                      title={tx(locale, "View CVE details", "CVE 상세 보기", "CVE詳細を表示")}
+                    >
+                      <CveBadge counts={hwSev} />
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-gray-300">—</span>
+                  )}
                   <ChevronDown size={14} className={cn("text-gray-400 transition-transform", expanded && "rotate-180")} />
                 </button>
                 <AnimatePresence initial={false}>
@@ -1231,6 +1258,17 @@ function AssetReviewPanel({
           locale={locale}
         />
       )}
+
+      <CveSidebar
+        open={!!cveSidebarHwId}
+        hwId={cveSidebarHwId}
+        hwName={hardware.find((h) => h.id === cveSidebarHwId)?.name || ""}
+        projectId={projectId}
+        locale={locale}
+        canDelete={false}
+        hardwareSoftwareIds={cveSidebarHwId ? software.filter((s) => s.hardwareId === cveSidebarHwId).map((s) => s.id) : []}
+        onClose={() => setCveSidebarHwId(null)}
+      />
     </div>
   );
 }
