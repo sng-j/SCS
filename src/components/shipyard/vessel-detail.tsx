@@ -1029,9 +1029,14 @@ function AssetReviewPanel({
   // read-only (canDelete=false) so removing "not applicable" matches stays
   // scoped to vendors who own the submission.
   const [cveSidebarHwId, setCveSidebarHwId] = useState<string | null>(null);
-  // Aggregated CVE footprint for the summary bar + audit subtab badge
+  // Aggregated CVE footprint for the summary bar — scoped to this equipment.
+  // The map is populated from the project-wide /cve-matches payload, so we
+  // must filter by the local hardware/software IDs or the summary would
+  // include CVE counts from other equipments in the same project.
   const aggregate = emptySeverity();
-  for (const c of cveByHwId.values()) {
+  for (const hw of hardware) {
+    const c = cveByHwId.get(hw.id);
+    if (!c) continue;
     aggregate.total += c.total;
     aggregate.critical += c.critical;
     aggregate.high += c.high;
@@ -1039,7 +1044,9 @@ function AssetReviewPanel({
     aggregate.low += c.low;
     aggregate.unknown += c.unknown;
   }
-  for (const c of cveBySwId.values()) {
+  for (const sw of software) {
+    const c = cveBySwId.get(sw.id);
+    if (!c) continue;
     aggregate.total += c.total;
     aggregate.critical += c.critical;
     aggregate.high += c.high;
