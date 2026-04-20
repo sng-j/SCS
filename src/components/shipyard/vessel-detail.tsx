@@ -6,16 +6,25 @@ import Link from "next/link";
 import {
   Ship, Shield, FileText, Package, Cpu, Server, Monitor, Radio, HardDrive, Network,
   CheckCircle, Clock, AlertTriangle, Eye, ThumbsUp, MessageSquare, X, ClipboardList,
-  ChevronRight, ArrowLeft, Download, Plus, Edit2
+  ChevronRight, ArrowLeft, Download, Plus, Edit2, ChevronDown, AlertCircle, Globe,
 } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { useLocaleStore } from "@/stores/locale-store";
 import { tx } from "@/lib/i18n";
 import { showToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { DfdEditor } from "@/components/dfd/dfd-editor";
-import { InlineEditor } from "@/components/inventory/inline-editor";
 import { RiskReasoningHover, parseReasoning, canSeeRiskReasoning } from "@/components/risk/risk-reasoning-hover";
+import {
+  CveBadge,
+  CveMeter,
+  emptySeverity,
+  addToSeverity,
+  type SeverityCounts,
+} from "@/components/inventory/cve-badge";
+import { AuditResultViewer } from "@/components/audit/audit-result-viewer";
+import { buildE27 } from "@/lib/audit-e27";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -27,7 +36,41 @@ interface Equipment {
   updatedAt?: string;
 }
 
-interface HwItem { id: string; name: string; type: string; manufacturer: string | null; model: string | null; ipAddress: string | null; zone: string | null; category: string | null; software: { id: string; name: string; version: string | null }[] }
+interface HwItem {
+  id: string;
+  name: string;
+  type: string;
+  manufacturer: string | null;
+  model: string | null;
+  ipAddress: string | null;
+  zone: string | null;
+  category: string | null;
+  software: { id: string; name: string; version: string | null }[];
+}
+interface SwItem {
+  id: string;
+  name: string;
+  version: string | null;
+  vendor: string | null;
+  swType: string;
+  hardwareId: string | null;
+  cpe: string | null;
+  listeningPort: string | null;
+  purpose: string | null;
+  modelName: string | null;
+}
+interface AuditRunSummary {
+  id: string;
+  platform: string;
+  results: Record<string, unknown>;
+  createdAt: string;
+  hardwareId: string | null;
+}
+interface ViewerCveMatch {
+  name: string;
+  version: string;
+  cves: { cveId: string; severity: string | null; score: number | null; description: string }[];
+}
 interface AssessItem { id: string; checkId: string; result: string; hardwareId: string }
 interface DocItem { id: string; docType: string; title: string; version: number; status: string }
 
@@ -418,19 +461,110 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
   const [revisionModalOpen, setRevisionModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // Review-view enrichments (CVE / SBOM / audit)
+  const [software, setSoftware] = useState<SwItem[]>([]);
+  const [cveBySwId, setCveBySwId] = useState<Map<string, SeverityCounts>>(new Map());
+  const [cveByHwId, setCveByHwId] = useState<Map<string, SeverityCounts>>(new Map());
+  const [hwCveMatches, setHwCveMatches] = useState<Map<string, ViewerCveMatch[]>>(new Map());
+  const [auditRuns, setAuditRuns] = useState<AuditRunSummary[]>([]);
+  const [expandedHwId, setExpandedHwId] = useState<string | null>(null);
+  const [assetsSubTab, setAssetsSubTab] = useState<"inventory" | "audit">("inventory");
+
   useEffect(() => {
+    const safe = (p: Promise<Response>) => p.catch(() => null);
     Promise.all([
-      fetch(`/api/projects/${projectId}/hardware?equipmentId=${eq.id}`).then(async (r) => r.ok ? r.json() : []),
-      fetch(`/api/projects/${projectId}/assessments`).then(async (r) => r.ok ? r.json() : []),
-      fetch(`/api/projects/${projectId}/documents?equipmentId=${eq.id}`).then(async (r) => r.ok ? r.json() : []),
-      fetch(`/api/projects/${projectId}/risks`).then(async (r) => r.ok ? r.json() : []),
-      fetch(`/api/projects/${projectId}/test-procedure?equipmentId=${eq.id}`).then(async (r) => r.ok ? r.json() : null),
-    ]).then(([hw, assess, docs, riskData, tp]) => {
-      setHardware(hw);
-      setAssessments(assess);
+      safe(fetch(`/api/projects/${projectId}/hardware?equipmentId=${eq.id}`)),
+      safe(fetch(`/api/projects/${projectId}/assessments`)),
+      safe(fetch(`/api/projects/${projectId}/documents?equipmentId=${eq.id}`)),
+      safe(fetch(`/api/projects/${projectId}/risks`)),
+      safe(fetch(`/api/projects/${projectId}/test-procedure?equipmentId=${eq.id}`)),
+      safe(fetch(`/api/projects/${projectId}/software?equipmentId=${eq.id}`)),
+      safe(fetch(`/api/projects/${projectId}/cve-matches`)),
+      safe(fetch(`/api/vendor/audit-tools/upload?equipmentId=${eq.id}`)),
+    ]).then(async ([hwRes, assessRes, docsRes, riskRes, tpRes, swRes, cveRes, auditRes]) => {
+      const hwList: HwItem[] = hwRes?.ok ? await hwRes.json() : [];
+      setHardware(hwList);
+      setAssessments(assessRes?.ok ? await assessRes.json() : []);
+      const docs = docsRes?.ok ? await docsRes.json() : [];
       setDocuments(Array.isArray(docs) ? docs : []);
+      const riskData = riskRes?.ok ? await riskRes.json() : [];
       setRisks(Array.isArray(riskData) ? riskData : []);
-      setTestProc(tp);
+      setTestProc(tpRes?.ok ? await tpRes.json() : null);
+
+      const swList: SwItem[] = swRes?.ok ? await swRes.json() : [];
+      setSoftware(Array.isArray(swList) ? swList : []);
+
+      // Build per-SW + per-HW severity maps and the viewer-ready CVE match list.
+      if (cveRes?.ok) {
+        const all = await cveRes.json() as Array<{
+          cveId: string;
+          softwareId: string | null;
+          hardwareId: string | null;
+          software: { id: string; name: string; version: string | null } | null;
+          hardware: { id: string } | null;
+          cveDetail: { description: string | null; baseScore: number | null; baseSeverity: string | null } | null;
+        }>;
+        const swMap = new Map<string, SeverityCounts>();
+        const hwMap = new Map<string, SeverityCounts>();
+        for (const m of all) {
+          const sev = m.cveDetail?.baseSeverity;
+          if (m.softwareId) {
+            if (!swMap.has(m.softwareId)) swMap.set(m.softwareId, emptySeverity());
+            addToSeverity(swMap.get(m.softwareId)!, sev);
+          }
+          if (m.hardwareId) {
+            if (!hwMap.has(m.hardwareId)) hwMap.set(m.hardwareId, emptySeverity());
+            addToSeverity(hwMap.get(m.hardwareId)!, sev);
+          }
+        }
+        setCveBySwId(swMap);
+        setCveByHwId(hwMap);
+
+        // Per-HW viewer-ready CVE matches for the AuditResultViewer consumers
+        const perHw = new Map<string, ViewerCveMatch[]>();
+        const swIdToHwId = new Map<string, string>();
+        for (const sw of swList) {
+          if (sw.hardwareId) swIdToHwId.set(sw.id, sw.hardwareId);
+        }
+        for (const m of all) {
+          const hwId = m.hardwareId ?? (m.softwareId ? swIdToHwId.get(m.softwareId) : undefined);
+          if (!hwId) continue;
+          const name = m.software?.name ?? "—";
+          const version = m.software?.version ?? "";
+          const key = `${name}::${version}`;
+          if (!perHw.has(hwId)) perHw.set(hwId, []);
+          const bucket = perHw.get(hwId)!;
+          let entry = bucket.find((b) => `${b.name}::${b.version}` === key);
+          if (!entry) {
+            entry = { name, version, cves: [] };
+            bucket.push(entry);
+          }
+          entry.cves.push({
+            cveId: m.cveId,
+            severity: m.cveDetail?.baseSeverity ?? null,
+            score: m.cveDetail?.baseScore ?? null,
+            description: m.cveDetail?.description ?? "",
+          });
+        }
+        setHwCveMatches(perHw);
+      }
+
+      // Audit runs — already scoped to this equipment by the query param.
+      if (auditRes?.ok) {
+        const raw = await auditRes.json();
+        const list = Array.isArray(raw) ? raw : (raw.runs ?? []);
+        type RawRun = { id: string; platform?: string; results?: string | object; createdAt: string; hardwareId?: string | null };
+        const parsed: AuditRunSummary[] = list.map((r: RawRun) => ({
+          id: r.id,
+          platform: r.platform || "UNKNOWN",
+          results: typeof r.results === "string"
+            ? (() => { try { return JSON.parse(r.results as string); } catch { return {}; } })()
+            : ((r.results as Record<string, unknown>) ?? {}),
+          createdAt: r.createdAt,
+          hardwareId: r.hardwareId ?? null,
+        }));
+        setAuditRuns(parsed);
+      }
     });
   }, [projectId, eq.id, eq.dfdDiagram]);
 
@@ -536,11 +670,18 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
             {hardware.length === 0 ? (
               <EmptyTab icon={Cpu} text={tx(locale, "No assets registered by vendor", "벤더가 아직 자산을 등록하지 않았습니다", "ベンダー未登録")} />
             ) : (
-              <InlineEditor
-                projectId={projectId}
-                equipmentId={eq.id}
-                onComplete={() => {}}
-                readOnly
+              <AssetReviewPanel
+                hardware={hardware}
+                software={software}
+                cveBySwId={cveBySwId}
+                cveByHwId={cveByHwId}
+                hwCveMatches={hwCveMatches}
+                auditRuns={auditRuns}
+                expandedHwId={expandedHwId}
+                onToggleHw={(id) => setExpandedHwId((prev) => (prev === id ? null : id))}
+                subTab={assetsSubTab}
+                onSubTabChange={setAssetsSubTab}
+                locale={locale}
               />
             )}
           </div>
@@ -832,6 +973,287 @@ function EmptyTab({ icon: Icon, text }: { icon: React.ElementType<{size?: number
     <div className="py-12 text-center bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
       <Icon size={28} className="mx-auto text-gray-300 mb-2" />
       <p className="text-[13px] text-gray-400">{text}</p>
+    </div>
+  );
+}
+
+// ─── Asset review panel (SUPPORT/ADMIN read-only view of HW + SW + audit runs) ─
+
+const HW_ICON_MAP: Record<string, React.ElementType<{ size?: number; className?: string }>> = {
+  PLC: Cpu,
+  SERVER: Server,
+  SENSOR: Radio,
+  NETWORK_DEVICE: Network,
+  PC: Monitor,
+  OTHER_DEVICE: HardDrive,
+};
+
+const SW_TYPE_SHORT: Record<string, string> = {
+  OS: "OS",
+  APPLICATION: "APP",
+  FIRMWARE: "FW",
+  DRIVER: "DRV",
+  LIBRARY: "LIB",
+  MIDDLEWARE: "MW",
+};
+
+function AssetReviewPanel({
+  hardware,
+  software,
+  cveBySwId,
+  cveByHwId,
+  hwCveMatches,
+  auditRuns,
+  expandedHwId,
+  onToggleHw,
+  subTab,
+  onSubTabChange,
+  locale,
+}: {
+  hardware: HwItem[];
+  software: SwItem[];
+  cveBySwId: Map<string, SeverityCounts>;
+  cveByHwId: Map<string, SeverityCounts>;
+  hwCveMatches: Map<string, ViewerCveMatch[]>;
+  auditRuns: AuditRunSummary[];
+  expandedHwId: string | null;
+  onToggleHw: (id: string) => void;
+  subTab: "inventory" | "audit";
+  onSubTabChange: (v: "inventory" | "audit") => void;
+  locale: string;
+}) {
+  // Aggregated CVE footprint for the summary bar + audit subtab badge
+  const aggregate = emptySeverity();
+  for (const c of cveByHwId.values()) {
+    aggregate.total += c.total;
+    aggregate.critical += c.critical;
+    aggregate.high += c.high;
+    aggregate.medium += c.medium;
+    aggregate.low += c.low;
+    aggregate.unknown += c.unknown;
+  }
+  for (const c of cveBySwId.values()) {
+    aggregate.total += c.total;
+    aggregate.critical += c.critical;
+    aggregate.high += c.high;
+    aggregate.medium += c.medium;
+    aggregate.low += c.low;
+    aggregate.unknown += c.unknown;
+  }
+
+  // Per-HW effective severity (HW-direct + linked SW) for the row badge
+  const effectiveHwCve = (hwId: string): SeverityCounts => {
+    const acc = { ...(cveByHwId.get(hwId) || emptySeverity()) };
+    for (const sw of software.filter((s) => s.hardwareId === hwId)) {
+      const c = cveBySwId.get(sw.id);
+      if (!c) continue;
+      acc.total += c.total;
+      acc.critical += c.critical;
+      acc.high += c.high;
+      acc.medium += c.medium;
+      acc.low += c.low;
+      acc.unknown += c.unknown;
+    }
+    return acc;
+  };
+
+  const unlinkedSw = software.filter((s) => !s.hardwareId);
+  const missingCpe = software.filter((s) => !s.cpe).length;
+
+  return (
+    <div className="space-y-4">
+      {/* Summary bar */}
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Cpu size={14} className="text-gray-400" />
+          <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">{tx(locale, "HW", "HW", "HW")}</span>
+          <span className="text-[13px] font-bold text-gray-900">{hardware.length}</span>
+        </div>
+        <span className="h-4 w-px bg-gray-200" />
+        <div className="flex items-center gap-2">
+          <Package size={14} className="text-gray-400" />
+          <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">SW</span>
+          <span className="text-[13px] font-bold text-gray-900">{software.length}</span>
+        </div>
+        <span className="h-4 w-px bg-gray-200" />
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">CVE</span>
+          {aggregate.total > 0 ? <CveBadge counts={aggregate} size="sm" /> : <span className="text-[11px] text-gray-300">—</span>}
+        </div>
+        {missingCpe > 0 && (
+          <>
+            <span className="h-4 w-px bg-gray-200" />
+            <span className="inline-flex items-center gap-1 text-[10px] text-safety-elevated font-mono font-bold tabular-nums">
+              <AlertCircle size={10} strokeWidth={2.5} />
+              {missingCpe} {tx(locale, "without CPE", "CPE 누락", "CPE未登録")}
+            </span>
+          </>
+        )}
+        <span className="flex-1" />
+        <div className="inline-flex items-center rounded-lg border border-gray-200 bg-surface-secondary/40 p-0.5 text-[11px] font-bold">
+          <button
+            onClick={() => onSubTabChange("inventory")}
+            className={cn("px-3 py-1 rounded transition-colors", subTab === "inventory" ? "bg-white text-text shadow-sm" : "text-text-tertiary hover:text-text")}
+          >
+            {tx(locale, "Inventory", "자산 목록", "資産一覧")}
+          </button>
+          <button
+            onClick={() => onSubTabChange("audit")}
+            className={cn("px-3 py-1 rounded transition-colors inline-flex items-center gap-1.5", subTab === "audit" ? "bg-white text-text shadow-sm" : "text-text-tertiary hover:text-text")}
+          >
+            <Shield size={11} />
+            {tx(locale, "Audit Runs", "점검 결과", "監査結果")}
+            <span className="font-mono text-[9px] text-text-tertiary tabular-nums">({auditRuns.length})</span>
+          </button>
+        </div>
+      </div>
+
+      {subTab === "inventory" && (
+        <div className="space-y-2">
+          {hardware.map((hw) => {
+            const hwSev = effectiveHwCve(hw.id);
+            const HwIcon = HW_ICON_MAP[hw.type] || HardDrive;
+            const swList = software.filter((s) => s.hardwareId === hw.id);
+            const expanded = expandedHwId === hw.id;
+            return (
+              <div key={hw.id} className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+                <button
+                  onClick={() => onToggleHw(hw.id)}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-secondary/40 transition-colors text-left"
+                >
+                  <div className="h-9 w-9 rounded-lg bg-brand-lighter flex items-center justify-center shrink-0">
+                    <HwIcon size={15} className="text-brand" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[13px] font-bold text-gray-900 truncate">{hw.name}</span>
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-gray-100 text-gray-600">{hw.type}</span>
+                      {hw.zone && <span className="text-[10px] text-gray-400">· {hw.zone}</span>}
+                    </div>
+                    <div className="flex items-center gap-3 mt-0.5 text-[10px] text-gray-400">
+                      {hw.manufacturer && <span>{hw.manufacturer}</span>}
+                      {hw.model && <span className="font-mono">{hw.model}</span>}
+                      {hw.ipAddress && <span className="font-mono">{hw.ipAddress}</span>}
+                      <span>SW {swList.length}</span>
+                    </div>
+                  </div>
+                  {hwSev.total > 0 ? <CveBadge counts={hwSev} /> : <span className="text-[10px] text-gray-300">—</span>}
+                  <ChevronDown size={14} className={cn("text-gray-400 transition-transform", expanded && "rotate-180")} />
+                </button>
+                <AnimatePresence initial={false}>
+                  {expanded && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.18 }}
+                      className="overflow-hidden border-t border-gray-100"
+                    >
+                      {swList.length === 0 ? (
+                        <p className="px-4 py-3 text-[11px] text-gray-400 italic">
+                          {tx(locale, "No linked SW", "연결된 SW 없음", "リンクされたSWなし")}
+                        </p>
+                      ) : (
+                        <div className="divide-y divide-gray-100">
+                          {swList.map((sw) => {
+                            const swCve = cveBySwId.get(sw.id);
+                            return (
+                              <div key={sw.id} className="px-4 py-2.5 pl-14 flex items-start gap-3">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-[12px] font-semibold text-gray-800 truncate">{sw.name}</span>
+                                    {sw.version && (
+                                      <span className="font-mono text-[10px] text-gray-600 bg-surface-secondary/70 px-1.5 py-0.5 rounded border border-gray-200">{sw.version}</span>
+                                    )}
+                                    {sw.vendor && <span className="text-[10px] text-gray-400">· {sw.vendor}</span>}
+                                  </div>
+                                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                    {sw.cpe ? (
+                                      <span className="cpe-chip" title={sw.cpe}>{sw.cpe}</span>
+                                    ) : (
+                                      <span className="cpe-chip cpe-chip--missing">{tx(locale, "no CPE", "CPE 없음", "CPEなし")}</span>
+                                    )}
+                                    {sw.listeningPort && (
+                                      <span className="font-mono text-[10px] text-gray-400 inline-flex items-center gap-0.5">
+                                        <Globe size={9} />{sw.listeningPort}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0 pt-0.5">
+                                  {swCve && swCve.total > 0 && <CveBadge counts={swCve} />}
+                                  <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-gray-100 text-gray-600">
+                                    {SW_TYPE_SHORT[sw.swType] || sw.swType}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            );
+          })}
+
+          {unlinkedSw.length > 0 && (
+            <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+              <div className="px-4 py-2.5 border-b border-gray-100 bg-surface-secondary/30 flex items-center gap-2">
+                <AlertCircle size={12} className="text-safety-elevated" />
+                <span className="text-[11px] font-bold text-gray-600">{tx(locale, "Unlinked SW", "미연결 SW", "未接続SW")}</span>
+                <span className="font-mono text-[10px] text-gray-400">({unlinkedSw.length})</span>
+              </div>
+              <div className="divide-y divide-gray-100">
+                {unlinkedSw.map((sw) => {
+                  const swCve = cveBySwId.get(sw.id);
+                  return (
+                    <div key={sw.id} className="px-4 py-2 flex items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <span className="text-[12px] text-gray-800 truncate">{sw.name}</span>
+                        {sw.version && <span className="ml-2 font-mono text-[10px] text-gray-400">{sw.version}</span>}
+                      </div>
+                      {swCve && swCve.total > 0 && <CveBadge counts={swCve} />}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {subTab === "audit" && (
+        <div className="space-y-3">
+          {auditRuns.length === 0 ? (
+            <EmptyTab icon={Shield} text={tx(locale, "No audit runs uploaded", "업로드된 점검 결과 없음", "アップロードされた監査結果なし")} />
+          ) : (
+            auditRuns.map((run) => {
+              const e27 = buildE27(run.results);
+              const report = run.results as Parameters<typeof AuditResultViewer>[0]["report"];
+              const sysinfo = (report?.SystemInfo || {}) as Record<string, unknown>;
+              const matchedHw = run.hardwareId ? hardware.find((h) => h.id === run.hardwareId) : null;
+              const deviceName = (sysinfo.ComputerName as string) || matchedHw?.name || tx(locale, "Unknown device", "기기 미확인", "デバイス不明");
+              const runDate = new Date(run.createdAt).toLocaleString(
+                locale === "ko" ? "ko-KR" : locale === "ja" ? "ja-JP" : "en-US",
+                { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" },
+              );
+              const cveForRun = run.hardwareId ? (hwCveMatches.get(run.hardwareId) || []) : [];
+              return (
+                <AuditResultViewer
+                  key={run.id}
+                  e27={e27}
+                  report={report}
+                  cveMatches={cveForRun}
+                  deviceName={deviceName}
+                  runDate={runDate}
+                />
+              );
+            })
+          )}
+        </div>
+      )}
     </div>
   );
 }
