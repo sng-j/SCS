@@ -23,8 +23,7 @@ import {
   addToSeverity,
   type SeverityCounts,
 } from "@/components/inventory/cve-badge";
-import { AuditResultViewer } from "@/components/audit/audit-result-viewer";
-import { buildE27 } from "@/lib/audit-e27";
+import { AuditRunsList } from "@/components/audit/audit-runs-list";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -1225,34 +1224,12 @@ function AssetReviewPanel({
       )}
 
       {subTab === "audit" && (
-        <div className="space-y-3">
-          {auditRuns.length === 0 ? (
-            <EmptyTab icon={Shield} text={tx(locale, "No audit runs uploaded", "업로드된 점검 결과 없음", "アップロードされた監査結果なし")} />
-          ) : (
-            auditRuns.map((run) => {
-              const e27 = buildE27(run.results);
-              const report = run.results as Parameters<typeof AuditResultViewer>[0]["report"];
-              const sysinfo = (report?.SystemInfo || {}) as Record<string, unknown>;
-              const matchedHw = run.hardwareId ? hardware.find((h) => h.id === run.hardwareId) : null;
-              const deviceName = (sysinfo.ComputerName as string) || matchedHw?.name || tx(locale, "Unknown device", "기기 미확인", "デバイス不明");
-              const runDate = new Date(run.createdAt).toLocaleString(
-                locale === "ko" ? "ko-KR" : locale === "ja" ? "ja-JP" : "en-US",
-                { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" },
-              );
-              const cveForRun = run.hardwareId ? (hwCveMatches.get(run.hardwareId) || []) : [];
-              return (
-                <AuditResultViewer
-                  key={run.id}
-                  e27={e27}
-                  report={report}
-                  cveMatches={cveForRun}
-                  deviceName={deviceName}
-                  runDate={runDate}
-                />
-              );
-            })
-          )}
-        </div>
+        <AuditRunsList
+          auditRuns={auditRuns}
+          hwCveMatches={hwCveMatches}
+          hardware={hardware.map((h) => ({ id: h.id, name: h.name }))}
+          locale={locale}
+        />
       )}
     </div>
   );

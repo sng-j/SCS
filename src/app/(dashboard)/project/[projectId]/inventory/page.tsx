@@ -26,6 +26,7 @@ import { ScanImportDialog } from "@/components/inventory/scan-import-dialog";
 import { DiagramImportDialog } from "@/components/inventory/diagram-import-dialog";
 import { CveBadge, CveMeter, emptySeverity, addToSeverity, type SeverityCounts } from "@/components/inventory/cve-badge";
 import { AuditResultViewer } from "@/components/audit/audit-result-viewer";
+import { AuditRunsList } from "@/components/audit/audit-runs-list";
 import { buildE27 } from "@/lib/audit-e27";
 import { type Hardware, type Software, type HwForm, type SwForm, HW_TYPES, SW_TYPES, isHwComplete, DEVICE_FIELD_CONFIG, isFieldVisible, getMissingRequiredHw, isValidIp, isValidMac } from "@/components/inventory/inventory-types";
 import { useLocaleStore } from "@/stores/locale-store";
@@ -38,7 +39,7 @@ import Link from "next/link";
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 type MainTab = "basic" | "dfd";
-type AssetTab = "hardware" | "software" | "sbom";
+type AssetTab = "hardware" | "software" | "sbom" | "audit";
 type ViewMode = "simple" | "inline" | "table";
 
 const HW_TYPE_COLORS: Record<string, string> = {
@@ -98,6 +99,11 @@ export default function InventoryPage() {
   const [software, setSoftware] = useState<Software[]>([]);
   const [cveBySwId, setCveBySwId] = useState<Map<string, SeverityCounts>>(new Map());
   const [cveByHwId, setCveByHwId] = useState<Map<string, SeverityCounts>>(new Map());
+  // Audit runs for the current equipment scope + per-HW CVE match list that
+  // feeds the AuditResultViewer's Software/CVE tab. Fetched alongside the
+  // primary inventory so the audit sub-tab is responsive on first click.
+  const [auditRuns, setAuditRuns] = useState<Array<{ id: string; platform: string; results: Record<string, unknown>; createdAt: string; hardwareId: string | null }>>([]);
+  const [hwCveMatches, setHwCveMatches] = useState<Map<string, Array<{ name: string; version: string; cves: { cveId: string; severity: string | null; score: number | null; description: string }[] }>>>(new Map());
   const [loading, setLoading] = useState(true);
 
   const [hwDialogOpen, setHwDialogOpen] = useState(false);
@@ -169,28 +175,35 @@ export default function InventoryPage() {
     setLoading(true);
     try {
       const eqParam = equipmentId ? `?equipmentId=${equipmentId}` : "";
-      // Use allSettled so a transient network failure on one endpoint (e.g. CVE match
-      // fetch after a browser sleep / HMR reconnect) does not reject the whole batch
-      // and surface as an unhandled "TypeError: Failed to fetch".
+      // Use allSettled-style wrapping so a transient network failure on one
+      // endpoint does not reject the whole batch and surface as an unhandled
+      // "TypeError: Failed to fetch" in the browser console.
       const safeFetch = (url: string) =>
         fetch(url).catch((err) => {
           console.warn(`[inventory] fetch failed: ${url}`, err);
           return null;
         });
-      const [hwRes, swRes, cveRes] = await Promise.all([
+      const [hwRes, swRes, cveRes, auditRes] = await Promise.all([
         safeFetch(`/api/projects/${projectId}/hardware${eqParam}`),
         safeFetch(`/api/projects/${projectId}/software${eqParam}`),
         safeFetch(`/api/projects/${projectId}/cve-matches`),
+        equipmentId
+          ? safeFetch(`/api/vendor/audit-tools/upload?equipmentId=${equipmentId}`)
+          : Promise.resolve(null),
       ]);
-      if (hwRes?.ok) setHardware(await hwRes.json());
-      if (swRes?.ok) setSoftware(await swRes.json());
+      const hwList: Hardware[] = hwRes?.ok ? await hwRes.json() : [];
+      setHardware(hwList);
+      const swList: Software[] = swRes?.ok ? await swRes.json() : [];
+      setSoftware(swList);
 
-      // Build severity maps keyed by softwareId and hardwareId for badge rendering
+      // Build severity maps + per-HW viewer-ready CVE match list
       if (cveRes?.ok) {
         const matches = await cveRes.json() as Array<{
+          cveId: string;
           softwareId: string | null;
           hardwareId: string | null;
-          cveDetail: { baseSeverity: string | null } | null;
+          software: { id: string; name: string; version: string | null } | null;
+          cveDetail: { description: string | null; baseScore: number | null; baseSeverity: string | null } | null;
         }>;
         const sw = new Map<string, SeverityCounts>();
         const hw = new Map<string, SeverityCounts>();
@@ -207,6 +220,52 @@ export default function InventoryPage() {
         }
         setCveBySwId(sw);
         setCveByHwId(hw);
+
+        // Per-HW grouped CVE matches for feeding into AuditResultViewer
+        const swIdToHwId = new Map<string, string>();
+        for (const s of swList) if (s.hardwareId) swIdToHwId.set(s.id, s.hardwareId);
+        const perHw = new Map<string, Array<{ name: string; version: string; cves: { cveId: string; severity: string | null; score: number | null; description: string }[] }>>();
+        for (const m of matches) {
+          const hwId = m.hardwareId ?? (m.softwareId ? swIdToHwId.get(m.softwareId) : undefined);
+          if (!hwId) continue;
+          const name = m.software?.name ?? "—";
+          const version = m.software?.version ?? "";
+          const key = `${name}::${version}`;
+          if (!perHw.has(hwId)) perHw.set(hwId, []);
+          const bucket = perHw.get(hwId)!;
+          let entry = bucket.find((b) => `${b.name}::${b.version}` === key);
+          if (!entry) {
+            entry = { name, version, cves: [] };
+            bucket.push(entry);
+          }
+          entry.cves.push({
+            cveId: m.cveId,
+            severity: m.cveDetail?.baseSeverity ?? null,
+            score: m.cveDetail?.baseScore ?? null,
+            description: m.cveDetail?.description ?? "",
+          });
+        }
+        setHwCveMatches(perHw);
+      }
+
+      // Audit runs for the equipment (only when equipmentId is known)
+      if (auditRes?.ok) {
+        const raw = await auditRes.json();
+        const list = Array.isArray(raw) ? raw : (raw.runs ?? []);
+        type RawRun = { id: string; platform?: string; results?: string | object; createdAt: string; hardwareId?: string | null };
+        setAuditRuns(
+          list.map((r: RawRun) => ({
+            id: r.id,
+            platform: r.platform || "UNKNOWN",
+            results: typeof r.results === "string"
+              ? (() => { try { return JSON.parse(r.results as string); } catch { return {}; } })()
+              : ((r.results as Record<string, unknown>) ?? {}),
+            createdAt: r.createdAt,
+            hardwareId: r.hardwareId ?? null,
+          })),
+        );
+      } else {
+        setAuditRuns([]);
       }
     } finally { setLoading(false); }
   }, [projectId, equipmentId]);
@@ -414,12 +473,18 @@ export default function InventoryPage() {
                       {/* Toolbar */}
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-1">
-                          {(["hardware", "software", "sbom"] as const).map((t) => (
+                          {(["hardware", "software", "sbom", "audit"] as const).map((t) => (
                             <button key={t} onClick={() => setAssetTab(t)}
                               className={cn("px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all",
                                 assetTab === t ? "bg-brand text-white" : "text-text-tertiary hover:bg-surface-secondary"
                               )}>
-                              {t === "hardware" ? `HW (${hardware.length})` : t === "software" ? `SW (${software.length})` : "SBOM"}
+                              {t === "hardware"
+                                ? `HW (${hardware.length})`
+                                : t === "software"
+                                ? `SW (${software.length})`
+                                : t === "sbom"
+                                ? "SBOM"
+                                : `${tx(locale, "Audit", "점검 결과", "監査結果")} (${auditRuns.length})`}
                             </button>
                           ))}
                         </div>
@@ -499,6 +564,18 @@ export default function InventoryPage() {
                           onDelete={(sw) => setDeleteTarget({ type: "sw", item: sw })}
                           projectId={projectId} equipmentId={equipmentId} onRefresh={fetchAssets}
                           cveBySwId={cveBySwId}
+                        />
+                      )}
+
+                      {assetTab === "audit" && (
+                        <AuditRunsList
+                          auditRuns={auditRuns}
+                          hwCveMatches={hwCveMatches}
+                          hardware={hardware.map((h) => ({ id: h.id, name: h.name }))}
+                          locale={locale}
+                          emptyHintKo="업로드된 점검 결과가 없습니다. HW 행에서 .scsaudit 파일을 업로드하세요."
+                          emptyHintEn="No audit runs. Upload .scsaudit files from the HW table."
+                          emptyHintJa="監査結果なし。HW行から.scsauditファイルをアップロードしてください。"
                         />
                       )}
                     </>
