@@ -213,7 +213,7 @@ export async function buildContext(ctx: PageContext): Promise<ContextResult> {
 
       // Build project filter by role
       let projectWhere: Record<string, unknown> = {};
-      if (role === "SHIPYARD") {
+      if (role === "SHIPYARD" || role === "SUPPORT") {
         projectWhere = shipyardId ? { shipyardId } : { id: "__none__" };
       } else if (role === "VENDOR" && ctx.userId) {
         projectWhere = { equipments: { some: { OR: [{ vendorId: ctx.userId }, { vendors: { some: { id: ctx.userId } } }] } } };
@@ -245,9 +245,12 @@ export async function buildContext(ctx: PageContext): Promise<ContextResult> {
         }
       }
 
-      if (role === "SHIPYARD") {
+      if (role === "SUPPORT") {
         lines.push("");
-        lines.push("사용자는 조선소입니다. 프로젝트/벤더/기자재 현황 질문에는 getVendorEquipmentStatus를 호출하세요.");
+        lines.push("사용자는 조선소 담당자(SUPPORT)입니다. 프로젝트/벤더/기자재 현황 질문에는 getVendorEquipmentStatus를 호출하세요.");
+      } else if (role === "SHIPYARD") {
+        lines.push("");
+        lines.push("사용자는 조선소 뷰어(읽기 전용)입니다. 데이터 조회만 가능하며, 편집/승인/생성 작업은 안내하지 마세요.");
       } else if (role === "ADMIN") {
         lines.push("");
         lines.push("사용자는 시스템 관리자입니다. 전체 프로젝트/벤더 현황에 접근할 수 있습니다.");

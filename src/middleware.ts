@@ -2,13 +2,23 @@ import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
 function buildCSP() {
+  // React dev mode needs `unsafe-eval` (HMR, error overlays) and Next.js Turbopack/HMR
+  // opens a WebSocket to the dev server. Only loosen CSP in development.
+  const isDev = process.env.NODE_ENV !== "production";
+  const scriptSrc = isDev
+    ? `script-src 'self' 'unsafe-inline' 'unsafe-eval'`
+    : `script-src 'self' 'unsafe-inline'`;
+  const connectSrc = isDev
+    ? `connect-src 'self' ws: wss:`
+    : `connect-src 'self' wss://scs.cytur.net`;
+
   return [
     `default-src 'self'`,
-    `script-src 'self' 'unsafe-inline'`,
+    scriptSrc,
     `style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com`,
     `img-src 'self' data: blob:`,
     `font-src 'self' data: https://cdn.jsdelivr.net https://fonts.gstatic.com`,
-    `connect-src 'self' wss://scs.cytur.net`,
+    connectSrc,
     `frame-ancestors 'none'`,
     `frame-src 'none'`,
     `object-src 'none'`,
@@ -35,6 +45,16 @@ export default auth((req) => {
   const isAuth = !!req.auth;
   const { pathname } = req.nextUrl;
   const isApi = pathname.startsWith("/api");
+
+  // If the user hits 0.0.0.0 (shown on `next dev` network banner but
+  // non-routable), redirect to localhost so the session binds to a
+  // reachable origin.
+  const host = req.headers.get("host") || "";
+  if (host.startsWith("0.0.0.0")) {
+    const url = req.nextUrl.clone();
+    url.host = `localhost${host.includes(":") ? host.slice(host.indexOf(":")) : ""}`;
+    return NextResponse.redirect(url);
+  }
 
   // Allow NextAuth internal routes to pass through with their own logic
   if (pathname.startsWith("/api/auth")) {

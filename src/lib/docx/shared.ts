@@ -65,6 +65,25 @@ export interface AssessmentRow {
   hardware: { id: string; name: string; type: string };
 }
 
+export interface ConnectionRow {
+  id: string;
+  fromHw: { id: string; name: string } | null;
+  toHw: { id: string; name: string } | null;
+  medium: string | null;
+  protocol: string | null;
+  encrypted: boolean;
+  port: string | null;
+  label: string | null;
+}
+
+export interface AuditRunRow {
+  id: string;
+  hardwareId: string | null;
+  platform: string | null;
+  results: unknown;
+  sbomData: unknown;
+}
+
 // ─── Style constants ────────────────────────────────────────────────────────
 
 const BRAND_COLOR = "0F62FE";

@@ -12,7 +12,8 @@ export async function PATCH(
 ) {
   const user = await getSessionUser();
   if (!user) return apiError("Unauthorized", 401);
-  if (user.role !== "SHIPYARD" && user.role !== "ADMIN") return apiError("Forbidden", 403);
+  // Write: only SUPPORT or ADMIN. SHIPYARD is read-only now.
+  if (user.role !== "SUPPORT" && user.role !== "ADMIN") return apiError("Forbidden", 403);
   const { groupId } = await params;
 
   try {
@@ -22,7 +23,7 @@ export async function PATCH(
       select: { shipyardId: true },
     });
     if (!group) return apiError("Not found", 404);
-    if (user.role === "SHIPYARD" && group.shipyardId !== user.shipyardId) {
+    if (user.role === "SUPPORT" && group.shipyardId !== user.shipyardId) {
       return apiError("Cannot modify another shipyard's project group", 403);
     }
 
@@ -46,7 +47,8 @@ export async function DELETE(
 ) {
   const user = await getSessionUser();
   if (!user) return apiError("Unauthorized", 401);
-  if (user.role !== "SHIPYARD" && user.role !== "ADMIN") return apiError("Forbidden", 403);
+  // Write: only SUPPORT or ADMIN. SHIPYARD is read-only now.
+  if (user.role !== "SUPPORT" && user.role !== "ADMIN") return apiError("Forbidden", 403);
   const { groupId } = await params;
 
   try {
@@ -56,7 +58,7 @@ export async function DELETE(
       select: { shipyardId: true },
     });
     if (!group) return apiError("Not found", 404);
-    if (user.role === "SHIPYARD" && group.shipyardId !== user.shipyardId) {
+    if (user.role === "SUPPORT" && group.shipyardId !== user.shipyardId) {
       return apiError("Cannot delete another shipyard's project group", 403);
     }
 

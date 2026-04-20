@@ -59,7 +59,8 @@ export async function POST(request: Request) {
   try {
     const { name, email, password, company, role, shipyardId: explicitShipyardId } = await request.json();
     if (!name || !email || !password) return apiError("Name, email, and password required", 400);
-    if (!["ADMIN", "SHIPYARD"].includes(role)) return apiError("Role must be ADMIN or SHIPYARD", 400);
+    // Admin can create admin, support, or shipyard (viewer) accounts here.
+    if (!["ADMIN", "SUPPORT", "SHIPYARD"].includes(role)) return apiError("Role must be ADMIN, SUPPORT, or SHIPYARD", 400);
     const pwResult = validatePassword(password);
     if (!pwResult.valid) return apiError(pwResult.message, 400, `PWD_${pwResult.code}`);
 
@@ -75,7 +76,8 @@ export async function POST(request: Request) {
     // SHIPYARD account never silently lands in a brand-new orphan shipyard
     // when the operator actually meant to put them in an existing one.
     let shipyardId: string | undefined;
-    if (role === "SHIPYARD") {
+    // Both SHIPYARD (viewer) and SUPPORT (write) are scoped to a shipyard.
+    if (role === "SHIPYARD" || role === "SUPPORT") {
       if (explicitShipyardId) {
         // Verify the target shipyard exists and is active.
         const target = await prisma.shipyard.findUnique({
@@ -87,7 +89,7 @@ export async function POST(request: Request) {
       } else {
         const companyName = (company || name).trim();
         if (!companyName) {
-          return apiError("Company name (or shipyard selection) is required for SHIPYARD users", 400);
+          return apiError("Company name (or shipyard selection) is required for SHIPYARD/SUPPORT users", 400);
         }
         const shipyard = await findOrCreateShipyardByName(companyName);
         shipyardId = shipyard.id;
@@ -132,9 +134,9 @@ export async function PATCH(request: Request) {
     }
 
     // Validate role if provided
-    const validRoles = ["ADMIN", "SHIPYARD", "VENDOR"];
+    const validRoles = ["ADMIN", "SUPPORT", "SHIPYARD", "VENDOR"];
     if (role !== undefined && !validRoles.includes(role)) {
-      return apiError("Invalid role. Must be ADMIN, SHIPYARD, or VENDOR", 400);
+      return apiError("Invalid role. Must be ADMIN, SUPPORT, SHIPYARD, or VENDOR", 400);
     }
 
     // Prevent changing ADMIN role (blocks role-change-then-delete bypass)

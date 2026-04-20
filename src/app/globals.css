@@ -169,6 +169,40 @@ body {
   to { transform: scale(4); opacity: 0; }
 }
 
+/* ── CVE badge pulse (critical severity indicator) ── */
+@keyframes cve-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(218, 30, 40, 0.0); }
+  50% { box-shadow: 0 0 0 3px rgba(218, 30, 40, 0.22); }
+}
+.animate-cve-pulse {
+  animation: cve-pulse 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* ── CPE chip (CVE matching identifier, monospace emphasis) ── */
+.cpe-chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+  color: var(--color-text-secondary);
+  background: color-mix(in srgb, var(--color-surface-secondary) 70%, transparent);
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+}
+.cpe-chip--missing {
+  color: var(--color-safety-elevated);
+  background: color-mix(in srgb, var(--color-safety-elevated) 8%, transparent);
+  border-color: color-mix(in srgb, var(--color-safety-elevated) 25%, transparent);
+  font-style: italic;
+  font-family: var(--font-sans);
+}
+
 /* ── Stagger animation utility ── */
 .animate-stagger > * {
   animation: fadeSlideUp 0.4s ease-out both;
@@ -252,6 +286,10 @@ dialog[open]::backdrop {
   background: var(--color-surface-secondary);
   border-radius: var(--radius-sm);
 }
+
+/* ── Hide scrollbar but keep scroll (used in mobile tab rows) ── */
+.scrollbar-none::-webkit-scrollbar { display: none; }
+.scrollbar-none { scrollbar-width: none; -ms-overflow-style: none; }
 
 /* ── Custom checkbox ── */
 input[type="checkbox"].checkbox-cytur {

@@ -37,3 +37,6 @@ docs/
 .openapi-gen/
 scratch/
 tsconfig.tsbuildinfo
+
+# legacy reference source (previous PHP system kept locally for migration reference)
+before/

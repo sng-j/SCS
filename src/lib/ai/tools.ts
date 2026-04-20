@@ -527,7 +527,7 @@ const executors: Record<string, (params: Record<string, string>) => Promise<Tool
     let where: Record<string, unknown> = {};
     if (projectId && projectId.trim()) {
       where = { projectId };
-    } else if (_userRole === "SHIPYARD" && _shipyardId) {
+    } else if ((_userRole === "SHIPYARD" || _userRole === "SUPPORT") && _shipyardId) {
       where = { project: { shipyardId: _shipyardId } };
     } else if (_userRole === "VENDOR" && _userId) {
       where = { OR: [{ vendorId: _userId }, { vendors: { some: { id: _userId } } }] };
@@ -584,7 +584,7 @@ const executors: Record<string, (params: Record<string, string>) => Promise<Tool
 
   async getProjectList({ _userRole, _userId, _shipyardId }) {
     let where: Record<string, unknown> = {};
-    if (_userRole === "SHIPYARD" && _shipyardId) {
+    if ((_userRole === "SHIPYARD" || _userRole === "SUPPORT") && _shipyardId) {
       where = { shipyardId: _shipyardId };
     } else if (_userRole === "VENDOR" && _userId) {
       where = { equipments: { some: { OR: [{ vendorId: _userId }, { vendors: { some: { id: _userId } } }] } } };

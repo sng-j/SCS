@@ -31,7 +31,8 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 /**
  * Verify the user has access to a specific project.
  * - ADMIN: access to all projects
- * - SHIPYARD: access if project.shipyardId matches user.shipyardId
+ * - SUPPORT: access if project.shipyardId matches user.shipyardId (full perms)
+ * - SHIPYARD: access if project.shipyardId matches user.shipyardId (read-only)
  * - VENDOR: access if user has equipment in the project
  */
 export async function verifyProjectAccess(
@@ -42,7 +43,7 @@ export async function verifyProjectAccess(
 ): Promise<boolean> {
   if (role === "ADMIN") return true;
 
-  if (role === "SHIPYARD") {
+  if (role === "SUPPORT" || role === "SHIPYARD") {
     if (!shipyardId) return false; // No shipyard assigned = no access
     const project = await prisma.project.findUnique({
       where: { id: projectId },
@@ -66,7 +67,7 @@ export async function verifyProjectAccess(
 
 /**
  * Verify VENDOR has ownership of a specific hardware/software via equipment.
- * ADMIN and SHIPYARD always pass.
+ * ADMIN, SUPPORT and SHIPYARD (read-only) always pass.
  */
 export async function verifyEquipmentOwnership(
   userId: string,
@@ -74,7 +75,7 @@ export async function verifyEquipmentOwnership(
   hardwareId?: string,
   softwareId?: string,
 ): Promise<boolean> {
-  if (role === "ADMIN" || role === "SHIPYARD") return true;
+  if (role === "ADMIN" || role === "SUPPORT" || role === "SHIPYARD") return true;
 
   if (hardwareId) {
     const hw = await prisma.hardware.findFirst({

@@ -66,7 +66,7 @@ export default function SupportPage() {
     );
   }
 
-  if (userRole !== "ADMIN" && userRole !== "SHIPYARD") {
+  if (userRole !== "ADMIN" && userRole !== "SUPPORT" && userRole !== "SHIPYARD") {
     return (
       <div className="max-w-4xl mx-auto px-6 py-8">
         <EmptyState icon={Headphones} title={tx(locale, "Access denied", "접근 권한이 없습니다", "アクセスが拒否されました")} />

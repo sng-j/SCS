@@ -12,8 +12,8 @@ export async function GET() {
 
   // Build project filter based on role
   let where: Record<string, unknown> = {};
-  if (user.role === "SHIPYARD") {
-    // Shipyard must have a shipyardId — if not, show nothing (not all projects)
+  if (user.role === "SHIPYARD" || user.role === "SUPPORT") {
+    // SHIPYARD (viewer) and SUPPORT are scoped to their shipyardId
     if (user.shipyardId) {
       where = { shipyardId: user.shipyardId };
     } else {
@@ -43,18 +43,18 @@ export async function GET() {
   return NextResponse.json(projects);
 }
 
-/** POST /api/projects — create a new project (SHIPYARD/ADMIN only) */
+/** POST /api/projects — create a new project (SUPPORT/ADMIN only) */
 export async function POST(request: Request) {
   const user = await getSessionUser();
   if (!user) return apiError("Unauthorized", 401);
 
-  // Only SHIPYARD and ADMIN can create projects
-  if (user.role !== "SHIPYARD" && user.role !== "ADMIN") {
-    return apiError("Only shipyard and admin can create projects", 403);
+  // Write: only SUPPORT or ADMIN can create projects. SHIPYARD is read-only.
+  if (user.role !== "SUPPORT" && user.role !== "ADMIN") {
+    return apiError("Only support and admin can create projects", 403);
   }
 
-  // SHIPYARD must have shipyardId assigned
-  if (user.role === "SHIPYARD" && !user.shipyardId) {
+  // SUPPORT must have shipyardId assigned
+  if (user.role === "SUPPORT" && !user.shipyardId) {
     return apiError("Shipyard assignment required", 400);
   }
 

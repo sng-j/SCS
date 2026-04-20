@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { motion } from "framer-motion";
-import { Users, Building2, UserCog, HelpCircle, Settings, Shield, CheckCircle, XCircle, Plus, Pencil, Trash2, Activity, Send, Package, Cpu, FileText, ChevronRight, Ship, MessageSquare, Download, AlertCircle } from "lucide-react";
+import { Users, Building2, UserCog, HelpCircle, Settings, Shield, CheckCircle, XCircle, Plus, Pencil, Trash2, Activity, Send, Package, Cpu, FileText, ChevronRight, Ship, MessageSquare, Download, AlertCircle, Upload, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardBody } from "@/components/ui/card";
@@ -29,7 +29,291 @@ interface FaqRow     { id: number; question: string; answer: string; category: s
 interface SettingRow { key: string; value: string; description: string | null; }
 interface LogRow     { id: string; event: string; userEmail: string | null; level: string; detail: string | null; createdAt: string; }
 
-const TABS = ["users", "signups", "shipyards", "projects", "submissions", "faq", "qna", "settings", "logs", "dataset"] as const;
+// ─── Bulk upload (Excel paste) helpers ───────────────────────────────────────
+
+function BulkUploadGrid({ locale, endpoint, payloadKey, columns, onSuccess, onCancel, validate, requiredColumns, fixedFields }: {
+  locale: string;
+  endpoint: string;
+  payloadKey: string;
+  columns: string[];
+  onSuccess: () => void;
+  onCancel: () => void;
+  validate?: (row: Record<string, string>) => Record<string, string>;
+  requiredColumns?: string[];
+  fixedFields?: Record<string, string>;
+}) {
+  const [rows, setRows] = useState<Record<string, string>[]>(() =>
+    Array.from({ length: 5 }, () => Object.fromEntries(columns.map((c) => [c, ""])))
+  );
+  const [uploading, setUploading] = useState(false);
+  const [selStart, setSelStart] = useState<[number, number] | null>(null);
+  const [selEnd, setSelEnd] = useState<[number, number] | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [errorSummary, setErrorSummary] = useState<string | null>(null);
+
+  const nonEmptyRows = rows.filter((r) => Object.values(r).some((v) => v && v.trim().length > 0));
+
+  const selectionBounds = (() => {
+    if (!selStart || !selEnd) return null;
+    const [r1, c1] = selStart; const [r2, c2] = selEnd;
+    if (r1 === r2 && c1 === c2) return null;
+    return { rMin: Math.min(r1, r2), rMax: Math.max(r1, r2), cMin: Math.min(c1, c2), cMax: Math.max(c1, c2) };
+  })();
+
+  const isCellSelected = (rowIdx: number, colIdx: number) => {
+    if (!selectionBounds) return false;
+    return rowIdx >= selectionBounds.rMin && rowIdx <= selectionBounds.rMax &&
+           colIdx >= selectionBounds.cMin && colIdx <= selectionBounds.cMax;
+  };
+
+  const updateCell = (rowIdx: number, col: string, value: string) => {
+    setRows((prev) => {
+      const next = [...prev];
+      next[rowIdx] = { ...next[rowIdx], [col]: value };
+      return next;
+    });
+    setErrors((prev) => {
+      const key = `${rowIdx}:${col}`;
+      if (!prev[key]) return prev;
+      const next = { ...prev }; delete next[key];
+      return next;
+    });
+  };
+
+  const addRow = () => {
+    setRows((prev) => [...prev, Object.fromEntries(columns.map((c) => [c, ""]))]);
+  };
+
+  const removeRow = (idx: number) => {
+    setRows((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== idx) : prev));
+  };
+
+  const handleCellPaste = (e: React.ClipboardEvent, startRow: number, startCol: string) => {
+    const text = e.clipboardData.getData("text");
+    if (!text || (!text.includes("\t") && !text.includes("\n"))) return;
+    e.preventDefault();
+    let cleaned = text;
+    if (cleaned.charCodeAt(0) === 0xFEFF) cleaned = cleaned.slice(1);
+    const lines = cleaned.split(/\r?\n/).filter((l) => l.length > 0);
+    if (lines.length === 0) return;
+    const firstCells = lines[0].split("\t").map((c) => c.trim().toLowerCase());
+    const colsLower = columns.map((c) => c.toLowerCase());
+    const hasHeader = firstCells.some((c) => colsLower.includes(c));
+    const dataLines = hasHeader ? lines.slice(1) : lines;
+    const startColIdx = columns.indexOf(startCol);
+    setRows((prev) => {
+      const next = [...prev];
+      dataLines.forEach((line, lineIdx) => {
+        const targetRow = startRow + lineIdx;
+        while (next.length <= targetRow) next.push(Object.fromEntries(columns.map((c) => [c, ""])));
+        const cells = line.split("\t");
+        cells.forEach((cell, cellIdx) => {
+          const targetCol = columns[startColIdx + cellIdx];
+          if (targetCol) next[targetRow] = { ...next[targetRow], [targetCol]: cell.trim() };
+        });
+      });
+      return next;
+    });
+  };
+
+  const handleSubmit = async () => {
+    if (nonEmptyRows.length === 0) {
+      showToast.error(tx(locale, "No rows to import", "등록할 행이 없습니다", "登録する行がありません"));
+      return;
+    }
+    if (validate) {
+      const newErrors: Record<string, string> = {};
+      let invalidRows = 0;
+      rows.forEach((row, rowIdx) => {
+        if (Object.values(row).every((v) => !v || !v.trim())) return;
+        const rowErrors = validate(row);
+        const keys = Object.keys(rowErrors);
+        if (keys.length > 0) {
+          invalidRows++;
+          keys.forEach((col) => { newErrors[`${rowIdx}:${col}`] = rowErrors[col]; });
+        }
+      });
+      if (Object.keys(newErrors).length > 0) {
+        setErrors(newErrors);
+        setErrorSummary(tx(locale,
+          `${invalidRows} row(s) have errors. Fix the highlighted cells.`,
+          `${invalidRows}개 행에 오류가 있습니다. 빨간색으로 표시된 셀을 확인하세요.`,
+          `${invalidRows}行にエラーがあります。赤色のセルを確認してください。`
+        ));
+        return;
+      }
+    }
+    setErrors({}); setErrorSummary(null);
+    setUploading(true);
+    try {
+      const payload = fixedFields
+        ? nonEmptyRows.map((r) => ({ ...fixedFields, ...r }))
+        : nonEmptyRows;
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [payloadKey]: payload }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const serverErrors = data.errors || [];
+        if (serverErrors.length > 0) {
+          const newErrors: Record<string, string> = {};
+          const validRows = rows.filter((r) => Object.values(r).some((v) => v && v.trim()));
+          serverErrors.forEach((err: { row: number; error: string }) => {
+            const actualRow = validRows[err.row - 1];
+            if (!actualRow) return;
+            const realIdx = rows.indexOf(actualRow);
+            if (realIdx < 0) return;
+            const lower = err.error.toLowerCase();
+            for (const col of columns) {
+              if (lower.includes(col.toLowerCase())) {
+                newErrors[`${realIdx}:${col}`] = err.error;
+                return;
+              }
+            }
+            newErrors[`${realIdx}:${columns[0]}`] = err.error;
+          });
+          setErrors(newErrors);
+          setErrorSummary(tx(locale,
+            `${data.created} succeeded, ${serverErrors.length} failed. See highlighted cells.`,
+            `${data.created}건 성공, ${serverErrors.length}건 실패. 빨간 셀을 확인하세요.`,
+            `${data.created}件成功、${serverErrors.length}件失敗。`
+          ));
+          if (data.created > 0) onSuccess();
+          showToast.error(tx(locale, `${serverErrors.length} failed`, `${serverErrors.length}건 실패`, `${serverErrors.length}件失敗`));
+        } else {
+          showToast.success(tx(locale, `${data.created} created`, `${data.created}건 등록 완료`, `${data.created}件登録完了`));
+          onSuccess();
+        }
+      } else {
+        const d = await res.json().catch(() => ({}));
+        showToast.error((d as { error?: string }).error || "Upload failed");
+      }
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <p className="text-[11px] text-text-secondary">
+        {tx(locale,
+          "Paste from Excel (Ctrl+V) to fill cells. Drag to select a range, press Delete to clear. Required fields are marked with *.",
+          "엑셀에서 붙여넣기(Ctrl+V)로 셀을 채우거나 직접 입력하세요. 드래그로 범위 선택 후 Delete로 지우기. 필수 항목은 * 표시.",
+          "Excelから貼り付け(Ctrl+V)で入力。ドラッグで範囲選択後Delete。必須は*。")}
+      </p>
+      {errorSummary && (
+        <div className="rounded-lg border border-safety-high/40 bg-risk-bg px-3 py-2 flex items-start gap-2">
+          <AlertCircle size={14} className="text-safety-high shrink-0 mt-0.5" />
+          <p className="text-[12px] text-safety-high font-medium">{errorSummary}</p>
+        </div>
+      )}
+      <div
+        className="rounded-lg border border-border overflow-hidden"
+        onMouseLeave={() => setIsDragging(false)}
+        onMouseUp={() => setIsDragging(false)}
+        onKeyDown={(e) => {
+          if ((e.key === "Delete" || e.key === "Backspace") && selectionBounds) {
+            e.preventDefault();
+            const { rMin, rMax, cMin, cMax } = selectionBounds;
+            setRows((prev) => prev.map((row, rI) => {
+              if (rI < rMin || rI > rMax) return row;
+              const next = { ...row };
+              for (let cI = cMin; cI <= cMax; cI++) next[columns[cI]] = "";
+              return next;
+            }));
+          } else if (e.key === "Escape") { setSelStart(null); setSelEnd(null); }
+        }}
+        tabIndex={-1}
+      >
+        <div className="max-h-[420px] overflow-auto">
+          <table className="border-collapse w-full">
+            <thead className="bg-surface-secondary sticky top-0 z-10">
+              <tr>
+                <th className="w-10 border border-border px-2 py-1.5 text-[10px] font-bold text-text-tertiary">#</th>
+                {columns.map((c) => (
+                  <th key={c} className="border border-border px-2 py-1.5 text-left text-[11px] font-bold text-text whitespace-nowrap min-w-[140px]">
+                    {c}{requiredColumns?.includes(c) && <span className="text-safety-high ml-0.5">*</span>}
+                  </th>
+                ))}
+                <th className="w-8 border border-border bg-surface-secondary"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, rowIdx) => (
+                <tr key={rowIdx} className="group">
+                  <td className="border border-border bg-surface-secondary/30 px-2 py-0.5 text-center text-[10px] text-text-tertiary tabular-nums select-none">{rowIdx + 1}</td>
+                  {columns.map((c, colIdx) => {
+                    const selected = isCellSelected(rowIdx, colIdx);
+                    const errKey = `${rowIdx}:${c}`;
+                    const errMsg = errors[errKey];
+                    return (
+                      <td
+                        key={c}
+                        className={cn("border p-0 relative transition-colors",
+                          errMsg ? "border-safety-high bg-risk-bg/50" :
+                            selected ? "border-border bg-brand/20" : "border-border")}
+                        title={errMsg || ""}
+                        onMouseDown={(e) => {
+                          if (e.shiftKey && selStart) { e.preventDefault(); setSelEnd([rowIdx, colIdx]); }
+                          else { setSelStart([rowIdx, colIdx]); setSelEnd([rowIdx, colIdx]); setIsDragging(true); }
+                        }}
+                        onMouseEnter={() => { if (isDragging) setSelEnd([rowIdx, colIdx]); }}
+                      >
+                        <input
+                          type="text"
+                          value={row[c] || ""}
+                          onChange={(e) => updateCell(rowIdx, c, e.target.value)}
+                          onPaste={(e) => handleCellPaste(e, rowIdx, c)}
+                          onFocus={() => { if (selectionBounds) { setSelStart([rowIdx, colIdx]); setSelEnd([rowIdx, colIdx]); } }}
+                          className={cn(
+                            "w-full px-2 py-1 text-[11px] bg-transparent outline-none transition-colors",
+                            errMsg ? "text-safety-high" : "text-text",
+                            !selected && !errMsg && "focus:bg-brand-lighter/40 focus:ring-1 focus:ring-inset focus:ring-brand/40",
+                            errMsg && "focus:ring-1 focus:ring-inset focus:ring-safety-high/60"
+                          )}
+                        />
+                        {errMsg && <div className="absolute top-0 right-0 h-1.5 w-1.5 rounded-full bg-safety-high m-0.5" />}
+                      </td>
+                    );
+                  })}
+                  <td className="border border-border bg-surface-secondary/30 text-center">
+                    <button onClick={() => removeRow(rowIdx)}
+                      className="opacity-0 group-hover:opacity-100 text-text-tertiary hover:text-safety-high transition-opacity p-0.5"
+                      title={tx(locale, "Remove row", "행 삭제", "行削除")} disabled={rows.length <= 1}>
+                      <X size={12} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="px-3 py-2 border-t border-border bg-surface-secondary/30 flex items-center justify-between">
+          <button onClick={addRow} className="text-[11px] font-medium text-brand hover:text-brand/80 transition-colors inline-flex items-center gap-1">
+            <Plus size={12} /> {tx(locale, "Add row", "행 추가", "行追加")}
+          </button>
+          <span className="text-[11px] text-text-tertiary">
+            {tx(locale, `${nonEmptyRows.length} row(s) ready`, `${nonEmptyRows.length}행 준비됨`, `${nonEmptyRows.length}行準備完了`)}
+          </span>
+        </div>
+      </div>
+      <div className="flex justify-end gap-2 pt-3 border-t border-border">
+        <Button variant="outline" onClick={onCancel}>
+          {tx(locale, "Cancel", "취소", "キャンセル")}
+        </Button>
+        <Button onClick={handleSubmit} loading={uploading} disabled={nonEmptyRows.length === 0}>
+          {tx(locale, `Import ${nonEmptyRows.length} row(s)`, `${nonEmptyRows.length}건 등록`, `${nonEmptyRows.length}件登録`)}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+
+const TABS = ["users", "signups", "shipyards", "projects", "submissions", "faq", "qna", "settings", "logs", "dataset", "data-health", "doc-formats", "society-kb"] as const;
 type Tab = typeof TABS[number];
 
 // ─── Page ────────────────────────────────────────────────────────────────────
@@ -74,6 +358,9 @@ export default function AdminPage() {
     settings: tx(locale, "Settings", "설정", "設定"),
     logs: tx(locale, "Security Logs", "보안 이력", "セキュリティログ"),
     dataset: tx(locale, "AI Dataset", "AI 데이터셋", "AIデータセット"),
+    "data-health": tx(locale, "Data Health", "데이터 정합성", "データ整合性"),
+    "doc-formats": tx(locale, "Doc Formats", "문서 포맷", "ドキュメント形式"),
+    "society-kb": tx(locale, "Society KB", "선급 가이드", "船級ガイド"),
   };
 
   return (
@@ -88,16 +375,19 @@ export default function AdminPage() {
         <p className="text-body-sm text-text-tertiary mt-1">{tx(locale, "Manage the entire system", "시스템 전체를 관리합니다", "システム全体を管理します")}</p>
       </div>
 
-      {/* Tab Bar */}
-      <div className="flex flex-wrap gap-1 p-1 bg-surface-secondary rounded-[8px] w-fit">
-        {TABS.map((tab) => (
-          <button key={tab} onClick={() => changeTab(tab)}
-            className={cn("px-3 py-1.5 rounded-[6px] text-body-sm font-medium transition-all duration-200",
-              activeTab === tab ? "bg-white text-text shadow-xs" : "text-text-tertiary hover:text-text-secondary"
-            )}>
-            {tabLabels[tab]}
-          </button>
-        ))}
+      {/* Tab Bar — horizontal scroll on narrow screens so the 13 tabs
+          don't wrap into an awkward multi-row blob */}
+      <div className="-mx-6 px-6 overflow-x-auto scrollbar-none">
+        <div className="flex gap-1 p-1 bg-surface-secondary rounded-[8px] w-max">
+          {TABS.map((tab) => (
+            <button key={tab} onClick={() => changeTab(tab)}
+              className={cn("px-3 py-1.5 rounded-[6px] text-body-sm font-medium transition-all duration-200 whitespace-nowrap",
+                activeTab === tab ? "bg-white text-text shadow-xs" : "text-text-tertiary hover:text-text-secondary"
+              )}>
+              {tabLabels[tab]}
+            </button>
+          ))}
+        </div>
       </div>
 
       {activeTab === "users"       && <UsersTab locale={locale} />}
@@ -110,6 +400,9 @@ export default function AdminPage() {
       {activeTab === "settings"    && <SettingsTab locale={locale} />}
       {activeTab === "logs"        && <LogsTab locale={locale} />}
       {activeTab === "dataset"     && <DatasetTab locale={locale} />}
+      {activeTab === "data-health" && <DataHealthTab locale={locale} />}
+      {activeTab === "doc-formats" && <DocFormatsTab locale={locale} />}
+      {activeTab === "society-kb"  && <SocietyKbTab locale={locale} />}
     </motion.div>
   );
 }
@@ -167,9 +460,9 @@ function UsersTab({ locale }: { locale: string }) {
     if (editForm.email !== editUser.email) body.email = editForm.email;
     if (editForm.company !== (editUser.company || "")) body.company = editForm.company;
     if (editForm.newPassword) body.newPassword = editForm.newPassword;
-    // Only send shipyardId for SHIPYARD/VENDOR users and only if it changed.
+    // Only send shipyardId for SUPPORT/SHIPYARD/VENDOR users and only if it changed.
     if (
-      (editUser.role === "SHIPYARD" || editUser.role === "VENDOR") &&
+      (editUser.role === "SUPPORT" || editUser.role === "SHIPYARD" || editUser.role === "VENDOR") &&
       editForm.shipyardId !== (editUser.shipyardId || "")
     ) {
       body.shipyardId = editForm.shipyardId || null;
@@ -288,7 +581,8 @@ function UsersTab({ locale }: { locale: string }) {
   };
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [createRole, setCreateRole] = useState<"ADMIN" | "SHIPYARD" | "VENDOR">("SHIPYARD");
+  const [createRole, setCreateRole] = useState<"ADMIN" | "SUPPORT" | "SHIPYARD" | "VENDOR">("SUPPORT");
+  const [createMode, setCreateMode] = useState<"single" | "bulk">("single");
   const [createForm, setCreateForm] = useState({ name: "", email: "", password: "", company: "" });
   // For SHIPYARD users: "join" attaches to an existing shipyard, "new" creates one.
   // This is the structural fix for data-mismatch bugs — the operator must make
@@ -312,8 +606,8 @@ function UsersTab({ locale }: { locale: string }) {
       showToast.error(passwordRuleMessage(pw.code, locale));
       return;
     }
-    // Validate shipyard selection for SHIPYARD users
-    if (createRole === "SHIPYARD") {
+    // Validate shipyard selection for SUPPORT/SHIPYARD users
+    if (createRole === "SUPPORT" || createRole === "SHIPYARD") {
       if (createShipyardMode === "join" && !createShipyardId) {
         showToast.error(tx(locale, "Select a shipyard to join", "합류할 조선소를 선택하세요", "参加する造船所を選択してください"));
         return;
@@ -357,7 +651,7 @@ function UsersTab({ locale }: { locale: string }) {
           company: createForm.company,
           role: createRole,
         };
-        if (createRole === "SHIPYARD" && createShipyardMode === "join") {
+        if ((createRole === "SUPPORT" || createRole === "SHIPYARD") && createShipyardMode === "join") {
           payload.shipyardId = createShipyardId;
         }
         res = await fetch("/api/admin/users", {
@@ -388,6 +682,7 @@ function UsersTab({ locale }: { locale: string }) {
     } finally { setCreateSaving(false); }
   };
 
+  const supportUsers = users.filter((u) => u.role === "SUPPORT");
   const shipyardUsers = users.filter((u) => u.role === "SHIPYARD");
   const vendorUsers = users.filter((u) => u.role === "VENDOR");
   const adminUsers = users.filter((u) => u.role === "ADMIN");
@@ -429,7 +724,8 @@ function UsersTab({ locale }: { locale: string }) {
                   <span className={cn(
                     "px-2.5 py-1 rounded-lg text-[11px] font-semibold",
                     u.role === "ADMIN" ? "bg-brand-lighter text-brand" :
-                    u.role === "SHIPYARD" ? "bg-blue-50 text-blue-700" :
+                    u.role === "SUPPORT" ? "bg-blue-50 text-blue-700" :
+                    u.role === "SHIPYARD" ? "bg-purple-50 text-purple-700" :
                     "bg-gray-100 text-gray-600"
                   )}>
                     {u.role}
@@ -448,6 +744,9 @@ function UsersTab({ locale }: { locale: string }) {
                   <button
                     onClick={(e) => { e.stopPropagation(); handleToggleActive(u.id, u.isActive); }}
                     disabled={toggling === u.id}
+                    role="switch"
+                    aria-checked={u.isActive}
+                    aria-label={tx(locale, `Account active: ${u.email}`, `활성 상태: ${u.email}`, `アカウント有効: ${u.email}`)}
                     className={cn(
                       "relative w-10 h-6 rounded-full transition-colors duration-200 shrink-0",
                       u.isActive ? "bg-safety-low" : "bg-border-strong",
@@ -470,21 +769,25 @@ function UsersTab({ locale }: { locale: string }) {
 
   return (
     <div className="space-y-6">
-      {/* Create account buttons */}
-      <div className="flex gap-2">
-        <Button size="sm" onClick={() => { setCreateRole("ADMIN"); setCreateOpen(true); }}>
+      {/* Single-add buttons — bulk upload accessed via tab inside each dialog */}
+      <div className="flex gap-2 flex-wrap">
+        <Button size="sm" onClick={() => { setCreateRole("ADMIN"); setCreateMode("single"); setCreateOpen(true); }}>
           <Plus size={14} /> {tx(locale, "Add Admin", "관리자 추가", "管理者追加")}
         </Button>
-        <Button size="sm" variant="outline" onClick={() => { setCreateRole("SHIPYARD"); setCreateShipyardMode(shipyards.length > 0 ? "join" : "new"); setCreateShipyardId(""); setCreateOpen(true); }}>
-          <Plus size={14} /> {tx(locale, "Add Shipyard", "조선소 추가", "造船所追加")}
+        <Button size="sm" variant="outline" onClick={() => { setCreateRole("SUPPORT"); setCreateShipyardMode(shipyards.length > 0 ? "join" : "new"); setCreateShipyardId(""); setCreateMode("single"); setCreateOpen(true); }}>
+          <Plus size={14} /> {tx(locale, "Add Support (Shipyard Staff)", "조선소 담당자 추가", "造船所担当追加")}
         </Button>
-        <Button size="sm" variant="outline" onClick={() => { setCreateRole("VENDOR"); setCreateShipyardId(""); setCreateOpen(true); }}>
+        <Button size="sm" variant="outline" onClick={() => { setCreateRole("SHIPYARD"); setCreateShipyardMode(shipyards.length > 0 ? "join" : "new"); setCreateShipyardId(""); setCreateMode("single"); setCreateOpen(true); }}>
+          <Plus size={14} /> {tx(locale, "Add Viewer", "조선소 뷰어 추가", "閲覧ユーザー追加")}
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => { setCreateRole("VENDOR"); setCreateShipyardId(""); setCreateMode("single"); setCreateOpen(true); }}>
           <Plus size={14} /> {tx(locale, "Add Vendor", "벤더 추가", "ベンダー追加")}
         </Button>
       </div>
 
       <UserSection title={tx(locale, "Admins", "관리자", "管理者")} list={adminUsers} hideDelete />
-      <UserSection title={tx(locale, "Shipyard Accounts", "조선소 계정", "造船所アカウント")} list={shipyardUsers} onRowClick={handleShipyardClick} />
+      <UserSection title={tx(locale, "Support Accounts (Shipyard Staff)", "조선소 담당자 계정", "造船所担当アカウント")} list={supportUsers} onRowClick={handleShipyardClick} />
+      <UserSection title={tx(locale, "Shipyard Viewer Accounts (Read-only)", "조선소 뷰어 계정 (읽기 전용)", "造船所閲覧アカウント (読み取り専用)")} list={shipyardUsers} onRowClick={handleShipyardClick} />
       <UserSection title={tx(locale, "Vendor Accounts", "벤더 계정", "ベンダーアカウント")} list={vendorUsers} onRowClick={handleVendorClick} />
 
       {/* Create user dialog */}
@@ -494,21 +797,62 @@ function UsersTab({ locale }: { locale: string }) {
         title={
           createRole === "ADMIN" ? tx(locale, "Create Admin", "관리자 계정 생성", "管理者アカウント作成") :
           createRole === "VENDOR" ? tx(locale, "Create Vendor", "벤더 계정 생성", "ベンダーアカウント作成") :
-          tx(locale, "Create Shipyard", "조선소 계정 생성", "造船所アカウント作成")
+          createRole === "SHIPYARD" ? tx(locale, "Create Viewer", "조선소 뷰어 계정 생성", "閲覧アカウント作成") :
+          tx(locale, "Create Support", "조선소 담당자 계정 생성", "担当アカウント作成")
         }
-        description={
+        description={createMode === "single" ? (
           createRole === "ADMIN" ? tx(locale, "Create an account with system admin privileges", "시스템 관리 권한을 가진 계정을 생성합니다", "システム管理権限を持つアカウントを作成します") :
           createRole === "VENDOR" ? tx(locale, "Create a vendor account assigned to a shipyard", "조선소에 배정된 벤더 계정을 생성합니다", "造船所に配属されたベンダーアカウントを作成します") :
-          tx(locale, "Create a shipyard account to manage projects and vendors", "프로젝트와 벤더를 관리할 조선소 계정을 생성합니다", "プロジェクトとベンダーを管理する造船所アカウントを作成します")
-        }
+          createRole === "SHIPYARD" ? tx(locale, "Create a read-only viewer for this shipyard (no edit permissions)", "조선소 내용을 열람만 할 수 있는 뷰어 계정을 생성합니다 (편집 불가)", "閲覧専用アカウントを作成します（編集不可）") :
+          tx(locale, "Create a support account to manage projects, vendors, and reviews", "프로젝트, 벤더, 리뷰를 관리할 조선소 담당자 계정을 생성합니다", "プロジェクト・ベンダー・レビューを管理する担当者アカウントを作成します")
+        ) : undefined}
+        maxWidth={createMode === "bulk" ? "max-w-5xl" : undefined}
       >
+        {/* Mode tabs — only for SHIPYARD/VENDOR (admins are rare, bulk admin creation not needed) */}
+        {createRole !== "ADMIN" && (
+          <div className="flex gap-1 p-1 bg-surface-secondary rounded-[8px] w-fit mb-4">
+            <button onClick={() => setCreateMode("single")}
+              className={cn("px-3 py-1.5 rounded-[6px] text-[12px] font-medium transition-all",
+                createMode === "single" ? "bg-white text-text shadow-xs" : "text-text-tertiary hover:text-text-secondary")}>
+              {tx(locale, "Single", "개별 추가", "個別追加")}
+            </button>
+            <button onClick={() => setCreateMode("bulk")}
+              className={cn("px-3 py-1.5 rounded-[6px] text-[12px] font-medium transition-all inline-flex items-center gap-1",
+                createMode === "bulk" ? "bg-white text-text shadow-xs" : "text-text-tertiary hover:text-text-secondary")}>
+              <Upload size={12} /> {tx(locale, "Bulk (paste from Excel)", "일괄 등록 (엑셀 붙여넣기)", "一括登録")}
+            </button>
+          </div>
+        )}
+
+        {createMode === "bulk" && createRole !== "ADMIN" ? (
+          <BulkUploadGrid
+            locale={locale}
+            endpoint="/api/admin/users/bulk"
+            payloadKey="users"
+            columns={["email", "name", "company", "phone", "password", "shipyard"]}
+            requiredColumns={["email", "name", "password", "shipyard"]}
+            fixedFields={{ role: createRole }}
+            validate={(row) => {
+              const e: Record<string, string> = {};
+              if (!row.email?.trim()) e.email = tx(locale, "Required", "필수", "必須");
+              else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email.trim())) e.email = tx(locale, "Invalid email", "이메일 형식 오류", "メール形式エラー");
+              if (!row.name?.trim()) e.name = tx(locale, "Required", "필수", "必須");
+              if (!row.password?.trim()) e.password = tx(locale, "Required", "필수", "必須");
+              else if (row.password.length < 8) e.password = tx(locale, "Min 8 chars", "8자 이상", "8文字以上");
+              if (!row.shipyard?.trim()) e.shipyard = tx(locale, "Required (shipyard name)", "필수 (조선소 이름)", "必須 (造船所名)");
+              return e;
+            }}
+            onSuccess={() => { setCreateOpen(false); loadUsers(); }}
+            onCancel={() => setCreateOpen(false)}
+          />
+        ) : (
         <div className="space-y-4">
           <Input label={tx(locale, "Name *", "이름 *", "名前 *")} placeholder={tx(locale, "Name", "이름", "名前")} value={createForm.name} onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })} />
           <Input label={tx(locale, "Email *", "이메일 *", "メール *")} type="email" placeholder="user@example.com" value={createForm.email} onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })} />
           <Input label={tx(locale, "Password *", "비밀번호 *", "パスワード *")} type="password" placeholder={tx(locale, "6+ characters", "6자 이상", "6文字以上")} value={createForm.password} onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })} />
 
-          {/* Shipyard selector — only for SHIPYARD role */}
-          {createRole === "SHIPYARD" && (
+          {/* Shipyard selector — for SUPPORT (manager) and SHIPYARD (viewer) roles */}
+          {(createRole === "SUPPORT" || createRole === "SHIPYARD") && (
             <div className="space-y-2">
               <label className="text-body-xs font-semibold text-text-secondary">
                 {tx(locale, "Shipyard *", "조선소 *", "造船所 *")}
@@ -620,6 +964,7 @@ function UsersTab({ locale }: { locale: string }) {
             <Button onClick={handleCreateUser} loading={createSaving}><Plus size={14} /> {tx(locale, "Create", "생성", "作成")}</Button>
           </div>
         </div>
+        )}
       </Dialog>
 
       {/* Delete user confirm */}
@@ -930,6 +1275,7 @@ function ShipyardsTab({ locale }: { locale: string }) {
   const [shipyards, setShipyards] = useState<ShipyardRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState<"single" | "bulk">("single");
   const [editTarget, setEditTarget] = useState<ShipyardRow | null>(null);
   const [form, setForm] = useState({ name: "", address: "", phone: "", contact: "" });
   const [saving, setSaving] = useState(false);
@@ -949,8 +1295,8 @@ function ShipyardsTab({ locale }: { locale: string }) {
 
   useEffect(() => { fetchShipyards(); }, [fetchShipyards]);
 
-  function openCreate() { setEditTarget(null); setForm({ name: "", address: "", phone: "", contact: "" }); setDialogOpen(true); }
-  function openEdit(s: ShipyardRow) { setEditTarget(s); setForm({ name: s.name, address: s.address || "", phone: s.phone || "", contact: s.contact || "" }); setDialogOpen(true); }
+  function openCreate() { setEditTarget(null); setForm({ name: "", address: "", phone: "", contact: "" }); setDialogMode("single"); setDialogOpen(true); }
+  function openEdit(s: ShipyardRow) { setEditTarget(s); setForm({ name: s.name, address: s.address || "", phone: s.phone || "", contact: s.contact || "" }); setDialogMode("single"); setDialogOpen(true); }
 
   async function handleSave() {
     if (!form.name) { showToast.error(tx(locale, "Name required", "이름은 필수입니다", "名前は必須です")); return; }
@@ -1115,7 +1461,8 @@ function ShipyardsTab({ locale }: { locale: string }) {
                                     </div>
                                     <span className={cn("text-[9px] font-bold px-2 py-0.5 rounded-full",
                                       u.role === "ADMIN" ? "bg-brand-lighter text-brand" :
-                                      u.role === "SHIPYARD" ? "bg-green-50 text-green-700" :
+                                      u.role === "SUPPORT" ? "bg-blue-50 text-blue-700" :
+                                      u.role === "SHIPYARD" ? "bg-purple-50 text-purple-700" :
                                       "bg-surface-secondary text-text-tertiary"
                                     )}>{u.role}</span>
                                   </div>
@@ -1168,7 +1515,44 @@ function ShipyardsTab({ locale }: { locale: string }) {
           })}
         </div>
       )}
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} title={editTarget ? (tx(locale, "Edit Shipyard", "조선소 수정", "造船所編集")) : (tx(locale, "Add Shipyard", "조선소 추가", "造船所追加"))}>
+      <Dialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        title={editTarget ? (tx(locale, "Edit Shipyard", "조선소 수정", "造船所編集")) : (tx(locale, "Add Shipyard", "조선소 추가", "造船所追加"))}
+        maxWidth={dialogMode === "bulk" ? "max-w-5xl" : undefined}
+      >
+        {/* Mode tabs (only when creating, not editing) */}
+        {!editTarget && (
+          <div className="flex gap-1 p-1 bg-surface-secondary rounded-[8px] w-fit mb-4">
+            <button onClick={() => setDialogMode("single")}
+              className={cn("px-3 py-1.5 rounded-[6px] text-[12px] font-medium transition-all",
+                dialogMode === "single" ? "bg-white text-text shadow-xs" : "text-text-tertiary hover:text-text-secondary")}>
+              {tx(locale, "Single", "개별 추가", "個別追加")}
+            </button>
+            <button onClick={() => setDialogMode("bulk")}
+              className={cn("px-3 py-1.5 rounded-[6px] text-[12px] font-medium transition-all inline-flex items-center gap-1",
+                dialogMode === "bulk" ? "bg-white text-text shadow-xs" : "text-text-tertiary hover:text-text-secondary")}>
+              <Upload size={12} /> {tx(locale, "Bulk (paste from Excel)", "일괄 등록 (엑셀 붙여넣기)", "一括登録")}
+            </button>
+          </div>
+        )}
+
+        {dialogMode === "bulk" && !editTarget ? (
+          <BulkUploadGrid
+            locale={locale}
+            endpoint="/api/admin/shipyards/bulk"
+            payloadKey="shipyards"
+            columns={["name", "address", "phone", "contact"]}
+            requiredColumns={["name"]}
+            validate={(row) => {
+              const e: Record<string, string> = {};
+              if (!row.name?.trim()) e.name = tx(locale, "Required", "필수", "必須");
+              return e;
+            }}
+            onSuccess={() => { setDialogOpen(false); fetchShipyards(); }}
+            onCancel={() => setDialogOpen(false)}
+          />
+        ) : (
         <div className="space-y-4">
           <Input label={tx(locale, "Name *", "이름 *", "名前 *")} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           <Input label={tx(locale, "Address", "주소", "住所")} placeholder={tx(locale, "Address", "부산시 영도구", "東京都港区")} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
@@ -1179,6 +1563,7 @@ function ShipyardsTab({ locale }: { locale: string }) {
             <Button onClick={handleSave} loading={saving}>{tx(locale, "Save", "저장", "保存")}</Button>
           </div>
         </div>
+        )}
       </Dialog>
 
       {/* Delete confirmation */}
@@ -1312,90 +1697,6 @@ function SubmissionsTab({ locale }: { locale: string }) {
                 </a>
               );
             })}
-          </div>
-        </Card>
-      )}
-    </div>
-  );
-}
-
-// ─── Logins Tab ──────────────────────────────────────────────────────────────
-
-interface LoginRow {
-  id: number; userName: string; userEmail: string; userRole: string;
-  ip: string; userAgent: string | null; createdAt: string;
-}
-
-function LoginsTab({ locale }: { locale: string }) {
-  const [logs, setLogs] = useState<LoginRow[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch("/api/admin/login-logs?limit=200")
-      .then(async (r) => { if (r.ok) { const d = await r.json(); setLogs(Array.isArray(d) ? d : []); } })
-      .finally(() => setLoading(false));
-  }, []);
-
-  // Parse UA for simple display
-  function parseUA(ua: string | null): string {
-    if (!ua) return "—";
-    if (ua.includes("Chrome")) return "Chrome";
-    if (ua.includes("Firefox")) return "Firefox";
-    if (ua.includes("Safari")) return "Safari";
-    if (ua.includes("Edge")) return "Edge";
-    return ua.substring(0, 30);
-  }
-
-  if (loading) return <SkeletonTable rows={8} />;
-
-  const roleBadge: Record<string, { bg: string; color: string }> = {
-    ADMIN: { bg: "#FFF1F1", color: "#DA1E28" },
-    SHIPYARD: { bg: "#EDF5FF", color: "#0F62FE" },
-    VENDOR: { bg: "#E6F7EF", color: "#24A148" },
-  };
-
-  return (
-    <div className="space-y-4">
-      <h2 className="text-body-sm font-bold text-text">
-        {locale === "ko" ? `로그인 이력 (최근 ${logs.length}건)` : locale === "ja" ? `ログイン履歴 (直近${logs.length}件)` : `Login History (last ${logs.length})`}
-      </h2>
-      {logs.length === 0 ? (
-        <EmptyState icon={Activity} title={tx(locale, "No login history", "로그인 이력이 없습니다", "ログイン履歴がありません")} />
-      ) : (
-        <Card padding="none">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border bg-surface-secondary/30">
-                  <th className="px-4 py-2.5 text-left text-[11px] font-bold text-text-tertiary uppercase">{tx(locale, "User", "사용자", "ユーザー")}</th>
-                  <th className="px-4 py-2.5 text-left text-[11px] font-bold text-text-tertiary uppercase">{tx(locale, "Role", "역할", "役割")}</th>
-                  <th className="px-4 py-2.5 text-left text-[11px] font-bold text-text-tertiary uppercase">IP</th>
-                  <th className="px-4 py-2.5 text-left text-[11px] font-bold text-text-tertiary uppercase">{tx(locale, "Browser", "브라우저", "ブラウザ")}</th>
-                  <th className="px-4 py-2.5 text-left text-[11px] font-bold text-text-tertiary uppercase">{tx(locale, "Time", "시간", "時間")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {logs.map((l) => {
-                  const rb = roleBadge[l.userRole] || roleBadge.VENDOR;
-                  return (
-                    <tr key={l.id} className="hover:bg-surface-secondary/20 transition-colors">
-                      <td className="px-4 py-2.5">
-                        <p className="text-body-xs font-semibold text-text">{l.userName}</p>
-                        <p className="text-[10px] text-text-tertiary">{l.userEmail}</p>
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: rb.bg, color: rb.color }}>{l.userRole}</span>
-                      </td>
-                      <td className="px-4 py-2.5 text-body-xs text-text font-mono">{l.ip}</td>
-                      <td className="px-4 py-2.5 text-body-xs text-text-tertiary">{parseUA(l.userAgent)}</td>
-                      <td className="px-4 py-2.5 text-body-xs text-text-tertiary whitespace-nowrap">
-                        {new Date(l.createdAt).toLocaleString(tx(locale, "en-US", "ko-KR", "ja-JP"), { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
           </div>
         </Card>
       )}
@@ -2173,5 +2474,514 @@ function ProjectsTab({ locale }: { locale: string }) {
   );
 }
 
-// ─── Advisories Tab ──────────────────────────────────────────────────────────
+// ─── Data Health Tab ─────────────────────────────────────────────────────────
 
+interface HealthIssue { type: string; [key: string]: unknown; }
+interface FixItem { type: string; description: string; reason?: string; }
+
+function DataHealthTab({ locale }: { locale: string }) {
+  const [issues, setIssues] = useState<HealthIssue[]>([]);
+  const [summary, setSummary] = useState<{ total: number; byType: Record<string, number> }>({ total: 0, byType: {} });
+  const [loading, setLoading] = useState(false);
+  const [scanned, setScanned] = useState(false);
+  const [fixing, setFixing] = useState(false);
+  const [fixResult, setFixResult] = useState<{ applied: FixItem[]; skipped: FixItem[] } | null>(null);
+  const [aggressive, setAggressive] = useState(false);
+
+  const scan = useCallback(async () => {
+    setLoading(true);
+    setFixResult(null);
+    try {
+      const res = await fetch("/api/admin/data-health");
+      if (res.ok) {
+        const data = await res.json();
+        setIssues(data.issues || []);
+        setSummary(data.summary || { total: 0, byType: {} });
+        setScanned(true);
+      } else {
+        showToast.error(tx(locale, "Scan failed", "진단 실패", "診断失敗"));
+      }
+    } finally { setLoading(false); }
+  }, [locale]);
+
+  const fix = async () => {
+    setFixing(true);
+    try {
+      const res = await fetch("/api/admin/data-health", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "auto-fix", aggressive }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFixResult(data);
+        showToast.success(tx(locale, `Fixed ${data.applied?.length || 0} issues`, `${data.applied?.length || 0}건 수정 완료`, `${data.applied?.length || 0}件修正完了`));
+        scan();
+      } else {
+        showToast.error(tx(locale, "Fix failed", "수정 실패", "修正失敗"));
+      }
+    } finally { setFixing(false); }
+  };
+
+  const TYPE_LABELS: Record<string, { en: string; ko: string }> = {
+    orphan_shipyard: { en: "Orphan Shipyard", ko: "고아 조선소" },
+    duplicate_shipyards: { en: "Duplicate Shipyards", ko: "중복 조선소" },
+    empty_shipyard_user: { en: "User Without Shipyard", ko: "조선소 미배정 사용자" },
+    vendor_equipment_mismatch: { en: "Vendor-Equipment Mismatch", ko: "벤더-기자재 불일치" },
+    orphan_project: { en: "Orphan Project", ko: "고아 프로젝트" },
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-body-sm font-bold text-text">
+          {tx(locale, "Data Health Diagnosis", "데이터 정합성 진단", "データ整合性診断")}
+        </h2>
+        <div className="flex items-center gap-2">
+          {scanned && summary.total > 0 && (
+            <>
+              <label className="flex items-center gap-1.5 text-[11px] text-text-tertiary cursor-pointer">
+                <input type="checkbox" checked={aggressive} onChange={(e) => setAggressive(e.target.checked)} className="rounded" />
+                {tx(locale, "Aggressive", "적극 수정", "積極修正")}
+              </label>
+              <Button size="sm" variant="outline" onClick={fix} loading={fixing}>
+                {tx(locale, "Auto Fix", "자동 수정", "自動修正")}
+              </Button>
+            </>
+          )}
+          <Button size="sm" onClick={scan} loading={loading}>
+            <Activity size={14} /> {tx(locale, "Scan", "진단", "診断")}
+          </Button>
+        </div>
+      </div>
+
+      {!scanned ? (
+        <Card>
+          <CardBody>
+            <EmptyState icon={Activity} title={tx(locale, "Run a scan to check data health", "진단을 실행하여 데이터 정합성을 확인하세요", "診断を実行してデータ整合性を確認してください")} />
+          </CardBody>
+        </Card>
+      ) : summary.total === 0 ? (
+        <Card>
+          <CardBody>
+            <EmptyState icon={CheckCircle} title={tx(locale, "All data is healthy", "모든 데이터가 정상입니다", "すべてのデータは正常です")} />
+          </CardBody>
+        </Card>
+      ) : (
+        <>
+          {/* Summary badges */}
+          <div className="flex flex-wrap gap-2">
+            <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-risk-bg text-safety-high">
+              {tx(locale, `${summary.total} issues found`, `${summary.total}건 발견`, `${summary.total}件発見`)}
+            </span>
+            {Object.entries(summary.byType).map(([type, count]) => (
+              <span key={type} className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-surface-secondary text-text-secondary">
+                {(locale === "ko" ? TYPE_LABELS[type]?.ko : TYPE_LABELS[type]?.en) || type} ({count})
+              </span>
+            ))}
+          </div>
+
+          {/* Issues list */}
+          <Card padding="none">
+            <div className="divide-y divide-border max-h-[480px] overflow-y-auto">
+              {issues.map((issue, i) => (
+                <div key={i} className="px-5 py-3.5 text-body-sm">
+                  <div className="flex items-center gap-2 mb-1">
+                    <AlertCircle size={14} className="text-safety-high shrink-0" />
+                    <span className="font-semibold text-text">
+                      {(locale === "ko" ? TYPE_LABELS[issue.type]?.ko : TYPE_LABELS[issue.type]?.en) || issue.type}
+                    </span>
+                  </div>
+                  <pre className="text-[11px] text-text-tertiary whitespace-pre-wrap ml-5">
+                    {JSON.stringify(Object.fromEntries(Object.entries(issue).filter(([k]) => k !== "type")), null, 2)}
+                  </pre>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </>
+      )}
+
+      {/* Fix results */}
+      {fixResult && (
+        <div className="space-y-3">
+          {fixResult.applied.length > 0 && (
+            <Card>
+              <CardHeader title={tx(locale, `Applied (${fixResult.applied.length})`, `수정됨 (${fixResult.applied.length})`, `適用済み (${fixResult.applied.length})`)} />
+              <CardBody>
+                <ul className="space-y-1">
+                  {fixResult.applied.map((item, i) => (
+                    <li key={i} className="flex items-start gap-2 text-body-sm">
+                      <CheckCircle size={14} className="text-safety-low shrink-0 mt-0.5" />
+                      <span className="text-text-secondary">{item.description}</span>
+                    </li>
+                  ))}
+                </ul>
+              </CardBody>
+            </Card>
+          )}
+          {fixResult.skipped.length > 0 && (
+            <Card>
+              <CardHeader title={tx(locale, `Skipped (${fixResult.skipped.length})`, `건너뜀 (${fixResult.skipped.length})`, `スキップ (${fixResult.skipped.length})`)} />
+              <CardBody>
+                <ul className="space-y-1">
+                  {fixResult.skipped.map((item, i) => (
+                    <li key={i} className="flex items-start gap-2 text-body-sm">
+                      <AlertCircle size={14} className="text-text-tertiary shrink-0 mt-0.5" />
+                      <span className="text-text-tertiary">{item.description} — {item.reason}</span>
+                    </li>
+                  ))}
+                </ul>
+              </CardBody>
+            </Card>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Doc Formats Tab ─────────────────────────────────────────────────────────
+
+interface DocFormatRow { id: number; code: string; standard: string; title: string; titleKo: string | null; sections: string; isActive: boolean; }
+
+function DocFormatsTab({ locale }: { locale: string }) {
+  const [formats, setFormats] = useState<DocFormatRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editItem, setEditItem] = useState<DocFormatRow | null>(null);
+  const [form, setForm] = useState({ code: "", standard: "E27", title: "", titleKo: "", sections: "[]", isActive: true });
+  const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<DocFormatRow | null>(null);
+
+  const fetchFormats = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/doc-formats");
+      if (res.ok) setFormats(await res.json());
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchFormats(); }, [fetchFormats]);
+
+  const openCreate = () => {
+    setEditItem(null);
+    setForm({ code: "", standard: "E27", title: "", titleKo: "", sections: "[]", isActive: true });
+    setDialogOpen(true);
+  };
+
+  const openEdit = (item: DocFormatRow) => {
+    setEditItem(item);
+    const sec = typeof item.sections === "string" ? item.sections : JSON.stringify(item.sections, null, 2);
+    setForm({ code: item.code, standard: item.standard, title: item.title, titleKo: item.titleKo || "", sections: sec, isActive: item.isActive });
+    setDialogOpen(true);
+  };
+
+  const handleSave = async () => {
+    if (!form.code || !form.standard || !form.title) {
+      showToast.error(tx(locale, "Code, standard, title are required", "코드, 표준, 제목은 필수입니다", "コード、標準、タイトルは必須です"));
+      return;
+    }
+    try { JSON.parse(form.sections); } catch { showToast.error("sections JSON invalid"); return; }
+
+    setSaving(true);
+    try {
+      const body = editItem
+        ? { id: editItem.id, ...form, sections: JSON.parse(form.sections) }
+        : { ...form, sections: JSON.parse(form.sections) };
+      const res = await fetch("/api/admin/doc-formats", {
+        method: editItem ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        showToast.success(tx(locale, "Saved", "저장되었습니다", "保存されました"));
+        setDialogOpen(false);
+        fetchFormats();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        showToast.error((d as { error?: string }).error || "Failed");
+      }
+    } finally { setSaving(false); }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    const res = await fetch(`/api/admin/doc-formats?id=${deleteTarget.id}`, { method: "DELETE" });
+    if (res.ok) {
+      showToast.success(tx(locale, "Deleted", "삭제되었습니다", "削除されました"));
+      fetchFormats();
+    }
+    setDeleteTarget(null);
+  };
+
+  const handleToggle = async (item: DocFormatRow) => {
+    await fetch("/api/admin/doc-formats", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: item.id, isActive: !item.isActive }),
+    });
+    setFormats((prev) => prev.map((f) => f.id === item.id ? { ...f, isActive: !f.isActive } : f));
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-body-sm font-bold text-text">
+          {tx(locale, `Document Formats (${formats.length})`, `문서 포맷 (${formats.length})`, `ドキュメント形式 (${formats.length})`)}
+        </h2>
+        <Button size="sm" onClick={openCreate}><Plus size={14} /> {tx(locale, "Add Format", "포맷 추가", "形式追加")}</Button>
+      </div>
+
+      {loading ? <SkeletonTable rows={4} /> : formats.length === 0 ? (
+        <Card><CardBody><EmptyState icon={FileText} title={tx(locale, "No document formats", "문서 포맷이 없습니다", "ドキュメント形式がありません")} /></CardBody></Card>
+      ) : (
+        <Card padding="none">
+          <div className="divide-y divide-border">
+            {formats.map((f) => (
+              <div key={f.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-surface-secondary/20 transition-colors">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-body-sm font-semibold text-text">{f.code}</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-brand-lighter text-brand">{f.standard}</span>
+                    {!f.isActive && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-surface-secondary text-text-tertiary">{tx(locale, "Inactive", "비활성", "無効")}</span>}
+                  </div>
+                  <p className="text-body-xs text-text-tertiary mt-0.5">{f.title}{f.titleKo ? ` / ${f.titleKo}` : ""}</p>
+                </div>
+                <button onClick={() => handleToggle(f)}
+                  className={cn("relative w-10 h-6 rounded-full transition-colors duration-200 shrink-0", f.isActive ? "bg-safety-low" : "bg-border-strong")}>
+                  <span className={cn("absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200", f.isActive && "translate-x-4")} />
+                </button>
+                <button onClick={() => openEdit(f)} className="p-1.5 rounded-md text-text-tertiary hover:text-brand hover:bg-brand-lighter transition-colors"><Pencil size={13} /></button>
+                <button onClick={() => setDeleteTarget(f)} className="p-1.5 rounded-md text-text-tertiary hover:text-safety-high hover:bg-risk-bg transition-colors"><Trash2 size={13} /></button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)}
+        title={editItem ? tx(locale, "Edit Format", "포맷 수정", "形式編集") : tx(locale, "Add Format", "포맷 추가", "形式追加")}
+        maxWidth="max-w-lg">
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Code *" placeholder="E27-CBS" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} disabled={!!editItem} />
+            <Input label="Standard *" placeholder="E27" value={form.standard} onChange={(e) => setForm({ ...form, standard: e.target.value })} />
+          </div>
+          <Input label="Title (EN) *" placeholder="CBS Report" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+          <Input label={tx(locale, "Title (KO)", "제목 (한국어)", "タイトル (韓国語)")} placeholder="" value={form.titleKo} onChange={(e) => setForm({ ...form, titleKo: e.target.value })} />
+          <div>
+            <label className="block text-[11px] font-bold text-text-tertiary mb-1">Sections (JSON)</label>
+            <textarea
+              value={form.sections}
+              onChange={(e) => setForm({ ...form, sections: e.target.value })}
+              rows={8}
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-[12px] font-mono text-text placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand transition-all"
+            />
+          </div>
+          <div className="flex justify-end gap-3 pt-2 border-t border-border">
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>{tx(locale, "Cancel", "취소", "キャンセル")}</Button>
+            <Button onClick={handleSave} loading={saving}>{tx(locale, "Save", "저장", "保存")}</Button>
+          </div>
+        </div>
+      </Dialog>
+
+      <ConfirmDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete}
+        title={tx(locale, "Delete Format", "포맷 삭제", "形式削除")}
+        description={tx(locale, `Delete "${deleteTarget?.code}"? This cannot be undone.`, `"${deleteTarget?.code}" 포맷을 삭제하시겠습니까?`, `「${deleteTarget?.code}」を削除しますか？`)} />
+    </div>
+  );
+}
+
+// ─── Society KB Tab ──────────────────────────────────────────────────────────
+
+interface SocietyKbRow { id: number; classification: string; checkId: string; category: string; question: string; questionKo: string | null; guidance: string | null; isRequired: boolean; }
+
+const SOCIETIES = ["KR", "LR", "DNV", "ABS", "BV", "CCS", "NK"];
+
+function SocietyKbTab({ locale }: { locale: string }) {
+  const [items, setItems] = useState<SocietyKbRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [society, setSociety] = useState<string>("KR");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editItem, setEditItem] = useState<SocietyKbRow | null>(null);
+  const [form, setForm] = useState({ classification: "KR", checkId: "", category: "", question: "", questionKo: "", guidance: "", isRequired: true });
+  const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<SocietyKbRow | null>(null);
+
+  const fetchItems = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/society-checklist?classification=${society}`);
+      if (res.ok) setItems(await res.json());
+    } finally { setLoading(false); }
+  }, [society]);
+
+  useEffect(() => { fetchItems(); }, [fetchItems]);
+
+  const openCreate = () => {
+    setEditItem(null);
+    setForm({ classification: society, checkId: "", category: "", question: "", questionKo: "", guidance: "", isRequired: true });
+    setDialogOpen(true);
+  };
+
+  const openEdit = (item: SocietyKbRow) => {
+    setEditItem(item);
+    setForm({
+      classification: item.classification, checkId: item.checkId, category: item.category,
+      question: item.question, questionKo: item.questionKo || "", guidance: item.guidance || "",
+      isRequired: item.isRequired,
+    });
+    setDialogOpen(true);
+  };
+
+  const handleSave = async () => {
+    if (!form.classification || !form.checkId || !form.category || !form.question) {
+      showToast.error(tx(locale, "All required fields must be filled", "필수 항목을 모두 입력하세요", "必須項目を入力してください"));
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/society-checklist", {
+        method: editItem ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editItem ? { id: editItem.id, ...form } : form),
+      });
+      if (res.ok) {
+        showToast.success(tx(locale, "Saved", "저장되었습니다", "保存されました"));
+        setDialogOpen(false);
+        fetchItems();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        showToast.error((d as { error?: string }).error || "Failed");
+      }
+    } finally { setSaving(false); }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    const res = await fetch(`/api/society-checklist?id=${deleteTarget.id}`, { method: "DELETE" });
+    if (res.ok) {
+      showToast.success(tx(locale, "Deleted", "삭제되었습니다", "削除されました"));
+      fetchItems();
+    }
+    setDeleteTarget(null);
+  };
+
+  const byCategory = new Map<string, SocietyKbRow[]>();
+  items.forEach((it) => {
+    if (!byCategory.has(it.category)) byCategory.set(it.category, []);
+    byCategory.get(it.category)!.push(it);
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-body-sm font-bold text-text">
+          {tx(locale, `Society Checklist KB (${items.length})`, `선급 체크리스트 가이드 (${items.length})`, `船級チェックリスト (${items.length})`)}
+        </h2>
+        <div className="flex items-center gap-2">
+          <div className="flex gap-1 p-1 bg-surface-secondary rounded-[8px]">
+            {SOCIETIES.map((s) => (
+              <button key={s} onClick={() => setSociety(s)}
+                className={cn("px-3 py-1 rounded-[6px] text-[11px] font-medium transition-all",
+                  society === s ? "bg-white text-text shadow-xs" : "text-text-tertiary")}>
+                {s}
+              </button>
+            ))}
+          </div>
+          <Button size="sm" onClick={openCreate}><Plus size={14} /> {tx(locale, "Add", "추가", "追加")}</Button>
+        </div>
+      </div>
+
+      {loading ? <SkeletonTable rows={5} /> : items.length === 0 ? (
+        <Card><CardBody><EmptyState icon={FileText} title={tx(locale, `No items for ${society}`, `${society} 체크리스트 항목이 없습니다`, `${society}チェックリスト項目がありません`)} /></CardBody></Card>
+      ) : (
+        <div className="space-y-6">
+          {[...byCategory.entries()].map(([cat, group]) => (
+            <div key={cat}>
+              <h3 className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary mb-2 px-1">
+                {cat} <span className="text-text-tertiary font-normal">· {group.length}</span>
+              </h3>
+              <Card padding="none">
+                <div className="divide-y divide-border">
+                  {group.map((item) => (
+                    <div key={item.id} className="group px-5 py-4 hover:bg-surface-secondary/20 transition-colors">
+                      <div className="flex items-start gap-3">
+                        <div className="flex flex-col items-center gap-1 shrink-0 pt-0.5">
+                          <span className="text-[10px] font-mono font-bold text-text-tertiary tabular-nums">{item.checkId}</span>
+                          {!item.isRequired && (
+                            <span className="text-[9px] text-text-tertiary">{tx(locale, "opt", "선택", "任意")}</span>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0 space-y-2">
+                          <div>
+                            <p className="text-[13px] font-semibold text-text leading-snug">{item.question}</p>
+                            {item.questionKo && (
+                              <p className="text-[11px] text-text-tertiary mt-0.5">{item.questionKo}</p>
+                            )}
+                          </div>
+                          {item.guidance && (
+                            <p className="text-[12px] text-text-secondary leading-relaxed whitespace-pre-wrap">
+                              {item.guidance}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => openEdit(item)} className="p-1.5 rounded-md text-text-tertiary hover:text-text hover:bg-surface-secondary transition-colors"><Pencil size={13} /></button>
+                          <button onClick={() => setDeleteTarget(item)} className="p-1.5 rounded-md text-text-tertiary hover:text-safety-high hover:bg-risk-bg transition-colors"><Trash2 size={13} /></button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)}
+        title={editItem ? tx(locale, "Edit Item", "항목 수정", "項目編集") : tx(locale, "Add Item", "항목 추가", "項目追加")}
+        maxWidth="max-w-lg">
+        <div className="space-y-3">
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-[11px] font-bold text-text-tertiary mb-1">Society *</label>
+              <select value={form.classification} onChange={(e) => setForm({ ...form, classification: e.target.value })}
+                className="w-full h-9 rounded-lg border border-border bg-white px-3 text-[12px] text-text">
+                {SOCIETIES.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <Input label="Check ID *" placeholder="CYB-01" value={form.checkId} onChange={(e) => setForm({ ...form, checkId: e.target.value })} disabled={!!editItem} />
+            <Input label="Category *" placeholder="Access Control" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
+          </div>
+          <Input label="Question (EN) *" value={form.question} onChange={(e) => setForm({ ...form, question: e.target.value })} />
+          <Input label={tx(locale, "Question (KO)", "질문 (한국어)", "質問 (韓国語)")} value={form.questionKo} onChange={(e) => setForm({ ...form, questionKo: e.target.value })} />
+          <div>
+            <label className="block text-[11px] font-bold text-text-tertiary mb-1">
+              {tx(locale, "Guidance (how to comply)", "가이드 (컴플라이언스 방법)", "ガイド")}
+            </label>
+            <textarea value={form.guidance} onChange={(e) => setForm({ ...form, guidance: e.target.value })} rows={4}
+              placeholder={tx(locale, "e.g., Implement RBAC with min 8-char password policy. Reference E27 SC-1.",
+                "예: RBAC 구현, 최소 8자 비밀번호 정책 적용. E27 SC-1 참조.",
+                "例: RBACを実装、最小8文字のパスワードポリシー。E27 SC-1参照。")}
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-[12px] text-text focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand transition-all" />
+          </div>
+          <label className="flex items-center gap-2 text-[12px] text-text-secondary">
+            <input type="checkbox" checked={form.isRequired} onChange={(e) => setForm({ ...form, isRequired: e.target.checked })} className="rounded" />
+            {tx(locale, "Required (not optional)", "필수 항목", "必須項目")}
+          </label>
+          <div className="flex justify-end gap-3 pt-2 border-t border-border">
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>{tx(locale, "Cancel", "취소", "キャンセル")}</Button>
+            <Button onClick={handleSave} loading={saving}>{tx(locale, "Save", "저장", "保存")}</Button>
+          </div>
+        </div>
+      </Dialog>
+
+      <ConfirmDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete}
+        title={tx(locale, "Delete Item", "항목 삭제", "項目削除")}
+        description={tx(locale, `Delete "${deleteTarget?.checkId}"?`, `"${deleteTarget?.checkId}" 항목을 삭제하시겠습니까?`, `「${deleteTarget?.checkId}」を削除しますか？`)} />
+    </div>
+  );
+}

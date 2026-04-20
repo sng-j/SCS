@@ -81,7 +81,8 @@ export default function FleetPage() {
     );
   }
 
-  if (userRole !== "SHIPYARD" && userRole !== "ADMIN") {
+  // Read: SUPPORT, SHIPYARD (viewer), ADMIN
+  if (userRole !== "SHIPYARD" && userRole !== "SUPPORT" && userRole !== "ADMIN") {
     return (
       <div className="max-w-5xl mx-auto px-6 py-8">
         <EmptyState icon={Ship} title={tx(locale, "Access denied", "접근 권한이 없습니다", "アクセスが拒否されました")} />
@@ -216,20 +217,20 @@ function VesselCard({ vessel, locale, index }: { vessel: VesselData; locale: str
       <Link href={`/project/${vessel.id}`}>
       <Card padding="none" hover>
         <CardBody>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3 md:gap-4">
             {/* Icon + Name */}
-            <div className="flex items-center gap-3 flex-1 min-w-[180px]">
+            <div className="flex items-center gap-3 flex-1 min-w-[160px]">
               <div className={cn("h-10 w-10 rounded-lg flex items-center justify-center shrink-0", allDone ? "bg-green-50" : "bg-brand-lighter")}>
                 <Ship size={18} className={allDone ? "text-green-600" : "text-brand"} />
               </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <p className="text-body-sm font-bold text-text">{vessel.vesselName}</p>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-body-sm font-bold text-text truncate">{vessel.vesselName}</p>
                   {vessel.classification && (
-                    <span className={cn("px-1.5 py-0.5 rounded-full text-[9px] font-bold", cls.bg, cls.text)}>{vessel.classification}</span>
+                    <span className={cn("px-1.5 py-0.5 rounded-full text-[9px] font-bold shrink-0", cls.bg, cls.text)}>{vessel.classification}</span>
                   )}
                 </div>
-                <p className="text-[10px] text-text-tertiary mt-0.5">
+                <p className="text-[10px] text-text-tertiary mt-0.5 truncate">
                   {vessel.projectGroup?.shipowner || "—"}
                   {vessel.projectGroup?.name ? ` · ${vessel.projectGroup.name}` : ""}
                 </p>
@@ -237,14 +238,14 @@ function VesselCard({ vessel, locale, index }: { vessel: VesselData; locale: str
             </div>
 
             {/* Equipment stats */}
-            <div className="flex items-center gap-4 text-[11px] text-text-tertiary shrink-0">
+            <div className="flex items-center gap-3 sm:gap-4 text-[11px] text-text-tertiary shrink-0">
               <span>{tx(locale, "Equipment", "기자재", "機材")} <strong className="text-text">{eqCount}</strong></span>
               <span>HW <strong className="text-text">{vessel.hwCount}</strong></span>
               <span>SW <strong className="text-text">{vessel.swCount}</strong></span>
             </div>
 
-            {/* Approval progress */}
-            <div className="flex items-center gap-3 min-w-[180px] shrink-0">
+            {/* Approval progress — full width on small screens, fixed on wider */}
+            <div className="flex items-center gap-3 w-full sm:w-auto sm:min-w-[180px] shrink-0 order-last sm:order-none">
               <div className="flex-1">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[10px] text-text-tertiary">{tx(locale, "Approval", "승인 현황", "承認")}</span>

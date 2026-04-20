@@ -163,7 +163,14 @@ export function ShipyardLayout({ children }: { children: React.ReactNode }) {
                     className="flex items-center gap-2 px-3 py-2 text-[12px] text-text-secondary hover:bg-surface-secondary transition-colors">
                     <User size={13} /> {tx(locale, "Account Settings", "계정 설정", "アカウント設定")}
                   </Link>
-                  <button onClick={() => signOut({ callbackUrl: "/login" })}
+                  <button onClick={() => {
+                    // Avoid 0.0.0.0 redirect: if current host is 0.0.0.0, rewrite to localhost
+                    const host = typeof window !== "undefined" ? window.location.host : "";
+                    const loginUrl = host.startsWith("0.0.0.0")
+                      ? `${window.location.protocol}//localhost:${window.location.port}/login`
+                      : "/login";
+                    signOut({ callbackUrl: loginUrl });
+                  }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-safety-high hover:bg-risk-bg transition-colors">
                     <LogOut size={13} /> {tx(locale, "Sign out", "로그아웃", "ログアウト")}
                   </button>

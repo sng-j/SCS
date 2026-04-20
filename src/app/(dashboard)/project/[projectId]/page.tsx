@@ -181,8 +181,8 @@ export default function ProjectDetailPage() {
     );
   }
 
-  // SHIPYARD/ADMIN → 조선소 전용 호선 대시보드
-  if (userRole === "SHIPYARD" || userRole === "ADMIN") {
+  // SHIPYARD(viewer) / SUPPORT / ADMIN → 조선소 전용 호선 대시보드
+  if (userRole === "SHIPYARD" || userRole === "SUPPORT" || userRole === "ADMIN") {
     return (
       <div className="max-w-[1200px] mx-auto px-6 py-8">
         <Link href="/project" className="inline-flex items-center gap-1 text-body-xs text-text-tertiary hover:text-brand transition-colors mb-6">
@@ -317,8 +317,8 @@ export default function ProjectDetailPage() {
           </Card>
         </div>
 
-        {/* E26 Document Generation Banner */}
-        {(userRole === "SHIPYARD" || userRole === "ADMIN") && equipment.length > 0 && (
+        {/* E26 Document Generation Banner — only SUPPORT/ADMIN can generate, viewer sees it too for info */}
+        {(userRole === "SHIPYARD" || userRole === "SUPPORT" || userRole === "ADMIN") && equipment.length > 0 && (
           <E26Banner projectId={projectId} equipment={equipment} locale={locale} />
         )}
       </motion.div>

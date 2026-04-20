@@ -38,14 +38,14 @@ export async function GET(_request: Request, { params }: Params) {
   return NextResponse.json(project);
 }
 
-/** PATCH /api/projects/[projectId] — update a project (SHIPYARD/ADMIN only) */
+/** PATCH /api/projects/[projectId] — update a project (SUPPORT/ADMIN only) */
 export async function PATCH(request: Request, { params }: Params) {
   const user = await getSessionUser();
   if (!user) return apiError("Unauthorized", 401);
 
-  // VENDOR cannot modify project settings
-  if (user.role === "VENDOR") {
-    return apiError("Vendors cannot modify project settings", 403);
+  // Write: only SUPPORT or ADMIN. SHIPYARD is read-only and VENDOR cannot modify.
+  if (user.role !== "SUPPORT" && user.role !== "ADMIN") {
+    return apiError("Only support and admin can modify project settings", 403);
   }
 
   const { projectId } = await params;

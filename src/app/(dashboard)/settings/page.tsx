@@ -4,13 +4,12 @@ import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { motion } from "framer-motion";
 import {
-  User, Lock, Globe, Save, AlertCircle, Eye, EyeOff, CheckCircle,
+  User, Lock, Save, AlertCircle, Eye, EyeOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLocaleStore } from "@/stores/locale-store";
 import { tx } from "@/lib/i18n";
 import { showToast } from "@/lib/toast";
-import { cn } from "@/lib/utils";
 
 export default function SettingsPage() {
   const { locale } = useLocaleStore();
@@ -176,44 +175,6 @@ function PasswordSection({ locale }: { locale: string }) {
             <Lock size={13} /> {tx(locale, "Change Password", "비밀번호 변경", "パスワード変更")}
           </Button>
         </div>
-      </div>
-    </motion.div>
-  );
-}
-
-// ─── Language ────────────────────────────────────────────────────────────────
-
-function LanguageSection() {
-  const { locale, setLocale } = useLocaleStore();
-
-  const langs = [
-    { value: "en" as const, flag: "🇺🇸", label: "English" },
-    { value: "ko" as const, flag: "🇰🇷", label: "한국어" },
-    { value: "ja" as const, flag: "🇯🇵", label: "日本語" },
-  ];
-
-  return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
-      className="bg-white rounded-xl border border-border p-5">
-      <div className="flex items-center gap-2 mb-4">
-        <Globe size={15} className="text-brand" />
-        <h2 className="text-[14px] font-bold text-text">{tx(locale, "Language", "언어 설정", "言語設定")}</h2>
-      </div>
-
-      <div className="grid grid-cols-3 gap-2">
-        {langs.map((lang) => (
-          <button key={lang.value} onClick={() => setLocale(lang.value)}
-            className={cn(
-              "flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 text-[13px] font-semibold transition-all duration-200",
-              locale === lang.value
-                ? "border-brand bg-brand-lighter/30 text-brand"
-                : "border-border bg-white text-text-tertiary hover:border-brand/30 hover:text-text",
-            )}>
-            <span className="text-[18px]">{lang.flag}</span>
-            {lang.label}
-            {locale === lang.value && <CheckCircle size={14} className="text-brand" />}
-          </button>
-        ))}
       </div>
     </motion.div>
   );

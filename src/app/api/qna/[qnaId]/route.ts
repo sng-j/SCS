@@ -34,11 +34,12 @@ export async function GET(_request: Request, { params }: Params) {
   return NextResponse.json(qna);
 }
 
-/** PATCH /api/qna/[qnaId] — answer a Q&A (ADMIN/SHIPYARD only) */
+/** PATCH /api/qna/[qnaId] — answer a Q&A (ADMIN/SUPPORT only) */
 export async function PATCH(request: Request, { params }: Params) {
   const user = await getSessionUser();
   if (!user) return apiError("Unauthorized", 401);
-  if (user.role !== "ADMIN" && user.role !== "SHIPYARD") {
+  // Write (answer Q&A): only SUPPORT or ADMIN. SHIPYARD is read-only.
+  if (user.role !== "ADMIN" && user.role !== "SUPPORT") {
     return apiError("Forbidden", 403);
   }
 

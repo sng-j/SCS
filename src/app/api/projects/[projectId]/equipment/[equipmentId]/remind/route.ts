@@ -12,7 +12,8 @@ export async function POST(
 ) {
   const user = await getSessionUser();
   if (!user) return apiError("Unauthorized", 401);
-  if (user.role !== "SHIPYARD" && user.role !== "ADMIN") return apiError("Forbidden", 403);
+  // Write (reminder): only SUPPORT or ADMIN
+  if (user.role !== "SUPPORT" && user.role !== "ADMIN") return apiError("Forbidden", 403);
 
   const { projectId, equipmentId } = await params;
 

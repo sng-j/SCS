@@ -23,6 +23,9 @@ import { formatDateTime } from "@/lib/utils";
 import {
   E27_DOC_TYPES,
   E26_DOC_TYPES,
+  IEC_DOC_TYPES,
+  NIST_DOC_TYPES,
+  ISO_DOC_TYPES,
   DOC_STANDARDS,
   type DocType,
 } from "@/types";
@@ -68,13 +71,16 @@ export default function DocumentPage() {
 
   const userRole = (session?.user as { role?: string })?.role || "VENDOR";
 
-  const canEdit = userRole === "VENDOR" || userRole === "ADMIN";
-  const isShipyard = userRole === "SHIPYARD";
+  // VENDOR and SUPPORT can generate/edit. SHIPYARD is read-only viewer.
+  const canEdit = userRole === "VENDOR" || userRole === "SUPPORT" || userRole === "ADMIN";
+  const isShipyardLike = userRole === "SHIPYARD" || userRole === "SUPPORT";
 
-  // Shipyard sees only E26, Vendor only E27, Admin sees both
+  // VENDOR: E27 only (장비 레벨)
+  // SUPPORT/SHIPYARD: E26 + IEC + NIST + ISO (선박/조직 레벨)
+  // ADMIN: all 5
   const visibleStandards = DOC_STANDARDS.filter((s) => {
     if (userRole === "ADMIN") return true;
-    if (isShipyard) return s.id === "E26";
+    if (isShipyardLike) return s.id !== "E27";
     return s.id === "E27";
   });
 
@@ -86,7 +92,6 @@ export default function DocumentPage() {
 
   // Load submissions
   useEffect(() => {
-    if (isShipyard) return;
     async function load() {
       try {
         const res = await fetch(`/api/projects/${projectId}/submissions`);
@@ -100,7 +105,7 @@ export default function DocumentPage() {
       }
     }
     load();
-  }, [projectId, isShipyard]);
+  }, [projectId]);
 
   // Find a doc record for a given docType code
   const findDoc = useCallback(
@@ -221,10 +226,7 @@ export default function DocumentPage() {
     [projectId, locale],
   );
 
-  // 조선소 → 전용 E26 문서 뷰
-  if (isShipyard) {
-    return <ShipyardDocumentView projectId={projectId} locale={locale} />;
-  }
+  // 조선소도 이제 메인 탭 뷰 사용 (E26 + IEC + NIST + ISO)
 
 
   // ─── Render ────────────────────────────────────────────────────────────────
@@ -237,13 +239,21 @@ export default function DocumentPage() {
     );
   }
 
-  const activeDocTypes = activeTab === "E27" ? E27_DOC_TYPES : E26_DOC_TYPES;
+  const DOC_TYPES_BY_STANDARD: Record<string, typeof E27_DOC_TYPES> = {
+    E27: E27_DOC_TYPES,
+    E26: E26_DOC_TYPES,
+    IEC: IEC_DOC_TYPES,
+    NIST: NIST_DOC_TYPES,
+    ISO: ISO_DOC_TYPES,
+  };
+
+  const activeDocTypes = DOC_TYPES_BY_STANDARD[activeTab] ?? E27_DOC_TYPES;
   const generatedCount = activeDocTypes.filter((dt) => findDoc(dt.code)).length;
 
   const tabs = visibleStandards.map((s) => ({
     id: s.id,
     label: s.id,
-    count: (s.id === "E27" ? E27_DOC_TYPES : E26_DOC_TYPES).filter((dt) =>
+    count: (DOC_TYPES_BY_STANDARD[s.id] ?? []).filter((dt) =>
       findDoc(dt.code),
     ).length,
   }));
@@ -266,9 +276,8 @@ export default function DocumentPage() {
           {equipmentId ? (tx(locale, "Equipment", "기자재", "機器")) : (tx(locale, "Project", "프로젝트", "プロジェクト"))}
         </Link>
 
-
         {/* Header */}
-        <div className="flex items-start justify-between mb-6">
+        <div className="flex items-start justify-between mb-6 flex-wrap gap-3">
           <div className="flex items-center gap-4">
             <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-brand-lighter to-brand/10 border border-brand/15 flex items-center justify-center shadow-xs">
               <FileText size={22} className="text-brand" />

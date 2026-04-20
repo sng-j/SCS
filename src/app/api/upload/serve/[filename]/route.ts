@@ -38,8 +38,8 @@ async function hasFileAccess(
     if (user.role === "ADMIN") return true;
     // Owner always has access
     if (qnaFile.qna.userId === user.id) return true;
-    // Shipyard can view QnAs targeted to them
-    if (user.role === "SHIPYARD" && qnaFile.qna.targetType === "TO_SHIPYARD") return true;
+    // Shipyard viewer and Support can view QnAs targeted to them
+    if ((user.role === "SHIPYARD" || user.role === "SUPPORT") && qnaFile.qna.targetType === "TO_SHIPYARD") return true;
     return false;
   }
 
@@ -54,9 +54,9 @@ async function hasFileAccess(
   if (auditResult) {
     if (user.role === "ADMIN") return true;
     if (auditResult.vendorId === user.id) return true;
-    // Shipyard users can access files belonging to their shipyard's projects
+    // Shipyard viewer and Support can access files belonging to their shipyard's projects
     if (
-      user.role === "SHIPYARD" &&
+      (user.role === "SHIPYARD" || user.role === "SUPPORT") &&
       auditResult.equipment?.project?.shipyardId === user.shipyardId
     ) {
       return true;

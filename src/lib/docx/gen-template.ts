@@ -1450,6 +1450,1257 @@ function getSections(focus: string, data: DocumentData): TemplateSection[] {
         },
       ];
 
+    // ─── E26 additional documents ────────────────────────────
+
+    case "e26-management":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This Cyber Security Management Plan (CSMP) defines the organizational framework for managing cybersecurity on vessel "${project.vesselName}" in accordance with IACS UR E26. It establishes governance structures, responsibilities, processes, and review cycles to maintain ongoing cyber resilience throughout the vessel's operational life.`,
+        },
+        {
+          title: "2. Regulatory Reference",
+          body: "This plan is developed in compliance with:",
+          bullets: [
+            "IACS UR E26 — Cyber resilience of ships (Operational phase management requirements)",
+            "IMO MSC-FAL.1/Circ.3 — Guidelines on maritime cyber risk management",
+            "ISM Code — Safety Management System integration",
+            `${project.classification || "Classification Society"} — Cybersecurity management requirements`,
+          ],
+        },
+        {
+          title: "3. Governance and Responsibilities",
+          body: "Cybersecurity management is governed at three levels:",
+          bullets: [
+            "Company Level — Designated Person Ashore (DPA) and Company Security Officer (CSO): Overall policy, compliance oversight, resource allocation",
+            "Ship Level — Ship Security Officer (SSO) and Master: Onboard implementation, incident command, crew training coordination",
+            "System Level — IT/OT Administrator and Equipment Vendors: Technical maintenance, patch management, configuration control",
+          ],
+        },
+        {
+          title: "4. Cyber Security Management Lifecycle",
+          body: "The CSMP follows a Plan-Do-Check-Act (PDCA) lifecycle integrated with the vessel Safety Management System (SMS):",
+          bullets: [
+            "PLAN — Annual cyber risk assessment, update threat register, set improvement objectives",
+            "DO — Implement controls, deliver training, apply patches, manage changes",
+            "CHECK — Monitor and audit compliance, review incident reports, verify control effectiveness",
+            "ACT — Corrective actions, update procedures, classify lessons learned",
+          ],
+        },
+        {
+          title: "5. Scope of Management",
+          body: `The CSMP covers ${hardware.length} hardware assets and ${software.length} software components across ${zones.size} security zone(s): ${[...zones.keys()].join(", ")}. All CBS equipment listed in the vessel asset inventory falls within the scope of this plan.`,
+        },
+        {
+          title: "6. Key Management Processes",
+          body: "The following core cybersecurity processes are managed under this plan:",
+          bullets: [
+            "Risk Management — Annual cyber risk assessment aligned with IACS UR E26 (ref: E26-CRA)",
+            "Asset Management — Maintaining the Vessel Asset Inventory (ref: E26-INV)",
+            "Change Management — Formal change control for all CBS modifications (ref: E27-MOC)",
+            "Incident Management — Incident response and reporting chain (ref: E27-INC, E26 procedures)",
+            "Training Management — Crew cyber awareness and competency program (ref: E26-TRA)",
+            "Supplier Management — Vendor qualification and supply chain security (ref: E26-SSL)",
+            "Remote Access Management — Policy and authorization for remote connections (ref: E26-RAP)",
+            "Audit and Review — Internal audit of CSMP compliance and classification society surveys",
+          ],
+        },
+        {
+          title: "7. Performance Metrics",
+          body: "The effectiveness of the CSMP shall be measured through the following key performance indicators (KPIs):",
+          bullets: [
+            "Patch compliance rate — Percentage of assets with current security patches",
+            "Training completion rate — Percentage of crew completing mandatory annual training",
+            "Incident response time — Time from detection to initial response for each incident level",
+            "Assessment score — Percentage of security checks (SC-1 to SC-13) rated PASS",
+            "Change management compliance — Percentage of changes processed through formal workflow",
+            "Audit findings closure rate — Percentage of audit findings closed within target timescale",
+          ],
+        },
+        {
+          title: "8. Annual Review and Update",
+          body: `This CSMP shall be reviewed annually by the CSO with inputs from the SSO and department heads. The review shall consider: changes to the threat landscape, regulatory updates, lessons learned from incidents and drills, audit findings, and changes to the CBS asset inventory. Updated plans require DPA approval and shall be communicated to vessel "${project.vesselName}" within 30 days of approval.`,
+        },
+      ];
+
+    case "e26-remote-access":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This Remote Access Policy defines the requirements and procedures for remote access to the Computer Based Systems (CBS) of vessel "${project.vesselName}" in accordance with IACS UR E26 and E27 remote access capabilities (Capabilities 32–41). It applies to all remote connections by vendors, administrators, and service providers.`,
+        },
+        {
+          title: "2. Regulatory Reference",
+          body: "This policy is based on:",
+          bullets: [
+            "IACS UR E26 — Remote access security requirements (PROTECT function)",
+            "IACS UR E27 — Capability 32 (MFA), Capability 33 (Software/device authentication), Capability 34 (Login lockout), Capability 35 (System notification), Capability 36 (Remote session monitoring), Capability 37 (Crew approval for remote access)",
+            "IACS UR E27 — Capability 38 (Cryptographic integrity), Capability 39 (Session integrity), Capability 40 (Session ID invalidation), Capability 41 (Untrusted network protection)",
+            `${project.classification || "Classification Society"} — Remote access requirements`,
+          ],
+        },
+        {
+          title: "3. Remote Access Authorization",
+          body: "All remote access to CBS requires prior authorization:",
+          bullets: [
+            "Crew Approval (Capability 37) — Master or SSO must explicitly approve each remote session before it is enabled",
+            "Vendor Authorization — Remote vendor access requires a formal service request approved by the Ship Owner",
+            "Emergency Access — Defined emergency procedure for time-critical remote access with retrospective documentation",
+            "Access is disabled by default — Remote access capability is off unless actively enabled for an approved session",
+          ],
+        },
+        {
+          title: "4. Authentication Requirements",
+          body: "Remote access authentication must meet the following requirements:",
+          bullets: [
+            "Multi-Factor Authentication (MFA) — Required for all remote access (Capability 32); minimum two factors from: knowledge (password), possession (token/certificate), or inherence (biometric)",
+            "Individual accounts — Shared remote access credentials are prohibited",
+            "Certificate-based authentication — Preferred for machine-to-machine connections (Capability 33)",
+            "Login lockout — Account locked after 5 failed attempts; lockout duration minimum 15 minutes (Capability 34)",
+            "Credentials must be unique for remote access (separate from local accounts where technically feasible)",
+          ],
+        },
+        {
+          title: "5. Session Security Requirements",
+          body: "Active remote sessions must comply with:",
+          bullets: [
+            "Session monitoring — All remote sessions logged and monitored in real-time (Capability 36)",
+            "Session notification — CBS shall display notification of active remote session to onboard personnel (Capability 35)",
+            "Automatic timeout — Sessions terminated after maximum 30 minutes of inactivity",
+            "Session ID invalidation — Session tokens invalidated on logout (Capability 40)",
+            "Cryptographic integrity — All remote communications use TLS 1.2+ or equivalent (Capabilities 38, 39)",
+            "Encryption — Data in transit protected by current-generation cryptographic protocols",
+          ],
+        },
+        {
+          title: "6. Network Requirements for Remote Access",
+          body: "Technical network controls for remote access:",
+          bullets: [
+            "Remote access only through designated, controlled entry points (VPN gateway or equivalent)",
+            "Remote sessions isolated from other CBS zones — access restricted to specific systems required for the task",
+            "All remote traffic logged at network perimeter with timestamps and source identification",
+            "Firewall rules restrict remote access ports to authorized source IP ranges where feasible",
+            "Satellite and shore connections used for remote access must be encrypted end-to-end",
+          ],
+        },
+        {
+          title: "7. Vendor and Third-Party Remote Access",
+          body: "Third-party remote access must additionally comply with:",
+          bullets: [
+            "Non-disclosure agreement (NDA) covering CBS system details must be in place before access is granted",
+            "Scope limitation — Access restricted to specific systems required for the service task",
+            "Time limitation — Access enabled for defined period only; disabled immediately upon task completion",
+            "Supervision — An onboard representative (SSO or designated person) monitors the session",
+            "Post-service report — Vendor submits activity report within 48 hours of session completion",
+            "Post-session integrity check — Verify system integrity after each vendor remote session",
+          ],
+        },
+        {
+          title: "8. Approved Remote Access Methods",
+          body: `The following remote access methods are approved for use on vessel "${project.vesselName}":`,
+          bullets: [
+            "[Specify approved VPN solution — e.g., IPsec VPN, SSL/TLS VPN]",
+            "[Specify approved remote desktop protocol and version — e.g., RDP with NLA, SSH]",
+            "[List any vendor-specific remote access platforms approved by the Ship Owner]",
+            "All other remote access methods are prohibited without explicit written approval from the DPA",
+          ],
+        },
+        {
+          title: "9. CBS Assets in Scope",
+          body: `Remote access may be required for ${hardware.length} hardware assets across ${zones.size} security zone(s). Each asset's remote access capability shall be documented and assessed per the security capability assessment (E27-AUD).`,
+        },
+        {
+          title: "10. Record Keeping",
+          body: "Remote access records shall be maintained:",
+          bullets: [
+            "Log of all remote access sessions: date/time, duration, user/vendor, system accessed, purpose",
+            "Authorization records: Master/SSO approval for each session",
+            "Incident records: Any anomalies observed during remote sessions",
+            "Records retained for minimum 2 years and available for classification society audit",
+          ],
+        },
+      ];
+
+    // ─── IEC 62443 documents ─────────────────────────────────
+
+    case "iec-risk-assessment":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This Security Risk Assessment (SRA) is performed in accordance with IEC 62443-3-2 for the industrial automation and control system (IACS) / Computer Based System (CBS) of vessel "${project.vesselName}". It identifies threats, vulnerabilities, and risks, and establishes target security levels (SL-T) for each security zone.`,
+        },
+        {
+          title: "2. Normative References",
+          body: "This assessment is based on:",
+          bullets: [
+            "IEC 62443-3-2:2020 — Security risk assessment for system design",
+            "IEC 62443-3-3 — System security requirements and security levels",
+            "IEC 62443-2-1 — Security management system for IACS",
+            "IACS UR E26/E27 — Maritime cyber resilience requirements",
+            `${project.classification || "Classification Society"} — Applicable rules and guidelines`,
+          ],
+        },
+        {
+          title: "3. System Under Assessment",
+          body: `The system under assessment is the CBS of vessel "${project.vesselName}". It comprises ${hardware.length} hardware assets and ${software.length} software components organized into ${zones.size} security zone(s): ${[...zones.keys()].join(", ")}.`,
+        },
+        {
+          title: "4. Risk Assessment Methodology",
+          body: "The risk assessment follows the IEC 62443-3-2 process:",
+          bullets: [
+            "Step 1: Identify high-level risk (HLR) for each zone and conduit",
+            "Step 2: Identify threats using STRIDE methodology (Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege)",
+            "Step 3: Identify vulnerabilities through security capability assessment (SC-1 to SC-13)",
+            "Step 4: Determine consequence severity (safety, financial, operational, reputational)",
+            "Step 5: Determine likelihood based on threat actor capability and existing controls",
+            "Step 6: Calculate risk = Consequence × Likelihood",
+            "Step 7: Determine target security level (SL-T) based on risk",
+          ],
+        },
+        {
+          title: "5. Target Security Levels",
+          body: "Security levels (SL) are defined per IEC 62443-3-3:",
+          bullets: [
+            "SL 1 — Protection against casual or unintentional violation",
+            "SL 2 — Protection against intentional violation with simple means, low motivation/resources",
+            "SL 3 — Protection against intentional violation with sophisticated means, moderate motivation/resources",
+            "SL 4 — Protection against intentional violation with sophisticated means, high motivation/extended resources",
+          ],
+        },
+        {
+          title: "6. Assessment Summary",
+          body: `Security capability assessment results across ${hardware.length} asset(s): ${counts.pass} PASS, ${counts.fail} FAIL, ${counts.partial} PARTIAL, ${counts.na} N/A out of ${counts.total} total checks. FAIL results represent unmet security requirements that elevate risk levels.`,
+        },
+        {
+          title: "7. Risk Register",
+          body: "The risk register documents all identified risks with their treatment plans. High-risk items (derived from FAIL assessment results and zone connectivity analysis) are prioritized for immediate remediation.",
+        },
+        {
+          title: "8. Risk Treatment",
+          body: "For each identified risk, treatment options per IEC 62443-3-2:",
+          bullets: [
+            "Reduce — Apply additional countermeasures to reduce likelihood or consequence",
+            "Accept — Risk is within tolerance threshold; formally accepted and documented",
+            "Transfer — Risk transferred through contractual arrangements",
+            "Avoid — System design or operational change eliminates the risk",
+          ],
+        },
+      ];
+
+    case "iec-security-level":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This Security Level Report documents the achieved security levels (SL-A) for the CBS of vessel "${project.vesselName}" in accordance with IEC 62443-3-3. It compares achieved levels against target security levels (SL-T) established in the Security Risk Assessment and identifies gaps requiring remediation.`,
+        },
+        {
+          title: "2. Normative References",
+          body: "This report references:",
+          bullets: [
+            "IEC 62443-3-3:2013 — System security requirements and security levels",
+            "IEC 62443-3-2 — Security risk assessment (source of SL-T values)",
+            "IEC 62443-4-2 — Technical security requirements for IACS components",
+            "IACS UR E27 — Security capability assessment (SC-1 to SC-13)",
+          ],
+        },
+        {
+          title: "3. Security Level Definitions",
+          body: "Security levels are evaluated across seven foundational requirements (FR) per IEC 62443-3-3:",
+          bullets: [
+            "FR 1 — Identification and Authentication Control (IAC)",
+            "FR 2 — Use Control (UC)",
+            "FR 3 — System Integrity (SI)",
+            "FR 4 — Data Confidentiality (DC)",
+            "FR 5 — Restricted Data Flow (RDF)",
+            "FR 6 — Timely Response to Events (TRE)",
+            "FR 7 — Resource Availability (RA)",
+          ],
+        },
+        {
+          title: "4. System Security Level Assessment",
+          body: `The CBS comprises ${hardware.length} assets across ${zones.size} zone(s). Security level assessment is performed per zone based on the security capabilities implemented and verified through assessment results (${counts.pass} PASS, ${counts.fail} FAIL, ${counts.partial} PARTIAL out of ${counts.total} checks).`,
+        },
+        {
+          title: "5. Security Level Gap Analysis",
+          body: "The following gaps exist between target (SL-T) and achieved (SL-A) security levels. Items assessed as FAIL indicate capabilities not yet meeting the target security level requirements.",
+        },
+        {
+          title: "6. Remediation Plan",
+          body: "For each identified gap, a remediation plan is required:",
+          bullets: [
+            "Identify specific IEC 62443-3-3 system requirement (SR) not met",
+            "Define corrective action with responsible party and target date",
+            "Verify remediation through re-assessment",
+            "Update SL-A upon successful remediation",
+          ],
+        },
+        {
+          title: "7. Certification Readiness",
+          body: "This report supports the certification process for IEC 62443 compliance. All SL-T values must be met by SL-A before certification can be achieved. Current gap count requiring remediation: based on FAIL results in security capability assessment.",
+        },
+      ];
+
+    case "iec-capability-req":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This Security Capability Requirements document defines the system-level security requirements for the CBS of vessel "${project.vesselName}" in accordance with IEC 62443-3-3. It translates the target security levels (SL-T) from the risk assessment into specific, verifiable system requirements.`,
+        },
+        {
+          title: "2. Normative References",
+          body: "This document references:",
+          bullets: [
+            "IEC 62443-3-3:2013 — System security requirements and security levels",
+            "IEC 62443-3-2 — Security risk assessment (source of SL-T)",
+            "IEC 62443-4-2 — Component-level requirements (supplier responsibility)",
+            "IACS UR E27 — Security capabilities 1-41 (maritime implementation)",
+          ],
+        },
+        {
+          title: "3. Foundational Requirements Structure",
+          body: "System requirements are organized by IEC 62443-3-3 Foundational Requirements (FR) and System Requirements (SR). Each SR has capability levels (CR 1-4) that must be met based on the target SL-T.",
+        },
+        {
+          title: "4. FR 1 — Identification and Authentication Control",
+          body: "System requirements for identity and authentication (mapped to E27 SC-1, SC-2, SC-3):",
+          bullets: [
+            "SR 1.1 — Human user identification and authentication (maps to E27 Cap. 1)",
+            "SR 1.2 — Software process and device identification and authentication",
+            "SR 1.3 — Account management (maps to E27 Cap. 2, SC-2)",
+            "SR 1.4 — Identifier management",
+            "SR 1.5 — Authenticator management (maps to E27 Cap. 3, SC-1)",
+            "SR 1.6 — Wireless access management (maps to E27 Cap. 5)",
+            "SR 1.7 — Strength of password-based authentication (maps to E27 Cap. 6)",
+            "SR 1.8 — Public key infrastructure certificates",
+            "SR 1.9 — Strength of public key-based authentication",
+            "SR 1.10 — Authenticator feedback (maps to E27 Cap. 7)",
+            "SR 1.11 — Unsuccessful login attempts (maps to E27 Cap. 4)",
+            "SR 1.12 — System use notification (maps to E27 Cap. 35)",
+            "SR 1.13 — Access via untrusted networks (maps to E27 Cap. 32-41)",
+          ],
+        },
+        {
+          title: "5. FR 2 — Use Control",
+          body: "System requirements for authorization and use control (mapped to E27 SC-2, SC-3):",
+          bullets: [
+            "SR 2.1 — Authorization enforcement (maps to E27 Cap. 8)",
+            "SR 2.2 — Wireless use control (maps to E27 Cap. 9)",
+            "SR 2.3 — Use control for portable and mobile devices (maps to E27 Cap. 10)",
+            "SR 2.4 — Mobile code (maps to E27 Cap. 11)",
+            "SR 2.5 — Session lock (maps to E27 Cap. 12, SC-10)",
+            "SR 2.6 — Remote session termination",
+            "SR 2.7 — Concurrent session control",
+            "SR 2.8 — Auditable events (maps to E27 Cap. 13, SC-7)",
+            "SR 2.9 — Audit storage capacity (maps to E27 Cap. 14)",
+            "SR 2.10 — Response to audit processing failures (maps to E27 Cap. 15)",
+            "SR 2.11 — Timestamps (maps to E27 Cap. 16)",
+            "SR 2.12 — Non-repudiation",
+          ],
+        },
+        {
+          title: "6. FR 3–7 Summary",
+          body: "Requirements for remaining foundational requirements:",
+          bullets: [
+            "FR 3 (System Integrity) — SR 3.1 through 3.9: Communication integrity, malware protection, security verification, input validation, deterministic output",
+            "FR 4 (Data Confidentiality) — SR 4.1 through 4.3: Information confidentiality, use of cryptography, communication confidentiality",
+            "FR 5 (Restricted Data Flow) — SR 5.1 through 5.4: Network segmentation, zone boundary protection, general purpose person-to-person communication restrictions",
+            "FR 6 (Timely Response to Events) — SR 6.1 through 6.2: Audit log accessibility, continuous monitoring",
+            "FR 7 (Resource Availability) — SR 7.1 through 7.8: DoS protection, resource management, control system backup, control system recovery, emergency power, network and security configuration, least functionality",
+          ],
+        },
+        {
+          title: "7. Compliance Status",
+          body: `Current compliance status based on security capability assessment: ${counts.pass} requirements met (PASS), ${counts.fail} requirements not met (FAIL), ${counts.partial} requirements partially met (PARTIAL) out of ${counts.total} assessed. Detailed requirement-by-requirement status is available in the Security Capability Assessment Report (E27-AUD).`,
+        },
+      ];
+
+    case "iec-component-req":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This Component Security Requirements document defines the security requirements for individual CBS components of vessel "${project.vesselName}" in accordance with IEC 62443-4-2. It establishes the security requirements that each hardware and software component must meet, based on the component security level (SL-C) derived from the system security level assessment.`,
+        },
+        {
+          title: "2. Normative References",
+          body: "This document references:",
+          bullets: [
+            "IEC 62443-4-2:2019 — Technical security requirements for IACS components",
+            "IEC 62443-3-3 — System-level security requirements (source of SL-C targets)",
+            "IEC 62443-4-1 — Secure product development lifecycle",
+            "IACS UR E27 — Security capability requirements (SC-1 to SC-13)",
+          ],
+        },
+        {
+          title: "3. Component Types and Requirements",
+          body: "IEC 62443-4-2 defines four component types with specific requirements:",
+          bullets: [
+            "Software Application (SA) — Applications running on general-purpose OS",
+            "Embedded Device (ED) — Embedded systems with dedicated OS or firmware",
+            "Host Device (HD) — General-purpose computing devices (servers, workstations, PCs)",
+            "Network Device (ND) — Network infrastructure components (switches, routers, firewalls)",
+          ],
+        },
+        {
+          title: "4. Component Inventory",
+          body: `The CBS contains ${hardware.length} hardware components and ${software.length} software components. Each component is classified by type and assessed for its security capability requirements.`,
+        },
+        {
+          title: "5. Component Security Requirements by Category",
+          body: "Key component-level security requirements (Component Requirements — CR):",
+          bullets: [
+            "CR 1.1 — Human user identification and authentication: Components must support individual accounts and password enforcement",
+            "CR 1.3 — Account management: Components must support account lockout and account lifecycle management",
+            "CR 2.1 — Authorization enforcement: Components must enforce role-based access control",
+            "CR 2.8 — Auditable events: Components must generate logs for security-relevant events",
+            "CR 3.1 — Communication integrity: Components must support integrity verification for communications",
+            "CR 4.1 — Information confidentiality: Components must support encryption for sensitive data",
+            "CR 7.1 — Denial of service protection: Components must handle resource exhaustion gracefully",
+            "CR 7.6 — Network and security configuration settings: Components must provide secure default configurations",
+          ],
+        },
+        {
+          title: "6. Supplier Conformance",
+          body: "Each component supplier must provide evidence of IEC 62443-4-2 conformance:",
+          bullets: [
+            "Conformance statement specifying the achieved component security level (SL-C)",
+            "Security capability documentation for each requirement",
+            "Evidence of IEC 62443-4-1 secure development lifecycle compliance",
+            "Vulnerability disclosure and patch management policy",
+            "Security update availability timeline and delivery mechanism",
+          ],
+        },
+        {
+          title: "7. Gaps and Remediation",
+          body: "Components with security capability gaps (FAIL assessments) require:",
+          bullets: [
+            "Formal non-conformance notice to supplier",
+            "Compensating countermeasure at system level (documented and approved)",
+            "Remediation timeline agreed with supplier",
+            "Re-assessment after supplier delivers patch or update",
+          ],
+        },
+      ];
+
+    case "iec-zone-conduit":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This Zone and Conduit Record documents the security zones and conduits defined for the CBS of vessel "${project.vesselName}" in accordance with IEC 62443-3-2. Each zone groups assets with similar security requirements, and conduits define the controlled communication paths between zones.`,
+        },
+        {
+          title: "2. Normative References",
+          body: "This record references:",
+          bullets: [
+            "IEC 62443-3-2:2020 — Zone and conduit definition (Section 5)",
+            "IEC 62443-3-3 — System security requirements (FR 5: Restricted Data Flow)",
+            "IACS UR E26 — Network zone and conduit design requirements",
+            "IEC 62443-2-1 — Zone and conduit management procedures",
+          ],
+        },
+        {
+          title: "3. Zone Definitions",
+          body: `The CBS is divided into ${zones.size} security zone(s). Each zone is defined by its assets, trust level, target security level (SL-T), and boundary characteristics.`,
+        },
+        {
+          title: "4. Zone Asset Assignments",
+          body: `The following ${hardware.length} hardware assets are assigned to security zones. Zone assignment determines the security level requirements applicable to each asset and the controls that must be in place at zone boundaries.`,
+        },
+        {
+          title: "5. Conduit Definitions",
+          body: "Conduits are the controlled communication channels between zones. Each conduit is defined by:",
+          bullets: [
+            "Source zone and destination zone",
+            "Protocols permitted through the conduit",
+            "Direction of permitted data flow (unidirectional/bidirectional)",
+            "Boundary device implementing the conduit control (firewall, data diode, gateway)",
+            "Security level capability of the conduit device",
+          ],
+        },
+        {
+          title: "6. External Connections",
+          body: "External network connections (outside the vessel CBS) require dedicated conduit definitions with the highest security controls:",
+          bullets: [
+            "Shore-based network connections (satellite, LTE, port connectivity)",
+            "Vendor remote access connections",
+            "Classification society survey connections",
+            "Any connection to networks outside the vessel boundary",
+          ],
+        },
+        {
+          title: "7. Zone and Conduit Management",
+          body: "Changes to zone or conduit definitions require:",
+          bullets: [
+            "Formal change request through the Change Management process (ref: E27-MOC)",
+            "Security risk assessment of the proposed change",
+            "Update to this Zone and Conduit Record",
+            "Update to the Zones and Conduits Diagram (ref: E26-ZCD)",
+            "Notification to classification society if change affects type-approved configuration",
+          ],
+        },
+      ];
+
+    // ─── NIST SP 800 documents ────────────────────────────────
+
+    case "nist-baseline-config":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This Baseline Configuration Document establishes the approved baseline security configurations for all CBS components of vessel "${project.vesselName}" in accordance with NIST SP 800-53 (CM-2: Baseline Configuration) and NIST SP 800-128 (Guide for Security-Focused Configuration Management). It defines the approved, hardened configuration state that all components must maintain.`,
+        },
+        {
+          title: "2. Normative References",
+          body: "This document references:",
+          bullets: [
+            "NIST SP 800-53 Rev. 5 — CM-2 (Baseline Configuration), CM-6 (Configuration Settings)",
+            "NIST SP 800-128 — Guide for Security-Focused Configuration Management",
+            "NIST SP 800-70 — National Checklist Program for IT Products",
+            "IACS UR E27 — Security configuration requirements (SC-1 to SC-13)",
+            "CIS Benchmarks — Component-specific hardening guidelines",
+          ],
+        },
+        {
+          title: "3. Baseline Configuration Policy",
+          body: "The baseline configuration policy requires:",
+          bullets: [
+            "All CBS components must be configured in accordance with approved baselines before deployment",
+            "Deviations from baseline require formal approval through the change management process",
+            "Baseline configurations must be updated following every major OS or firmware upgrade",
+            "Annual review of all baselines against current security best practices",
+            "Baseline configurations stored in version-controlled secure repository",
+          ],
+        },
+        {
+          title: "4. Component Inventory and Baseline Status",
+          body: `The following ${hardware.length} hardware assets require baseline configuration documentation. Baseline status is tracked in the security capability assessment (SC-5: Least Functionality / SC-13: Patch Management).`,
+        },
+        {
+          title: "5. Baseline Configuration Elements",
+          body: "Each component baseline configuration must document:",
+          bullets: [
+            "Operating system and version, service pack/patch level",
+            "Enabled/disabled services and protocols (principle of least functionality)",
+            "Port configuration — open ports with justification for each",
+            "User accounts — active accounts with assigned roles and privileges",
+            "Password policy settings (minimum length, complexity, expiry, lockout)",
+            "Audit logging configuration — enabled event types, log size, retention",
+            "Network settings — IP address, VLAN, firewall rules",
+            "Anti-malware configuration (if applicable)",
+            "Encryption settings for data at rest and in transit",
+          ],
+        },
+        {
+          title: "6. Configuration Deviation Management",
+          body: "When a deviation from baseline is identified or required:",
+          bullets: [
+            "Document the deviation with technical justification",
+            "Perform risk assessment of the deviation",
+            "Obtain approval from designated security authority",
+            "Implement compensating control where baseline cannot be met",
+            "Set remediation timeline if deviation is temporary",
+            "Track in configuration management system",
+          ],
+        },
+        {
+          title: "7. Baseline Verification",
+          body: "Baseline compliance is verified through:",
+          bullets: [
+            "Security capability assessment (SC-1 to SC-13) at commissioning and annually",
+            "Automated configuration scanning where tools are available",
+            "Post-change verification for all approved configuration changes",
+            "Random spot-check sampling during classification society surveys",
+          ],
+        },
+      ];
+
+    case "nist-iam":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This Identity and Access Management (IAM) Policy defines the requirements for managing digital identities and controlling access to the CBS of vessel "${project.vesselName}" in accordance with NIST SP 800-53 (AC family and IA family controls). It covers user identity lifecycle management, authentication, authorization, and privileged access management.`,
+        },
+        {
+          title: "2. Normative References",
+          body: "This policy references:",
+          bullets: [
+            "NIST SP 800-53 Rev. 5 — AC (Access Control) and IA (Identification and Authentication) control families",
+            "NIST SP 800-63B — Digital Identity Guidelines (authentication)",
+            "NIST SP 800-162 — Guide to Attribute Based Access Control (ABAC)",
+            "IACS UR E27 — SC-1 (Password), SC-2 (Account Management), SC-3 (Network Access), Cap. 1-7",
+            "IEC 62443-3-3 — FR 1 (Identification and Authentication Control)",
+          ],
+        },
+        {
+          title: "3. Identity Lifecycle Management",
+          body: "User identity lifecycle procedures:",
+          bullets: [
+            "PROVISION — Identity created upon formal request with minimum information required; approval by designated security authority",
+            "ACTIVATE — Account activated only after completion of initial security training",
+            "MAINTAIN — Quarterly account review; update roles upon personnel transfers",
+            "SUSPEND — Account suspended within 24 hours of personnel departure or role change",
+            "DEPROVISION — Account deleted and credentials invalidated; access removal verified",
+          ],
+        },
+        {
+          title: "4. Authentication Requirements",
+          body: "Authentication standards for CBS access:",
+          bullets: [
+            "Password Authentication Level 1 — Standard users: minimum 8 characters, complexity required, 180-day maximum",
+            "Password Authentication Level 2 — Privileged users: minimum 12 characters, complexity required, 90-day maximum, MFA required",
+            "Certificate-based Authentication — Machine accounts and service accounts; PKI-based certificates with 1-year maximum validity",
+            "MFA — Required for privileged accounts and all remote access (two independent factors)",
+            "Biometric — Acceptable as second factor where technically available",
+          ],
+        },
+        {
+          title: "5. Authorization Framework",
+          body: "Access authorization follows least privilege principles:",
+          bullets: [
+            "Role-Based Access Control (RBAC) — Access permissions assigned to roles, not individuals",
+            "Defined roles: Administrator, Operator, Auditor, Service Technician (read-only, elevated, full access respectively)",
+            "Segregation of duties — No single account combines conflicting privileges",
+            "Time-based access — Service accounts automatically expire; temporary access has defined end date",
+            "Attribute-based controls — Network zone and time-of-day restrictions where technically feasible",
+          ],
+        },
+        {
+          title: "6. Privileged Access Management (PAM)",
+          body: "Elevated privilege controls for administrator accounts:",
+          bullets: [
+            "Dedicated privileged accounts separate from standard user accounts",
+            "Privileged sessions logged with full audit trail",
+            "Just-in-time access — Privileged access granted only for the duration of the task",
+            "Break-glass procedure — Emergency privileged access with automatic notification and full logging",
+            "Shared administration accounts prohibited — All privileged access individually assigned",
+          ],
+        },
+        {
+          title: "7. Access Review and Audit",
+          body: "IAM compliance is maintained through:",
+          bullets: [
+            "Quarterly access review — All active accounts verified against current personnel roster",
+            "Annual privilege review — Confirm appropriateness of all elevated privileges",
+            "Automated alerts for dormant accounts (>30 days inactive)",
+            "Access review results documented and retained for 2 years",
+          ],
+        },
+        {
+          title: "8. CBS IAM Status",
+          body: `IAM controls are assessed across ${hardware.length} CBS assets through security capability checks SC-1 (Password Policy), SC-2 (Account Management), and SC-3 (Network Access Control). Current status: ${counts.pass} PASS, ${counts.fail} FAIL out of ${counts.total} checks.`,
+        },
+      ];
+
+    case "nist-supply-chain":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This Supply Chain Risk Management (SCRM) Plan defines the processes for identifying, assessing, and managing cybersecurity risks in the supply chain for CBS components of vessel "${project.vesselName}" in accordance with NIST SP 800-161 Rev. 1 (Cybersecurity Supply Chain Risk Management Practices) and NIST SP 800-53 (SR family controls).`,
+        },
+        {
+          title: "2. Normative References",
+          body: "This plan references:",
+          bullets: [
+            "NIST SP 800-161 Rev. 1 — Cybersecurity Supply Chain Risk Management Practices",
+            "NIST SP 800-53 Rev. 5 — SR (Supply Chain Risk Management) control family",
+            "NIST Cybersecurity Framework — Identify / Supply Chain Risk Management",
+            "IACS UR E27 — Supply chain security requirements",
+            "IEC 62443-2-4 — Requirements for IACS solution suppliers",
+          ],
+        },
+        {
+          title: "3. Supply Chain Risk Context",
+          body: `The CBS supply chain includes ${hardware.length} hardware components from ${new Set(hardware.map((h) => h.manufacturer).filter(Boolean)).size} manufacturer(s) and ${software.length} software components from ${new Set(software.map((s) => s.vendor).filter(Boolean)).size} vendor(s). Each introduces potential supply chain risks that must be managed throughout the component lifecycle.`,
+        },
+        {
+          title: "4. Supplier Qualification",
+          body: "Suppliers of CBS components must be qualified through:",
+          bullets: [
+            "Cybersecurity questionnaire covering: development security practices, incident response capability, vulnerability disclosure policy, update/patch commitment",
+            "Review of relevant security certifications (IEC 62443-4-1/4-2, ISO 27001, CMMI)",
+            "Reference checks with other maritime operators or classification societies",
+            "OFAC/sanctions screening and country-of-origin assessment",
+            "Annual re-qualification for critical suppliers",
+          ],
+        },
+        {
+          title: "5. Procurement Controls",
+          body: "Cybersecurity requirements in procurement:",
+          bullets: [
+            "Security requirements specification included in procurement documents",
+            "Contractual obligations: vulnerability disclosure, patch support period, end-of-life notification",
+            "Authenticity requirements: tamper-evident packaging, certificate of conformity, component serial numbers",
+            "Software integrity: digital signatures or checksums provided with all software deliverables",
+            "Component provenance documentation: full supply chain documentation from origin to delivery",
+          ],
+        },
+        {
+          title: "6. Component Integrity Verification",
+          body: "Upon receipt of CBS components:",
+          bullets: [
+            "Physical inspection — Verify packaging integrity, labels, serial numbers against order",
+            "Software verification — Validate digital signatures or checksums before installation",
+            "Authenticity verification — Confirm component is genuine (contact vendor if counterfeit suspected)",
+            "Pre-installation scan — Malware scan of software media before deployment",
+            "Documentation check — Verify security capability documentation is provided",
+          ],
+        },
+        {
+          title: "7. Ongoing Supplier Management",
+          body: "Continuous supply chain risk management activities:",
+          bullets: [
+            "Monitor vendor security advisories and CVE publications for installed components",
+            "Track end-of-life dates for all hardware and software — plan replacement before support ends",
+            "Review and act on vendor vulnerability notifications within 30 days",
+            "Assess impact of vendor security incidents on CBS components",
+            "Maintain approved vendor list — remove suppliers failing to meet security obligations",
+          ],
+        },
+      ];
+
+    case "nist-system-assessment":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This System Security Assessment evaluates the security posture of the CBS of vessel "${project.vesselName}" in accordance with NIST SP 800-53A Rev. 5 (Assessing Security and Privacy Controls). It provides an independent evaluation of security control implementation and effectiveness to support authorization decisions.`,
+        },
+        {
+          title: "2. Normative References",
+          body: "This assessment references:",
+          bullets: [
+            "NIST SP 800-53A Rev. 5 — Assessing Security and Privacy Controls in Information Systems",
+            "NIST SP 800-53 Rev. 5 — Security and Privacy Controls (baseline)",
+            "NIST SP 800-37 Rev. 2 — Risk Management Framework (authorization process)",
+            "IACS UR E27 — Security capability assessment (SC-1 to SC-13)",
+            "IEC 62443-3-3 — System security requirements and security levels",
+          ],
+        },
+        {
+          title: "3. Assessment Methodology",
+          body: "The assessment uses three assessment methods per NIST SP 800-53A:",
+          bullets: [
+            "EXAMINE — Review of policies, procedures, plans, and documentation",
+            "INTERVIEW — Discussion with responsible personnel to verify implementation",
+            "TEST — Direct testing of security controls using the SCS Platform assessment tools (SC-1 to SC-13)",
+          ],
+        },
+        {
+          title: "4. System Description",
+          body: `The system under assessment is the CBS of vessel "${project.vesselName}". It includes ${hardware.length} hardware assets and ${software.length} software components across ${zones.size} security zone(s): ${[...zones.keys()].join(", ")}. The system supports vessel navigation, propulsion, cargo, and safety functions.`,
+        },
+        {
+          title: "5. Control Assessment Summary",
+          body: `Security control assessment results: ${counts.pass} controls satisfied (PASS), ${counts.fail} controls not satisfied (FAIL), ${counts.partial} controls partially satisfied (PARTIAL), ${counts.na} controls not applicable out of ${counts.total} assessed. Controls not yet assessed require assessment before authorization.`,
+        },
+        {
+          title: "6. Assessment Findings",
+          body: "Assessment findings are categorized by severity:",
+          bullets: [
+            "HIGH — FAIL results for controls protecting critical functions (propulsion, navigation, safety). Require immediate remediation before authorization.",
+            "MODERATE — FAIL results for controls protecting operational functions. Require remediation plan with 90-day target.",
+            "LOW — PARTIAL results where compensating controls are in place. Document acceptance and monitor.",
+            "INFORMATIONAL — Observations and recommendations for security improvement beyond minimum requirements.",
+          ],
+        },
+        {
+          title: "7. Authorization Recommendation",
+          body: "Based on the assessment findings, this system is recommended for:",
+          bullets: [
+            "AUTHORIZATION TO OPERATE (ATO) — If all HIGH findings are resolved and MODERATE findings have accepted plans",
+            "PROVISIONAL AUTHORIZATION — If HIGH findings exist but compensating controls are documented and accepted",
+            "DENIAL OF AUTHORIZATION — If critical HIGH findings remain unresolved with no accepted compensating controls",
+            "(Final authorization decision is made by the designated authorizing official / classification society.)",
+          ],
+        },
+        {
+          title: "8. Plan of Action and Milestones",
+          body: "Outstanding findings require a Plan of Action and Milestones (POA&M) documenting:",
+          bullets: [
+            "Finding description and reference to specific control(s) not met",
+            "Responsible party for remediation",
+            "Planned completion date",
+            "Resources required",
+            "Current status and progress",
+          ],
+        },
+      ];
+
+    // ─── ISO 27001 documents ──────────────────────────────────
+
+    case "iso-soa":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This Statement of Applicability (SoA) identifies which ISO/IEC 27001:2022 Annex A controls are applicable to the CBS of vessel "${project.vesselName}" and documents the justification for inclusion or exclusion of each control. The SoA is a mandatory document for ISO 27001 certification.`,
+        },
+        {
+          title: "2. Normative Reference",
+          body: "This document is required by:",
+          bullets: [
+            "ISO/IEC 27001:2022 — Clause 6.1.3(d): Statement of Applicability",
+            "ISO/IEC 27001:2022 — Annex A: Reference control set (93 controls in 4 themes)",
+            "ISO/IEC 27002:2022 — Implementation guidance for controls",
+          ],
+        },
+        {
+          title: "3. ISMS Scope",
+          body: `The Information Security Management System (ISMS) covers the CBS of vessel "${project.vesselName}", comprising ${hardware.length} hardware assets and ${software.length} software components across ${zones.size} security zone(s). The ISMS boundary includes all OT and IT systems that process or transmit information relevant to vessel safety and operations.`,
+        },
+        {
+          title: "4. Control Selection Process",
+          body: "Controls were selected based on:",
+          bullets: [
+            "Results of the information security risk assessment",
+            "Legal, regulatory, and contractual requirements (IACS UR E26/E27, maritime law)",
+            "Organizational objectives and existing security measures",
+            "Threat landscape specific to maritime OT/IT environments",
+          ],
+        },
+        {
+          title: "5. Annex A Control Applicability Overview",
+          body: "The 93 Annex A controls are organized in 4 themes. Applicability summary:",
+          bullets: [
+            "Theme A.5 Organizational Controls (37 controls) — APPLICABLE: Policy, roles, supplier security, incident management",
+            "Theme A.6 People Controls (8 controls) — APPLICABLE: Screening, terms, awareness, training, disciplinary, remote work",
+            "Theme A.7 Physical Controls (14 controls) — APPLICABLE: Physical security perimeters, equipment protection, media handling",
+            "Theme A.8 Technological Controls (34 controls) — APPLICABLE: Access control, cryptography, vulnerability management, configuration management",
+          ],
+        },
+        {
+          title: "6. Excluded Controls",
+          body: "The following control categories are excluded with justification:",
+          bullets: [
+            "Controls requiring internet-facing web services — Not applicable to isolated CBS OT network",
+            "Human resources controls for onshore office environments — Covered by separate company ISMS",
+            "Development environment controls — Not applicable where no in-house development occurs",
+            "(Complete exclusion justification table to be maintained as an annex to this document.)",
+          ],
+        },
+        {
+          title: "7. Implementation Status",
+          body: `Current implementation status based on security assessment: ${counts.pass} controls implemented (PASS), ${counts.fail} controls not yet implemented (FAIL), ${counts.partial} controls partially implemented (PARTIAL). Detailed status per Annex A control is maintained in the control implementation register.`,
+        },
+      ];
+
+    case "iso-isms":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This document defines the scope and policy of the Information Security Management System (ISMS) for the CBS of vessel "${project.vesselName}" in accordance with ISO/IEC 27001:2022 (Clauses 4 and 5). It establishes the organizational context, stakeholder requirements, ISMS boundary, and the information security policy.`,
+        },
+        {
+          title: "2. Normative Reference",
+          body: "This ISMS is established in accordance with:",
+          bullets: [
+            "ISO/IEC 27001:2022 — Information security management systems",
+            "ISO/IEC 27002:2022 — Information security controls (implementation guidance)",
+            "ISO/IEC 27019:2017 — OT/ICS security (applicable for maritime OT systems)",
+            "IACS UR E26/E27 — Maritime cyber resilience (complementary requirements)",
+            `${project.classification || "Classification Society"} — Applicable cybersecurity certification requirements`,
+          ],
+        },
+        {
+          title: "3. Organizational Context",
+          body: `The vessel "${project.vesselName}" operates as part of the fleet of ${project.shipowner || "[Ship Owner]"}. The CBS supports critical vessel functions including navigation, propulsion, cargo management, and safety systems. The organizational context includes:`,
+          bullets: [
+            "Internal factors — Organizational structure, roles and responsibilities, existing SMS/ISM systems, CBS architecture",
+            "External factors — Regulatory requirements (SOLAS, MARPOL, ISPS), classification society rules, flag state requirements, port state control",
+            "Interested parties — Classification society, flag state, ship owner, charterers, port authorities, service vendors",
+          ],
+        },
+        {
+          title: "4. ISMS Scope",
+          body: `The ISMS scope covers the CBS of vessel "${project.vesselName}", including: ${hardware.length} hardware assets and ${software.length} software components across ${zones.size} security zone(s): ${[...zones.keys()].join(", ")}. Shore-based systems that directly interface with the vessel CBS are included within scope. Shore office IT infrastructure is excluded (covered by separate company ISMS).`,
+        },
+        {
+          title: "5. Information Security Policy",
+          body: `The information security policy of vessel "${project.vesselName}" states:`,
+          bullets: [
+            "COMMITMENT — The Master and Ship Owner are committed to protecting the confidentiality, integrity, and availability of information processed by the CBS",
+            "OBJECTIVES — Maintain cyber resilience of all CBS systems; comply with IACS UR E26/E27 and ISO 27001; protect vessel safety through information security",
+            "RISK APPROACH — Manage information security risks systematically using a risk-based approach; define and achieve acceptable risk levels",
+            "CONTINUAL IMPROVEMENT — Continuously improve the ISMS through monitoring, measurement, audit, and management review",
+            "COMPLIANCE — Comply with all applicable legal, regulatory, and contractual requirements",
+          ],
+        },
+        {
+          title: "6. ISMS Roles and Responsibilities",
+          body: "Top management has appointed the following ISMS roles (ISO 27001 Clause 5.3):",
+          bullets: [
+            "ISMS Owner — DPA/Master: Overall ISMS accountability, policy approval, resource provision",
+            "Information Security Officer — CSO/SSO: ISMS implementation, monitoring, and reporting",
+            "Risk Owner — Department Heads: Accept and manage risks within their operational area",
+            "ISMS Coordinator — IT/OT Administrator: Day-to-day ISMS operation and maintenance",
+          ],
+        },
+        {
+          title: "7. ISMS Objectives",
+          body: "The ISMS objectives for the current period are:",
+          bullets: [
+            "Achieve and maintain >80% PASS rate on security capability assessment (SC-1 to SC-13)",
+            "Complete annual risk assessment and update risk treatment plan",
+            "Maintain 100% crew cybersecurity awareness training completion",
+            "Zero critical cyber incidents with unacceptable impact on vessel safety",
+            "Achieve ISO 27001 certification / maintain IACS UR E26/E27 compliance",
+          ],
+        },
+      ];
+
+    case "iso-a5":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This document implements ISO/IEC 27001:2022 Annex A, Theme A.5 (Organizational Controls) for the CBS of vessel "${project.vesselName}". It covers the 37 organizational controls addressing policies, information security roles, segregation of duties, supplier relationships, and incident management.`,
+        },
+        {
+          title: "2. Key A.5 Controls Implemented",
+          body: "The following organizational controls are implemented:",
+          bullets: [
+            "A.5.1 — Information security policies: Policies approved by management, communicated, reviewed annually",
+            "A.5.2 — Information security roles: Roles defined (see ISMS document); responsibilities assigned to named individuals",
+            "A.5.3 — Segregation of duties: No single person controls all aspects of CBS administration",
+            "A.5.4 — Management responsibilities: Management actively supports information security",
+            "A.5.5 — Contact with authorities: Contacts established with classification society, flag state, and CERTs",
+            "A.5.7 — Threat intelligence: Maritime threat intelligence sources monitored (classification society bulletins, BIMCO advisories)",
+            "A.5.8 — Information security in project management: CBS changes assessed for security impact before implementation",
+          ],
+        },
+        {
+          title: "3. Supplier and Third-Party Security (A.5.19–A.5.23)",
+          body: "Supplier security controls:",
+          bullets: [
+            "A.5.19 — Information security in supplier relationships: Security requirements in all vendor contracts",
+            "A.5.20 — Security in supplier agreements: Contractual security obligations for patch support, vulnerability disclosure",
+            "A.5.21 — Managing security in ICT supply chain: Supply chain risk assessment for all critical components",
+            "A.5.22 — Monitoring and review of supplier services: Annual supplier review against security obligations",
+            "A.5.23 — Security for cloud services: Cloud service security assessed before adoption",
+          ],
+        },
+        {
+          title: "4. Incident Management (A.5.24–A.5.28)",
+          body: "Incident management controls:",
+          bullets: [
+            "A.5.24 — Planning and preparation for information security incident management: Incident response plan documented (ref: E27-INC)",
+            "A.5.25 — Assessment and decision on information security events: Classification criteria defined",
+            "A.5.26 — Response to information security incidents: Step-by-step response procedures documented",
+            "A.5.27 — Learning from information security incidents: Post-incident review process established",
+            "A.5.28 — Collection of evidence: Evidence handling procedures for incidents defined",
+          ],
+        },
+        {
+          title: "5. Business Continuity and Compliance (A.5.29–A.5.37)",
+          body: "Business continuity and compliance controls:",
+          bullets: [
+            "A.5.29 — Information security during disruption: Business continuity plan includes CBS degraded operation procedures",
+            "A.5.30 — ICT readiness for business continuity: Backup and recovery procedures tested annually",
+            "A.5.31 — Legal, statutory, regulatory, and contractual requirements: Compliance register maintained",
+            "A.5.33 — Protection of records: Information security records retained per regulatory requirements",
+            "A.5.36 — Compliance with policies, rules, and standards: Regular compliance checks performed",
+            "A.5.37 — Documented operating procedures: Security operating procedures documented and accessible",
+          ],
+        },
+        {
+          title: "6. Implementation Status",
+          body: `Organizational controls implementation status: assessed through management interviews, document review, and observation. Current assessment results relevant to A.5 controls: ${counts.total} checks performed across ${hardware.length} assets.`,
+        },
+      ];
+
+    case "iso-a7":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This document implements ISO/IEC 27001:2022 Annex A, Theme A.7 (People Controls) for the CBS of vessel "${project.vesselName}". It covers the 8 people controls addressing personnel security through the employment lifecycle, from pre-employment screening through termination.`,
+        },
+        {
+          title: "2. A.7 People Controls Overview",
+          body: "The following eight people controls are implemented:",
+          bullets: [
+            "A.7.1 — Screening: Background verification for personnel in roles with CBS access",
+            "A.7.2 — Terms and conditions of employment: Security responsibilities in employment contracts and crew agreements",
+            "A.7.3 — Information security awareness, education, and training: Annual security awareness training for all crew (ref: E26-TRA)",
+            "A.7.4 — Disciplinary process: Disciplinary measures for personnel violating security policies",
+            "A.7.5 — Responsibilities after termination or change of employment: Access revocation procedure on departure or role change",
+            "A.7.6 — Confidentiality or non-disclosure agreements: NDAs for personnel with access to sensitive system information",
+            "A.7.7 — Remote working: Security controls for remote access (ref: E26-RAP)",
+            "A.7.8 — Information security event reporting: All personnel required to report suspicious events to SSO",
+          ],
+        },
+        {
+          title: "3. Personnel Screening (A.7.1)",
+          body: "Background verification requirements for CBS access roles:",
+          bullets: [
+            "Verification of identity documents and qualifications (as required for maritime certificates)",
+            "Reference checks for critical IT/OT administration roles",
+            "Criminal background check where permitted by flag state law",
+            "Vendor/contractor personnel screening verification required before system access",
+          ],
+        },
+        {
+          title: "4. Security Training Program (A.7.3)",
+          body: `The security awareness and training program covers ${hardware.length > 0 ? hardware.length : "[number]"} CBS assets and is delivered to all personnel with system access. Training content, schedule, and records are documented in the Crew Cyber Security Training Record (E26-TRA). Key training elements:`,
+          bullets: [
+            "Annual mandatory security awareness training for all crew",
+            "Role-specific training for operators and administrators",
+            "Incident response procedures training",
+            "Phishing and social engineering awareness",
+            "Password and account security best practices",
+          ],
+        },
+        {
+          title: "5. Access Revocation Process (A.7.5)",
+          body: "Upon personnel departure or role change:",
+          bullets: [
+            "SSO/HR notifies IT/OT Administrator on departure date (minimum 24 hours notice)",
+            "All CBS user accounts deactivated within 24 hours of departure",
+            "Physical access credentials (keys, badges) recovered on last day",
+            "Service accounts and shared credentials changed if shared with departing personnel",
+            "Access revocation confirmed and documented in IAM log",
+          ],
+        },
+        {
+          title: "6. Remote Working Security (A.7.7)",
+          body: "Remote working security for personnel accessing CBS from shore:",
+          bullets: [
+            "Remote access subject to Remote Access Policy (ref: E26-RAP)",
+            "Corporate-issued devices required for remote CBS access where possible",
+            "VPN required for all remote connections to CBS management systems",
+            "Clear-screen and lock policy when remote working in public spaces",
+          ],
+        },
+      ];
+
+    case "iso-a8":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This document implements ISO/IEC 27001:2022 Annex A, Theme A.8 (Technological Controls) for the CBS of vessel "${project.vesselName}". It covers the 34 technology controls addressing access rights, configuration management, cryptography, network security, and vulnerability management.`,
+        },
+        {
+          title: "2. Access Control Technology (A.8.1–A.8.6)",
+          body: "Technology controls for access management:",
+          bullets: [
+            "A.8.2 — Privileged access rights: Privileged accounts documented; usage monitored (ref: IAM Policy NIST-IAM)",
+            "A.8.3 — Information access restriction: Role-based access control implemented across CBS assets",
+            "A.8.4 — Access to source code: Source code repositories access-controlled; not applicable if no in-house development",
+            "A.8.5 — Secure authentication: MFA enforced for privileged and remote access (ref: E27-ACC, E26-RAP)",
+            "A.8.6 — Capacity management: CBS system capacity monitored; alerts configured at 80% utilization",
+          ],
+        },
+        {
+          title: "3. Cryptography and Data Protection (A.8.24–A.8.25)",
+          body: "Cryptographic controls:",
+          bullets: [
+            "A.8.24 — Use of cryptography: Cryptography policy defined; minimum TLS 1.2 for data in transit; AES-128 or better for data at rest",
+            "A.8.25 — Secure development lifecycle: Secure development practices applied to any in-house CBS software (ref: E27-SDL)",
+          ],
+        },
+        {
+          title: "4. Malware and Technical Vulnerability Management (A.8.7–A.8.8)",
+          body: "Protection against malicious code and vulnerabilities:",
+          bullets: [
+            "A.8.7 — Protection against malware: Anti-malware deployed on compatible assets; application whitelisting as alternative where AV not feasible (mapped to E27 SC-11)",
+            "A.8.8 — Management of technical vulnerabilities: Vulnerability assessment performed (ref: E27-VUL); CVE monitoring for all registered software components",
+          ],
+        },
+        {
+          title: "5. Configuration and Change Management (A.8.9–A.8.10)",
+          body: "Configuration controls:",
+          bullets: [
+            "A.8.9 — Configuration management: Baseline configurations documented (ref: NIST-CFG); deviations require approval",
+            "A.8.10 — Information deletion: Secure deletion procedures for decommissioned equipment",
+          ],
+        },
+        {
+          title: "6. Logging, Monitoring, and Network Security (A.8.13–A.8.22)",
+          body: "Security monitoring and network controls:",
+          bullets: [
+            "A.8.15 — Logging: Audit logging enabled on all CBS assets (ref: E27-MON, SC-7)",
+            "A.8.16 — Monitoring activities: Security monitoring plan implemented; alerts for anomalous events",
+            "A.8.17 — Clock synchronization: NTP time synchronization configured for audit log integrity",
+            "A.8.20 — Networks security: Network security controls implemented per zone architecture (ref: E26-ZCD)",
+            "A.8.21 — Security of network services: Network service security validated during commissioning",
+            "A.8.22 — Segregation of networks: Network segmentation into security zones implemented (ref: zone-design)",
+          ],
+        },
+        {
+          title: "7. Implementation Status",
+          body: `Technology control implementation status based on security capability assessment (SC-1 to SC-13): ${counts.pass} PASS, ${counts.fail} FAIL, ${counts.partial} PARTIAL out of ${counts.total} assessed across ${hardware.length} CBS hardware assets. Detailed control-by-control mapping to SC assessments is maintained in the control implementation register.`,
+        },
+      ];
+
+    case "iso-cloud":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This Cloud Services Security Policy defines the security requirements for cloud services used in support of the CBS management of vessel "${project.vesselName}" in accordance with ISO/IEC 27001:2022 (A.5.23 — Security for use of cloud services) and ISO/IEC 27017:2015 (Code of practice for information security controls for cloud services).`,
+        },
+        {
+          title: "2. Normative References",
+          body: "This policy references:",
+          bullets: [
+            "ISO/IEC 27001:2022 — A.5.23: Security for use of cloud services",
+            "ISO/IEC 27017:2015 — Code of practice for cloud service information security",
+            "ISO/IEC 27018:2019 — Protection of personally identifiable information in public clouds",
+            "NIST SP 800-144 — Guidelines on security and privacy in public cloud computing",
+            "IACS UR E26 — Requirements for shore-based systems interfacing with vessel CBS",
+          ],
+        },
+        {
+          title: "3. Approved Cloud Use Cases",
+          body: "The following cloud service use cases are approved for CBS-related functions:",
+          bullets: [
+            "CBS data backup — Encrypted backup storage for non-critical configuration data and logs",
+            "Remote monitoring — Cloud-based dashboards for vessel performance and security monitoring (read-only, anonymized)",
+            "Software distribution — Vendor-operated update repositories for CBS software patches",
+            "Documentation management — Secure cloud storage for compliance documents (this system — SCS Platform)",
+            "Classification society connectivity — Secure data exchange with classification society survey systems",
+          ],
+        },
+        {
+          title: "4. Prohibited Cloud Uses",
+          body: "The following cloud uses are prohibited without specific risk assessment and DPA approval:",
+          bullets: [
+            "Direct cloud connectivity from operational CBS networks (OT zone isolation must be maintained)",
+            "Processing of safety-critical control data in cloud environments",
+            "Cloud storage of unencrypted vessel operational data",
+            "Use of unsanctioned cloud services (shadow IT) by individual crew or administrators",
+          ],
+        },
+        {
+          title: "5. Cloud Service Provider Requirements",
+          body: "Cloud service providers used for CBS-related functions must meet:",
+          bullets: [
+            "ISO/IEC 27001 certification or equivalent independently verified security standard",
+            "Data residency requirements compatible with flag state and applicable law",
+            "Encryption at rest (AES-256 or equivalent) and in transit (TLS 1.2+)",
+            "Multi-factor authentication for administrative access to cloud management consoles",
+            "Incident notification within 24 hours of security breach affecting vessel data",
+            "Data portability — ability to retrieve and delete all vessel data upon contract termination",
+          ],
+        },
+        {
+          title: "6. CBS Network Isolation Requirements",
+          body: "Cloud connectivity must not compromise CBS OT network isolation:",
+          bullets: [
+            "Direct internet access from OT zone is prohibited — all cloud connectivity through dedicated DMZ or management network",
+            "Data diode or application-layer gateway used for OT-to-cloud data transfer where required",
+            "Air gap maintained for safety-critical systems regardless of cloud architecture",
+            "Cloud-connected systems classified in dedicated security zone (not within OT zone boundary)",
+          ],
+        },
+        {
+          title: "7. Cloud Service Risk Assessment",
+          body: "Before adopting any new cloud service related to CBS management:",
+          bullets: [
+            "Risk assessment performed per IEC 62443-3-2 or ISO 27001 risk framework",
+            "Data classification assessment — determine what data will be processed in the cloud",
+            "CSP security assessment using standardized questionnaire (CSA CAIQ or equivalent)",
+            "Legal review — data protection law compliance, contractual requirements",
+            "DPA and Ship Owner approval required before deployment",
+          ],
+        },
+      ];
+
+    case "iso-ics":
+      return [
+        {
+          title: "1. Purpose and Scope",
+          body: `This document extends the ISMS of vessel "${project.vesselName}" to address the specific security requirements of industrial control systems (ICS) and operational technology (OT) in accordance with ISO/IEC 27019:2017 (Information security controls for the energy utility industry — applicable OT principles) and IEC 62443. It addresses the differences between IT security and OT security in the maritime CBS environment.`,
+        },
+        {
+          title: "2. Normative References",
+          body: "This extension references:",
+          bullets: [
+            "ISO/IEC 27019:2017 — Information security controls for the energy utility industry (OT controls applicable to maritime)",
+            "IEC 62443-2-1 — Security management system for IACS",
+            "IEC 62443-3-3 — System security requirements and security levels",
+            "IACS UR E26/E27 — Maritime OT/ICS security requirements",
+            "NIST SP 800-82 Rev. 3 — Guide to OT Security",
+            "NERC CIP — Critical infrastructure protection (applicable principles)",
+          ],
+        },
+        {
+          title: "3. OT/ICS Security Challenges",
+          body: "OT systems in maritime environments have characteristics that require security approaches different from standard IT:",
+          bullets: [
+            "Availability priority — OT systems must maintain high availability; patches and updates require careful planning to avoid downtime",
+            "Long lifecycle — CBS hardware and software may remain operational for 10-30 years; legacy systems may lack modern security features",
+            "Real-time constraints — Safety-critical systems operate under strict timing requirements; security controls must not impair real-time performance",
+            "Proprietary protocols — Maritime OT uses specialized protocols (NMEA, Modbus, Profibus) with limited native security features",
+            "Air gap expectation — Safety-critical systems traditionally isolated; but increasing connectivity creates new attack surfaces",
+            "Safety-security interaction — Security controls must not degrade functional safety; safety always takes precedence",
+          ],
+        },
+        {
+          title: "4. OT-Specific Security Controls",
+          body: `ISO 27019 extensions applied to the ${hardware.length} CBS assets across ${zones.size} zone(s):`,
+          bullets: [
+            "Patch management — Patches tested in isolated environment before deployment to operational systems; vendor-approved patches only; emergency patch procedures without full testing require safety officer sign-off",
+            "Access management — Vendor/service access follows strict procedure (ref: E26-RAP); no anonymous or shared accounts; minimum required privilege principle",
+            "Physical security — All OT equipment in physically secured locations; tamper-evident seals on cabinets; visual inspection during rounds",
+            "Change management — All OT configuration changes follow formal change control (ref: E27-MOC); rollback procedures required before changes are applied",
+            "Monitoring — Passive monitoring preferred for OT networks to avoid disrupting real-time operations; out-of-band management network for monitoring traffic",
+            "Backup and recovery — Validated backup of all OT configurations; recovery procedures tested annually; recovery time targets compatible with safety requirements",
+          ],
+        },
+        {
+          title: "5. Legacy System Risk Management",
+          body: "Legacy OT systems that cannot implement standard security controls require:",
+          bullets: [
+            "Compensating controls — Additional network isolation, monitoring, and physical access controls",
+            "Formal risk acceptance — Documented acceptance of residual risk with DPA/Owner approval",
+            "Upgrade/replacement planning — Lifecycle management plan targeting replacement before end of vendor support",
+            "Enhanced monitoring — Increased monitoring frequency for legacy systems",
+            "Restricted connectivity — Maximum isolation from other CBS zones and external networks",
+          ],
+        },
+        {
+          title: "6. Safety-Security Integration",
+          body: "The interaction between functional safety and information security must be managed:",
+          bullets: [
+            "Safety system priority — Any security control that could degrade safety system performance is prohibited without safety engineer approval",
+            "Fail-safe design — CBS security design ensures cyber incidents result in safe state (not dangerous state)",
+            "Manual override — Manual override capabilities maintained for all safety-critical functions",
+            "Joint assessment — Safety and security teams jointly assess proposed controls for safety-critical systems",
+            "Reference: Vessel Safety Management System (SMS) and equipment safety manuals for specific safety requirements",
+          ],
+        },
+        {
+          title: "7. OT Security Monitoring",
+          body: "Monitoring approaches adapted for OT environment:",
+          bullets: [
+            "Passive network monitoring — Traffic analysis without active probing of OT systems",
+            "Industrial protocol analysis — Monitoring for anomalous commands in NMEA, Modbus, and other maritime protocols",
+            "Behavioral baseline — Establish normal operational patterns; alert on deviations",
+            "Log collection — Collect logs from OT systems that support logging; compensate with network monitoring for systems without logging capability",
+            "Alert thresholds — Calibrated to minimize false positives that could distract operational personnel",
+          ],
+        },
+      ];
+
+    case "security-capabilities":
+      return [
+        { title: "1. Purpose", body: `This document describes the security capabilities implemented on CBS aboard vessel "${project.vesselName}" in accordance with IACS UR E27 §4.` },
+        { title: "2. Regulatory Reference", body: "IACS UR E27 Rev.2 Section 4 — Security Capabilities Description\nIEC 62443-3-3 — System Security Requirements" },
+        { title: "3. Access Control (SC-1, SC-2)", body: "Role-based access control (RBAC) is implemented on all CBS. Default and guest accounts are disabled at commissioning. Password policy enforces minimum 8 characters with complexity requirements. Account lockout threshold is set to ≤5 failed attempts." },
+        { title: "4. Authentication (SC-1)", body: "Strong authentication is required for all local access. Multi-factor authentication (MFA) is enforced for remote access sessions. Session timeout is configured to lock after 15 minutes of inactivity." },
+        { title: "5. Network Security (SC-5, SC-6)", body: "Network segmentation is implemented per IEC 62443 zone/conduit model. Legacy protocols (SMBv1, NetBIOS) are disabled. Windows Firewall is enabled on all profiles. RDP Network Level Authentication (NLA) is required for remote desktop connections." },
+        { title: "6. Endpoint Protection (SC-10, SC-11)", body: "Anti-malware protection (Windows Defender) is enabled with real-time scanning. Automatic definition updates are configured. Screen lock timeout is set to ≤15 minutes. Ctrl+Alt+Del is required for logon." },
+        { title: "7. Audit & Monitoring (SC-7)", body: "Security audit logging is enabled for all critical event categories (Success + Failure). Log retention period is ≥90 days. Security log minimum size is 196 MB. Monthly log review is conducted by IT Officer." },
+        { title: "8. Update Management (SC-13)", body: "Patch management follows the procedure defined in E27-PAT. CAT I/II systems receive vendor-approved patches annually. CAT III systems receive automatic updates monthly. Critical vulnerabilities (CVSS ≥9.0) are patched within 30 days." },
+        { title: "9. Capability Summary", body: "The table below maps implemented security capabilities to E27 Security Configuration (SC) requirements." },
+      ];
+
+    case "patch-management":
+      return [
+        { title: "1. Policy Statement", body: `This document defines the patch management procedure for all Computer Based Systems (CBS) aboard vessel "${project.vesselName}" in accordance with IACS UR E27 SC-13.` },
+        { title: "2. Regulatory Reference", body: "IACS UR E27 Rev.2 — SC-13 (Software/Firmware Integrity)\nNIST SP 800-40 Rev.4 — Guide to Enterprise Patch Management\nCIS Controls v8 — Control 7 (Continuous Vulnerability Management)" },
+        { title: "3. Scope", body: `This procedure applies to all ${hardware.length} CBS component(s) registered in the asset inventory. Systems are categorized per E26 Table 1 (CAT I, CAT II, CAT III) with different patch frequencies.` },
+        { title: "4. Patch Schedule", body: "CAT I (Critical Navigation/Safety): Annually, vendor-approved media only, Chief Engineer responsible, Master + CSO approval required.\nCAT II (Essential Operations): Semi-annually, IT Officer responsible, CSO approval required.\nCAT III (Non-critical IT): Monthly automatic updates via WSUS/Windows Update, IT Officer responsible, CSO notification." },
+        { title: "5. Patch Testing Process", body: "All patches for CAT I and CAT II systems must be tested in a controlled environment before deployment. Test results must be documented including system behavior verification and rollback capability confirmation. CAT III systems may receive automatic updates with post-deployment verification." },
+        { title: "6. Emergency Patch Procedure", body: "For critical vulnerabilities (CVSS ≥9.0), emergency patching must be completed within 30 days. Emergency patches require CSO + Master approval. Post-implementation review must be conducted within 7 days. All emergency patches are logged in the Patch Log." },
+        { title: "7. Patch Log", body: "All patch activities must be recorded in the following log format:\n(Date | System | Patch/KB ID | Version Before | Version After | Tested By | Applied By | Verified)" },
+        { title: "8. Exceptions", body: "Systems that cannot be patched due to vendor restrictions, certification requirements, or operational constraints must be documented with compensating controls (network isolation, enhanced monitoring, additional access restrictions)." },
+      ];
+
     default:
       return [
         {
@@ -1520,6 +2771,17 @@ export function generateTemplate(
         ),
       );
     }
+    // CVSS Priority Timeline
+    content.push(heading2("Risk Prioritization Timeline"));
+    content.push(buildTable(
+      ["Severity", "CVSS Range", "Remediation Timeline", "Action Required"],
+      [
+        ["CRITICAL", "9.0 — 10.0", "Within 7 days", "Emergency patch, CSO + Master approval"],
+        ["HIGH", "7.0 — 8.9", "Within 30 days", "Scheduled patch, CSO approval"],
+        ["MEDIUM", "4.0 — 6.9", "Within 90 days", "Next maintenance window"],
+        ["LOW", "0.1 — 3.9", "Quarterly review", "Monitor and assess during routine maintenance"],
+      ],
+    ));
   }
 
   if (focus === "access") {
@@ -1679,7 +2941,72 @@ export function generateTemplate(
     );
   }
 
+  if (focus === "incident") {
+    // Incident Classification with maritime examples
+    content.push(heading2("Incident Classification"));
+    content.push(buildTable(
+      ["Level", "Description", "Maritime Example", "Response Time"],
+      [
+        ["CRITICAL", "Safety-critical system compromise", "Ransomware on ECDIS, GPS spoofing affecting navigation", "Immediate (< 1 hour)"],
+        ["HIGH", "Essential system compromise", "Engine control system unauthorized access, AIS manipulation", "< 4 hours"],
+        ["MEDIUM", "Non-critical system incident", "Unauthorized USB device connected, unauthorized access attempt", "< 24 hours"],
+        ["LOW", "Minor security event", "Failed login attempts, policy violation, phishing email received", "< 72 hours"],
+      ],
+    ));
+    // RPO/RTO by CAT
+    content.push(heading2("Recovery Point/Time Objectives"));
+    content.push(buildTable(
+      ["System Category", "RPO (Max Data Loss)", "RTO (Max Downtime)", "Backup Location"],
+      [
+        ["CAT I (Navigation/Safety)", "24 hours", "4 hours", "Local encrypted backup + shore backup"],
+        ["CAT II (Essential Operations)", "24 hours", "8 hours", "Local encrypted backup"],
+        ["CAT III (Non-critical IT)", "48 hours", "24 hours", "Standard backup procedure"],
+      ],
+    ));
+    // Emergency Contacts
+    content.push(heading2("Emergency Contact List"));
+    content.push(buildTable(
+      ["Role", "Contact", "Availability", "Notes"],
+      [
+        ["IT Officer (Primary)", "[Name to be specified]", "24/7 onboard", "First responder for all cyber incidents"],
+        ["CSO (Company)", "[Company CSO]", "Business hours + emergency", "Escalation contact for HIGH/CRITICAL"],
+        ["Classification Society", project.classification || "[To be specified]", "Business hours", "Notify for class-relevant incidents"],
+        ["National CERT / ISAC", "[Maritime CERT]", "24/7", "For critical incidents with national security implications"],
+      ],
+    ));
+    // Incident Log template
+    content.push(heading2("Incident Log Template"));
+    content.push(buildTable(
+      ["Date/Time", "Incident Type", "Level", "Systems Affected", "Actions Taken", "Resolution"],
+      [["", "", "", "", "", ""], ["", "", "", "", "", ""], ["", "", "", "", "", ""]],
+    ));
+  }
+
   if (focus === "change") {
+    // Change Categories table (from old system)
+    content.push(heading2("Change Categories"));
+    content.push(buildTable(
+      ["Category", "Description", "Approval Required", "Lead Time", "Responsible"],
+      [
+        ["Standard", "Pre-approved routine changes (AV update, log rotation)", "IT Officer only", "N/A (pre-approved)", "IT Officer"],
+        ["Normal", "Planned changes requiring review (HW replacement, SW upgrade)", "CSO + Chief Engineer", "≥ 5 working days", "IT Officer + Chief Engineer"],
+        ["Emergency", "Urgent changes for safety/security (critical patch, containment)", "Master + CSO", "ASAP", "IT Officer"],
+        ["Major", "Significant system changes (architecture, new CBS, zone redesign)", "Company IT + Classification Society", "≥ 30 days", "Company + Shipyard"],
+      ],
+    ));
+    // Change Process table
+    content.push(heading2("Change Process Steps"));
+    content.push(buildTable(
+      ["Step", "Activity", "Responsible", "Documentation"],
+      [
+        ["1", "Submit Change Request", "Requester", "Change Request Form (CR-XXX)"],
+        ["2", "Impact Assessment", "IT Officer", "Impact Assessment Report"],
+        ["3", "Approval", "As per category", "Change Approval Record"],
+        ["4", "Implementation Plan", "IT Officer", "Implementation Plan + Rollback Plan"],
+        ["5", "Testing & Verification", "IT Officer + Requester", "Test Report"],
+        ["6", "Close & Document", "IT Officer", "Change Completion Record"],
+      ],
+    ));
     // Current CBS scope table
     content.push(heading2("Current CBS Hardware Scope"));
     content.push(
@@ -1692,10 +3019,10 @@ export function generateTemplate(
       ),
     );
     // Change log template
-    content.push(heading2("Change Log"));
+    content.push(heading2("Change Log Template"));
     content.push(
       buildTable(
-        ["Date", "Change ID", "Description", "Affected Asset(s)", "Category", "Approver", "Status"],
+        ["CR No", "Date", "System", "Description", "Category", "Approved By", "Status"],
         [["", "", "", "", "", "", ""], ["", "", "", "", "", "", ""], ["", "", "", "", "", "", ""]],
       ),
     );
@@ -1730,6 +3057,68 @@ export function generateTemplate(
         ),
       );
     }
+
+    // ── Risk Register with 12 pre-defined threats (from old E26-CSR) ──
+    const preDefinedRisks: { id: string; cat: string; threat: string; l: number; i: number }[] = [
+      { id: "R1", cat: "Network", threat: "Unauthorized Network Access", l: 4, i: 5 },
+      { id: "R2", cat: "Malware", threat: "Malware Infection", l: 3, i: 5 },
+      { id: "R3", cat: "Patch", threat: "Unpatched Software", l: 4, i: 4 },
+      { id: "R4", cat: "Physical", threat: "USB-borne Malware", l: 3, i: 4 },
+      { id: "R5", cat: "Insider", threat: "Insider Threat", l: 2, i: 4 },
+      { id: "R6", cat: "Supply Chain", threat: "Supply Chain Compromise", l: 2, i: 5 },
+      { id: "R7", cat: "DoS", threat: "DoS Attack", l: 3, i: 4 },
+      { id: "R8", cat: "Spoofing", threat: "GPS/AIS Spoofing", l: 3, i: 5 },
+      { id: "R9", cat: "Malware", threat: "Ransomware", l: 3, i: 5 },
+      { id: "R10", cat: "Auth", threat: "Weak Authentication", l: 4, i: 3 },
+      { id: "R11", cat: "Crypto", threat: "Unencrypted Communication", l: 3, i: 3 },
+      { id: "R12", cat: "Physical", threat: "Physical Access Breach", l: 2, i: 3 },
+    ];
+    // Dynamic risks from assessment failures
+    const failsByHw = new Map<string, string[]>();
+    assessments.filter((a) => a.result === "FAIL").forEach((a) => {
+      const hwName = a.hardware.name;
+      if (!failsByHw.has(hwName)) failsByHw.set(hwName, []);
+      failsByHw.get(hwName)!.push(a.checkId);
+    });
+    const dynamicRisks = [...failsByHw.entries()].map(([hwName, checks], idx) => ({
+      id: `R${13 + idx}`,
+      cat: "Assessment",
+      threat: `${hwName}: FAIL on ${checks.join(", ")}`,
+      l: checks.length >= 5 ? 4 : checks.length >= 3 ? 3 : 2,
+      i: 4,
+    }));
+    const allRisks = [...preDefinedRisks, ...dynamicRisks];
+    const getRiskLevel = (score: number) => score >= 20 ? "CRITICAL" : score >= 12 ? "HIGH" : score >= 6 ? "MEDIUM" : "LOW";
+    const riskRows = allRisks.map((r) => {
+      const score = r.l * r.i;
+      return [r.id, r.cat, r.threat, String(r.l), String(r.i), String(score), getRiskLevel(score)];
+    });
+    content.push(heading2("Risk Register"));
+    content.push(bodyText(`Risk assessment using 5×5 Likelihood × Impact matrix per IACS UR E26 §3.3. Scores: CRITICAL (≥20), HIGH (≥12), MEDIUM (≥6), LOW (<6). Total risks: ${allRisks.length} (${preDefinedRisks.length} baseline + ${dynamicRisks.length} from assessment findings).`));
+    content.push(
+      buildTable(
+        ["ID", "Category", "Risk Description", "L", "I", "Score", "Level"],
+        riskRows,
+      ),
+    );
+
+    // Risk Summary
+    const criticalCount = allRisks.filter((r) => r.l * r.i >= 20).length;
+    const highCount = allRisks.filter((r) => { const s = r.l * r.i; return s >= 12 && s < 20; }).length;
+    const mediumCount = allRisks.filter((r) => { const s = r.l * r.i; return s >= 6 && s < 12; }).length;
+    const lowCount = allRisks.filter((r) => r.l * r.i < 6).length;
+    content.push(heading2("Risk Summary"));
+    content.push(
+      buildTable(
+        ["Level", "Count", "Required Action"],
+        [
+          ["CRITICAL", String(criticalCount), "Immediate action required — escalate to CSO within 48h"],
+          ["HIGH", String(highCount), "Remediation plan required within 30 days"],
+          ["MEDIUM", String(mediumCount), "Monitor and address in next maintenance cycle"],
+          ["LOW", String(lowCount), "Accept or address as resources allow"],
+        ],
+      ),
+    );
   }
 
   if (focus === "maintenance") {
@@ -1743,6 +3132,27 @@ export function generateTemplate(
         ]),
       ),
     );
+    // Structured Maintenance Schedule (matching old system)
+    content.push(heading2("Maintenance Schedule"));
+    content.push(buildTable(
+      ["Activity", "Frequency", "Responsible", "Method", "Record"],
+      [
+        ["E27 SC Check (Hardening Audit)", "Annually", "IT Officer / CSO", "SCS Audit Tool", "E27-AUD Report"],
+        ["Vulnerability Scan", "Semi-annually", "IT Officer", "CVE/NVD Scan", "E27-VUL Report"],
+        ["CAT III Patch Deployment", "Monthly", "IT Officer", "Windows Update / WSUS", "Patch Log"],
+        ["CAT I/II Patch Deployment", "Annually", "Chief Engineer", "Vendor-approved media", "Patch Log"],
+        ["AV Definition Update", "Daily (automatic)", "IT Officer", "Windows Defender Update", "Auto-log"],
+        ["Backup Verification", "Quarterly", "IT Officer", "Restore test on spare", "Backup Log"],
+        ["User Account Review", "Quarterly", "IT Officer + CSO", "lusrmgr.msc review", "Account Audit"],
+        ["Security Awareness Training", "Annually", "CSO", "Training module", "E26-TRA Record"],
+      ],
+    ));
+    // Maintenance Log template
+    content.push(heading2("Maintenance Log Template"));
+    content.push(buildTable(
+      ["Date", "Activity", "System", "Performed By", "Result", "Next Due"],
+      [["", "", "", "", "", ""], ["", "", "", "", "", ""], ["", "", "", "", "", ""]],
+    ));
   }
 
   if (focus === "system-test") {
@@ -1753,6 +3163,28 @@ export function generateTemplate(
         hardware.map((hw) => [hw.name, hw.type, hw.zone || "—", "Yes", "Yes", "[Pending]"]),
       ),
     );
+    // 9 Specific Test Cases from old system
+    content.push(heading2("Security Configuration Test Procedures"));
+    content.push(buildTable(
+      ["Test ID", "Test Item", "E27 Ref", "Test Method", "Pass Criteria"],
+      [
+        ["T-01", "Password complexity", "SC-1", "Attempt to set password 'abc123' (no complexity)", "Password rejected; min 8 chars + complexity enforced"],
+        ["T-02", "Guest account disabled", "SC-2", "Run: Get-LocalUser -Name Guest | Select Enabled", "Enabled = False"],
+        ["T-03", "SMBv1 disabled", "SC-5", "Run: Get-SmbServerConfiguration | Select EnableSMB1Protocol", "EnableSMB1Protocol = False"],
+        ["T-04", "USB AutoRun disabled", "SC-5", "Insert USB drive with autorun.inf, verify no auto-execution", "No automatic execution occurs"],
+        ["T-05", "RDP NLA enabled", "SC-6", "Check: HKLM\\...\\WinStations\\RDP-Tcp\\UserAuthentication", "UserAuthentication = 1"],
+        ["T-06", "Audit logging active", "SC-7", "Run: auditpol /get /category:*", "Success and Failure enabled for all categories"],
+        ["T-07", "Screen lock ≤15 min", "SC-10", "Check screen saver timeout GPO setting", "Timeout ≤ 900 seconds (15 min)"],
+        ["T-08", "Antivirus active", "SC-11", "Run: Get-MpComputerStatus | Select RealTimeProtectionEnabled", "RealTimeProtectionEnabled = True"],
+        ["T-09", "Windows Update configured", "SC-13", "Run: Get-WindowsUpdate or check WSUS configuration", "Updates configured per patch policy (CAT I/II/III)"],
+      ],
+    ));
+    // Sign-off table
+    content.push(heading2("Test Sign-off"));
+    content.push(buildTable(
+      ["Role", "Name", "Signature", "Date"],
+      [["Tester / IT Officer", "", "", ""], ["Reviewer / CSO", "", "", ""], ["Master", "", "", ""]],
+    ));
   }
 
   if (focus === "hardening") {
@@ -1775,6 +3207,40 @@ export function generateTemplate(
         }),
       ),
     );
+    // SC-by-SC detailed requirements
+    content.push(heading2("SC Configuration Requirements"));
+    content.push(buildTable(
+      ["SC", "Requirement", "Configuration", "Method / Command"],
+      [
+        ["SC-1", "Password complexity", "Min 8 chars, uppercase+lowercase+digit+special, lockout ≤5", "secpol.msc → Account Policies → Password Policy"],
+        ["SC-2", "Least privilege", "Disable Guest, restrict Administrators group", "lusrmgr.msc → Users; Disable-LocalUser -Name Guest"],
+        ["SC-5", "SMBv1 disabled", "Disable legacy SMB protocol", "Set-SmbServerConfiguration -EnableSMB1Protocol $false"],
+        ["SC-5", "AutoRun disabled", "Prevent automatic execution from removable media", "GPO: Computer Config → Admin Templates → Windows Components → AutoPlay"],
+        ["SC-5", "USB storage blocked", "Block USB mass storage devices", "Set-ItemProperty HKLM:\\SYSTEM\\CurrentControlSet\\Services\\USBSTOR -Name Start -Value 4"],
+        ["SC-6", "Firewall enabled", "Windows Firewall on all profiles (Domain/Private/Public)", "Set-NetFirewallProfile -All -Enabled True"],
+        ["SC-6", "RDP NLA required", "Network Level Authentication for Remote Desktop", "UserAuthentication registry = 1"],
+        ["SC-7", "Audit logging", "Success+Failure for all categories, Security log ≥196 MB, App ≥32 MB", "auditpol /set /category:* /success:enable /failure:enable"],
+        ["SC-10", "Screen lock", "Idle timeout ≤15 minutes", "GPO: Screen saver timeout 900 seconds"],
+        ["SC-11", "AV real-time", "Windows Defender real-time protection enabled", "Set-MpPreference -DisableRealtimeMonitoring $false"],
+        ["SC-12", "Removable media", "Encrypt removable drives, restrict write access", "BitLocker To Go, GPO removable storage access"],
+        ["SC-13", "Patch policy", "CAT I/II annually, CAT III monthly, CVSS≥9.0 within 30 days", "See E27-PAT document"],
+      ],
+    ));
+    // Per-device SC status
+    if (hardware.length > 0) {
+      content.push(heading2("Per-Device Hardening Status"));
+      const scIds = ["SC-1", "SC-2", "SC-5", "SC-6", "SC-7", "SC-10", "SC-11", "SC-13"];
+      content.push(buildTable(
+        ["Device", "Type", "Zone", ...scIds],
+        hardware.map((hw) => {
+          const vals = scIds.map((sc) => {
+            const a = assessments.find((x) => x.hardwareId === hw.id && x.checkId === sc);
+            return a ? resultLabel(a.result) : "—";
+          });
+          return [hw.name, hw.type, hw.zone || "—", ...vals];
+        }),
+      ));
+    }
   }
 
   if (focus === "e26-inventory") {
@@ -1854,6 +3320,654 @@ export function generateTemplate(
         hardware.map((hw) => [hw.name, hw.type, hw.zone || "—", "[Date]", "[Date]", "[Date]", "[Date]"]),
       ),
     );
+  }
+
+  // ─── Security Capabilities table ──────────────────────────
+  if (focus === "security-capabilities") {
+    const scGroups: [string, string, string][] = [
+      ["SC-1", "Identification & Authentication", "Password policy, account management"],
+      ["SC-2", "Use Control / Least Privilege", "RBAC, admin restriction"],
+      ["SC-3", "System Integrity", "Application whitelisting, integrity checks"],
+      ["SC-5", "Communication Integrity", "SMBv1 disabled, protocol hardening"],
+      ["SC-6", "Network Security", "Firewall, RDP NLA, port control"],
+      ["SC-7", "Audit & Accountability", "Event logging, log retention ≥90 days"],
+      ["SC-10", "Resource Availability", "Screen lock ≤15 min, session control"],
+      ["SC-11", "Malware Protection", "Windows Defender, real-time scanning"],
+      ["SC-12", "Physical Security", "USB storage blocked, removable media policy"],
+      ["SC-13", "Software Integrity", "Patch management, update verification"],
+    ];
+    const capRows = scGroups.map(([sc, cap, impl]) => {
+      const scAssess = assessments.filter((a) => a.checkId.startsWith(sc));
+      const passCount = scAssess.filter((a) => a.result === "PASS").length;
+      const status = scAssess.length === 0 ? "Not Assessed" : passCount === scAssess.length ? "✅ Implemented" : passCount > 0 ? "⚠ Partial" : "❌ Not Implemented";
+      return [cap, sc, impl, status];
+    });
+    elements.push(heading2("Security Capability Summary"), buildTable(
+      ["Capability", "E27 SC Ref", "Implementation", "Status"], capRows,
+    ));
+  }
+
+  // ─── Patch Management tables ────────────────────────────
+  if (focus === "patch-management") {
+    // Scope — list devices
+    if (hardware.length > 0) {
+      elements.push(heading2("CBS Components in Scope"), buildTable(
+        ["#", "Device", "Type", "Zone", "Category"],
+        hardware.map((hw, i) => [String(i + 1), hw.name, hw.type, hw.zone || "—", "CAT III"]),
+      ));
+    }
+    // Patch Schedule table
+    elements.push(heading2("Patch Schedule Summary"), buildTable(
+      ["Category", "Frequency", "Method", "Responsible", "Approval"],
+      [
+        ["CAT I (Navigation/Safety)", "Annually", "Vendor-approved media", "Chief Engineer", "Master + CSO"],
+        ["CAT II (Essential Ops)", "Semi-annually", "Tested update package", "IT Officer", "CSO"],
+        ["CAT III (Non-critical IT)", "Monthly", "Windows Update / WSUS", "IT Officer", "CSO notification"],
+        ["Emergency (CVSS ≥9.0)", "Within 30 days", "Emergency procedure", "IT Officer", "CSO + Master"],
+      ],
+    ));
+    // Patch Log template
+    elements.push(heading2("Patch Log Template"), buildTable(
+      ["Date", "System", "Patch / KB ID", "Version Before", "Version After", "Tested By", "Applied By"],
+      [["", "", "", "", "", "", ""], ["", "", "", "", "", "", ""], ["", "", "", "", "", "", ""]],
+    ));
+  }
+
+  // ─── E26 Management Plan tables ────────────────────────────
+  if (focus === "e26-management") {
+    const zones = groupByZone(hardware);
+    content.push(heading2("CBS Asset Summary"));
+    content.push(
+      buildTable(
+        ["Zone", "HW Count", "SW Count", "Key Assets"],
+        [...zones.entries()].map(([zone, assets]) => [
+          zone, String(assets.length),
+          String(assets.reduce((n, hw) => n + hw.software.length, 0)),
+          assets.slice(0, 3).map((a) => a.name).join(", ") + (assets.length > 3 ? ` (+${assets.length - 3})` : ""),
+        ]),
+      ),
+    );
+    if (assessments.length > 0) {
+      const counts = countResults(assessments);
+      content.push(heading2("Current KPI Snapshot"));
+      content.push(
+        buildTable(
+          ["KPI", "Value", "Target"],
+          [
+            ["Assessment PASS rate", counts.total > 0 ? `${Math.round((counts.pass / counts.total) * 100)}%` : "—", "> 80%"],
+            ["FAIL items", String(counts.fail), "0"],
+            ["PARTIAL items", String(counts.partial), "0"],
+            ["Total checks", String(counts.total), "—"],
+          ],
+        ),
+      );
+    }
+  }
+
+  // ─── E26 Remote Access tables ─────────────────────────────
+  if (focus === "e26-remote-access") {
+    content.push(heading2("Approved Remote Access Methods"));
+    content.push(
+      buildTable(
+        ["Method", "Protocol", "Authentication", "Encryption", "Status"],
+        [
+          ["VPN (IPsec)", "IKEv2 / ESP", "Certificate + MFA", "AES-256", "[Approved / Pending]"],
+          ["VPN (SSL/TLS)", "TLS 1.2+", "Username + MFA", "AES-128+", "[Approved / Pending]"],
+          ["SSH", "SSH-2", "Key-based + MFA", "AES-256-CTR", "[Approved / Pending]"],
+          ["RDP (with NLA)", "TLS 1.2+", "NLA + MFA", "AES-128+", "[Approved / Pending]"],
+        ],
+      ),
+    );
+    content.push(heading2("CBS Assets with Remote Access Capability"));
+    content.push(
+      buildTable(
+        ["Asset", "Type", "Zone", "IP Address", "Remote Capable", "Access Method"],
+        hardware.map((hw) => [
+          hw.name, hw.type, hw.zone || "—", hw.ipAddress || "—",
+          hw.ipAddress ? "Yes" : "No", "[To be specified]",
+        ]),
+      ),
+    );
+  }
+
+  // ─── IEC Risk Assessment tables ───────────────────────────
+  if (focus === "iec-risk-assessment") {
+    if (assessments.length > 0) {
+      content.push(heading2("Risk Results by Zone"));
+      const zones = groupByZone(hardware);
+      content.push(
+        buildTable(
+          ["Zone", "Assets", "Checks", "PASS", "FAIL", "PARTIAL", "Risk Level"],
+          [...zones.entries()].map(([zone, assets]) => {
+            const ids = new Set(assets.map((a) => a.id));
+            const za = assessments.filter((a) => ids.has(a.hardwareId));
+            const zc = countResults(za);
+            const risk = zc.fail > 0 ? "HIGH" : zc.partial > 0 ? "MEDIUM" : "LOW";
+            return [zone, String(assets.length), String(zc.total), String(zc.pass), String(zc.fail), String(zc.partial), risk];
+          }),
+        ),
+      );
+    }
+    content.push(heading2("Threat Category Summary"));
+    content.push(
+      buildTable(
+        ["Threat Category", "Description", "Likelihood", "Impact", "Risk"],
+        [
+          ["Malware", "Ransomware, worms, trojans targeting OT", "Medium", "High", "High"],
+          ["Unauthorized Access", "Weak credentials, network exploitation", "Medium", "High", "High"],
+          ["Insider Threat", "Accidental or malicious personnel actions", "Low", "Medium", "Medium"],
+          ["Supply Chain", "Malicious code in updates, counterfeit HW", "Low", "High", "Medium"],
+          ["Physical Attack", "Unauthorized physical access to CBS", "Low", "Medium", "Low"],
+          ["Denial of Service", "Resource exhaustion targeting CBS", "Medium", "Medium", "Medium"],
+        ],
+      ),
+    );
+  }
+
+  // ─── IEC Security Level tables ────────────────────────────
+  if (focus === "iec-security-level") {
+    // FR1-FR7 compliance table
+    const frChecks: [string, string, string[]][] = [
+      ["FR 1", "Identification & Authentication (IAC)", ["SC-1", "SC-2", "SC-3"]],
+      ["FR 2", "Use Control (UC)", ["SC-2", "SC-3", "SC-10"]],
+      ["FR 3", "System Integrity (SI)", ["SC-11", "SC-12", "SC-13"]],
+      ["FR 4", "Data Confidentiality (DC)", ["SC-6"]],
+      ["FR 5", "Restricted Data Flow (RDF)", ["SC-3", "SC-5"]],
+      ["FR 6", "Timely Response to Events (TRE)", ["SC-7"]],
+      ["FR 7", "Resource Availability (RA)", ["SC-4", "SC-8", "SC-9"]],
+    ];
+    content.push(heading2("FR 1–7 Compliance Summary"));
+    content.push(
+      buildTable(
+        ["FR", "Name", "Assessed", "PASS", "FAIL", "SL-T", "SL-A"],
+        frChecks.map(([fr, name, scIds]) => {
+          const rel = assessments.filter((a) => scIds.includes(a.checkId));
+          const rc = countResults(rel);
+          return [fr, name, String(rc.total), String(rc.pass), String(rc.fail), "[TBD]", rc.fail > 0 ? "Not met" : rc.total > 0 ? "Met" : "—"];
+        }),
+      ),
+    );
+    // Device-level status
+    content.push(heading2("Device Security Level Status"));
+    content.push(
+      buildTable(
+        ["Device", "Type", "Zone", "Checks", "PASS", "FAIL", "Gap"],
+        hardware.map((hw) => {
+          const ha = assessments.filter((a) => a.hardwareId === hw.id);
+          const hc = countResults(ha);
+          return [hw.name, hw.type, hw.zone || "—", String(hc.total), String(hc.pass), String(hc.fail), hc.fail > 0 ? "Yes" : "No"];
+        }),
+      ),
+    );
+  }
+
+  // ─── IEC Capability Requirements tables ───────────────────
+  if (focus === "iec-capability-req") {
+    if (assessments.length > 0) {
+      content.push(heading2("Requirement Compliance Status by Device"));
+      content.push(
+        buildTable(
+          ["Device", "Type", "Zone", "Assessed", "PASS", "FAIL", "PARTIAL"],
+          hardware.map((hw) => {
+            const ha = assessments.filter((a) => a.hardwareId === hw.id);
+            const hc = countResults(ha);
+            return [hw.name, hw.type, hw.zone || "—", String(hc.total), String(hc.pass), String(hc.fail), String(hc.partial)];
+          }),
+        ),
+      );
+    }
+  }
+
+  // ─── IEC Component Security Requirements tables ───────────
+  if (focus === "iec-component-req") {
+    content.push(heading2("Component Inventory and Compliance"));
+    content.push(
+      buildTable(
+        ["Component", "Type", "IEC 62443-4-2 Type", "Zone", "Assessed", "PASS", "FAIL", "Conformance"],
+        hardware.map((hw) => {
+          const iecType = hw.type === "NETWORK_DEVICE" ? "ND" : hw.type === "SERVER" || hw.type === "PC" ? "HD" : hw.type === "PLC" || hw.type === "SENSOR" ? "ED" : "SA";
+          const ha = assessments.filter((a) => a.hardwareId === hw.id);
+          const hc = countResults(ha);
+          return [hw.name, hw.type, iecType, hw.zone || "—", String(hc.total), String(hc.pass), String(hc.fail), hc.fail > 0 ? "Non-conformant" : hc.total > 0 ? "Conformant" : "Not assessed"];
+        }),
+      ),
+    );
+    // CR requirement status
+    const crChecks = ["SC-1", "SC-2", "SC-3", "SC-5", "SC-6", "SC-7", "SC-11", "SC-13"];
+    content.push(heading2("Component Requirement (CR) Baseline Status"));
+    content.push(
+      buildTable(
+        ["CR Requirement", "SC Check", "Devices Assessed", "PASS", "FAIL"],
+        crChecks.map((sc) => {
+          const rel = assessments.filter((a) => a.checkId === sc);
+          const rc = countResults(rel);
+          return [sc === "SC-1" ? "CR 1.1 — Authentication" : sc === "SC-2" ? "CR 1.3 — Account Mgmt" : sc === "SC-3" ? "CR 2.1 — Authorization" : sc === "SC-5" ? "CR 7.7 — Least Functionality" : sc === "SC-6" ? "CR 4.1 — Confidentiality" : sc === "SC-7" ? "CR 2.8 — Auditable Events" : sc === "SC-11" ? "CR 3.1 — Malware Protection" : "CR 7.6 — Patch Mgmt", sc, String(rc.total), String(rc.pass), String(rc.fail)];
+        }),
+      ),
+    );
+  }
+
+  // ─── IEC Zone & Conduit tables ────────────────────────────
+  if (focus === "iec-zone-conduit") {
+    const zones = groupByZone(hardware);
+    content.push(heading2("Zone Summary"));
+    content.push(
+      buildTable(
+        ["Zone", "Asset Count", "Asset Types", "SL-T", "Key Assets"],
+        [...zones.entries()].map(([zone, assets]) => [
+          zone, String(assets.length),
+          [...new Set(assets.map((a) => a.type))].join(", "),
+          "[TBD]",
+          assets.slice(0, 3).map((a) => a.name).join(", ") + (assets.length > 3 ? ` (+${assets.length - 3})` : ""),
+        ]),
+      ),
+    );
+    // Conduit registry — derive from DFD connections or show cross-zone assets
+    const zoneNames = [...zones.keys()];
+    const conduits: string[][] = [];
+    for (let i = 0; i < zoneNames.length; i++) {
+      for (let j = i + 1; j < zoneNames.length; j++) {
+        conduits.push([`C-${i + 1}${j + 1}`, zoneNames[i], zoneNames[j], "Bidirectional", "Firewall", "[To be specified]"]);
+      }
+    }
+    if (conduits.length > 0) {
+      content.push(heading2("Conduit Registry"));
+      content.push(
+        buildTable(
+          ["Conduit ID", "Source Zone", "Dest Zone", "Direction", "Boundary Device", "Protocols"],
+          conduits,
+        ),
+      );
+    }
+    // SR requirements per zone
+    content.push(heading2("System Requirement (SR) Applicability by Zone"));
+    content.push(
+      buildTable(
+        ["Zone", "FR 5 (RDF) Applicable", "Boundary Control Required", "External Connection"],
+        [...zones.entries()].map(([zone]) => [
+          zone, "Yes", "Yes", zone.toLowerCase().includes("external") || zone.toLowerCase().includes("shore") ? "Yes" : "No",
+        ]),
+      ),
+    );
+  }
+
+  // ─── NIST Baseline Config tables ──────────────────────────
+  if (focus === "nist-baseline-config") {
+    content.push(heading2("Device Baseline Status"));
+    content.push(
+      buildTable(
+        ["Device", "Type", "Zone", "SC-5 (Least Func.)", "SC-13 (Patch)", "Baseline Documented"],
+        hardware.map((hw) => {
+          const sc5 = assessments.find((a) => a.hardwareId === hw.id && a.checkId === "SC-5");
+          const sc13 = assessments.find((a) => a.hardwareId === hw.id && a.checkId === "SC-13");
+          return [hw.name, hw.type, hw.zone || "—", sc5 ? resultLabel(sc5.result) : "—", sc13 ? resultLabel(sc13.result) : "—", "[Date]"];
+        }),
+      ),
+    );
+    content.push(heading2("Hardening Standards Reference"));
+    content.push(
+      buildTable(
+        ["CM Control", "Description", "Status"],
+        [
+          ["CM-1", "Configuration Management Policy", "Documented"],
+          ["CM-2", "Baseline Configuration", "Per asset (see above)"],
+          ["CM-3", "Configuration Change Control", "Ref: E27-MOC"],
+          ["CM-4", "Impact Analyses", "Per change request"],
+          ["CM-5", "Access Restrictions for Change", "Role-based"],
+          ["CM-6", "Configuration Settings", "Per hardening guide"],
+          ["CM-7", "Least Functionality", "Ref: SC-5"],
+          ["CM-8", "System Component Inventory", "Ref: E26-INV"],
+        ],
+      ),
+    );
+  }
+
+  // ─── NIST IAM tables ──────────────────────────────────────
+  if (focus === "nist-iam") {
+    content.push(heading2("Authentication Requirements Matrix"));
+    content.push(
+      buildTable(
+        ["Role", "Auth Level", "Min Password", "Max Age", "MFA Required", "Cert-based"],
+        [
+          ["Administrator", "Level 2", "12 chars", "90 days", "Yes", "Recommended"],
+          ["Operator", "Level 1", "8 chars", "180 days", "Remote only", "No"],
+          ["Service Technician", "Level 2", "12 chars", "Session-only", "Yes", "Recommended"],
+          ["Auditor", "Level 1", "8 chars", "180 days", "Remote only", "No"],
+        ],
+      ),
+    );
+    // Current account status from HW inventory
+    content.push(heading2("Current Account Status by Device"));
+    content.push(
+      buildTable(
+        ["Device", "Type", "Zone", "SC-1 (Password)", "SC-2 (Account)", "SC-3 (Network)"],
+        hardware.map((hw) => {
+          const sc1 = assessments.find((a) => a.hardwareId === hw.id && a.checkId === "SC-1");
+          const sc2 = assessments.find((a) => a.hardwareId === hw.id && a.checkId === "SC-2");
+          const sc3 = assessments.find((a) => a.hardwareId === hw.id && a.checkId === "SC-3");
+          return [hw.name, hw.type, hw.zone || "—", sc1 ? resultLabel(sc1.result) : "—", sc2 ? resultLabel(sc2.result) : "—", sc3 ? resultLabel(sc3.result) : "—"];
+        }),
+      ),
+    );
+  }
+
+  // ─── NIST Supply Chain tables ─────────────────────────────
+  if (focus === "nist-supply-chain") {
+    // Group software by vendor
+    const swVendors = new Map<string, typeof software>();
+    software.forEach((sw) => {
+      const v = sw.vendor || "Unknown";
+      if (!swVendors.has(v)) swVendors.set(v, []);
+      swVendors.get(v)!.push(sw);
+    });
+    content.push(heading2("Software Vendor Analysis"));
+    content.push(
+      buildTable(
+        ["Vendor", "SW Count", "Products", "CPE Coverage", "CVE Matches"],
+        [...swVendors.entries()].map(([vendor, sws]) => [
+          vendor, String(sws.length),
+          sws.map((s) => `${s.name} v${s.version || "?"}`).join("; "),
+          `${sws.filter((s) => s.cpe).length}/${sws.length}`,
+          String(sws.reduce((n, s) => n + s._count.cveMatches, 0)),
+        ]),
+      ),
+    );
+    // HW manufacturer summary
+    const hwMfrs = new Map<string, typeof hardware>();
+    hardware.forEach((hw) => {
+      const m = hw.manufacturer || "Unknown";
+      if (!hwMfrs.has(m)) hwMfrs.set(m, []);
+      hwMfrs.get(m)!.push(hw);
+    });
+    content.push(heading2("Hardware Manufacturer Summary"));
+    content.push(
+      buildTable(
+        ["Manufacturer", "Device Count", "Types", "Key Products"],
+        [...hwMfrs.entries()].map(([mfr, hws]) => [
+          mfr, String(hws.length),
+          [...new Set(hws.map((h) => h.type))].join(", "),
+          hws.slice(0, 3).map((h) => h.name).join(", ") + (hws.length > 3 ? ` (+${hws.length - 3})` : ""),
+        ]),
+      ),
+    );
+  }
+
+  // ─── NIST System Assessment tables ────────────────────────
+  if (focus === "nist-system-assessment") {
+    // CSF scores
+    const csfMapping: [string, string, string[]][] = [
+      ["IDENTIFY", "Asset Mgmt, Risk Assessment", ["SC-5"]],
+      ["PROTECT", "Access Control, Awareness, Data Security", ["SC-1", "SC-2", "SC-3", "SC-6", "SC-10", "SC-11"]],
+      ["DETECT", "Anomalies, Monitoring, Detection", ["SC-7", "SC-12"]],
+      ["RESPOND", "Response, Communication, Mitigation", ["SC-8"]],
+      ["RECOVER", "Recovery, Improvements, Communication", ["SC-9", "SC-4"]],
+    ];
+    content.push(heading2("NIST CSF Function Scores"));
+    content.push(
+      buildTable(
+        ["Function", "Focus Areas", "Checks", "PASS", "FAIL", "Score"],
+        csfMapping.map(([fn, areas, scIds]) => {
+          const rel = assessments.filter((a) => scIds.includes(a.checkId));
+          const rc = countResults(rel);
+          const score = rc.total > 0 ? `${Math.round((rc.pass / rc.total) * 100)}%` : "N/A";
+          return [fn, areas, String(rc.total), String(rc.pass), String(rc.fail), score];
+        }),
+      ),
+    );
+    // Full system inventory
+    content.push(heading2("System Inventory"));
+    content.push(
+      buildTable(
+        ["#", "Asset", "Type", "Zone", "Manufacturer", "IP Address", "Assessed"],
+        hardware.map((hw, i) => {
+          const ha = assessments.filter((a) => a.hardwareId === hw.id);
+          return [String(i + 1), hw.name, hw.type, hw.zone || "—", hw.manufacturer || "—", hw.ipAddress || "—", ha.length > 0 ? "Yes" : "No"];
+        }),
+      ),
+    );
+    // Conditional findings
+    const fails = assessments.filter((a) => a.result === "FAIL");
+    const partials = assessments.filter((a) => a.result === "PARTIAL");
+    if (fails.length > 0 || partials.length > 0) {
+      content.push(heading2("Findings & Recommendations"));
+      content.push(
+        buildTable(
+          ["Finding", "Device", "Check", "Result", "Recommendation"],
+          [...fails, ...partials].map((a, i) => [
+            `F-${String(i + 1).padStart(3, "0")}`, a.hardware.name, a.checkId, resultLabel(a.result),
+            a.result === "FAIL" ? "Immediate remediation required" : "Plan remediation within 90 days",
+          ]),
+        ),
+      );
+    }
+    if (hardware.length > 0 && assessments.length === 0) {
+      content.push(heading2("Data Gap Notice"));
+      content.push(bodyText(`${hardware.length} hardware assets are registered but no security assessments have been performed. Complete SC-1 through SC-13 assessments before finalizing the system security assessment.`));
+    }
+  }
+
+  // ─── ISO SoA tables ───────────────────────────────────────
+  if (focus === "iso-soa") {
+    content.push(heading2("Annex A Controls — Applicability Register"));
+    const annexAControls: [string, string, string, string][] = [
+      ["A.5.1", "Policies for information security", "Applicable", "E27-ACC, ISMS Policy"],
+      ["A.5.2", "Information security roles and responsibilities", "Applicable", "ISMS Roles"],
+      ["A.5.3", "Segregation of duties", "Applicable", "E27-ACC"],
+      ["A.5.7", "Threat intelligence", "Applicable", "CVE monitoring"],
+      ["A.5.8", "Security in project management", "Applicable", "E27-MOC"],
+      ["A.5.19", "Supplier relationships", "Applicable", "E26-SSL"],
+      ["A.5.20", "Supplier agreements", "Applicable", "E26-SSL"],
+      ["A.5.21", "ICT supply chain", "Applicable", "NIST-SUP"],
+      ["A.5.23", "Cloud services", "Applicable", "ISO-CLOUD"],
+      ["A.5.24", "Incident planning", "Applicable", "E27-INC"],
+      ["A.5.25", "Incident assessment", "Applicable", "E27-INC"],
+      ["A.5.26", "Incident response", "Applicable", "E27-INC, E26 IRP"],
+      ["A.5.29", "Business continuity", "Applicable", "E27-MNT"],
+      ["A.5.30", "ICT readiness", "Applicable", "E27-MNT"],
+      ["A.6.1", "Screening", "Applicable", "ISO-A7"],
+      ["A.6.3", "Awareness training", "Applicable", "E26-TRA"],
+      ["A.7.1", "Physical security perimeters", "Applicable", "Physical security"],
+      ["A.7.4", "Physical security monitoring", "Applicable", "Physical security"],
+      ["A.8.1", "User endpoint devices", "Applicable", "E27-CFG"],
+      ["A.8.2", "Privileged access rights", "Applicable", "E27-ACC, NIST-IAM"],
+      ["A.8.5", "Secure authentication", "Applicable", "SC-1, SC-2"],
+      ["A.8.7", "Malware protection", "Applicable", "SC-11"],
+      ["A.8.8", "Vulnerability management", "Applicable", "E27-VUL"],
+      ["A.8.9", "Configuration management", "Applicable", "NIST-CFG"],
+      ["A.8.15", "Logging", "Applicable", "SC-7, E27-MON"],
+      ["A.8.16", "Monitoring", "Applicable", "E27-MON"],
+      ["A.8.20", "Network security", "Applicable", "SC-3, E26-ZCD"],
+      ["A.8.22", "Network segregation", "Applicable", "Zone design"],
+      ["A.8.24", "Cryptography", "Applicable", "SC-6"],
+      ["A.8.25", "Secure development lifecycle", "Applicable", "E27-SDL"],
+    ];
+    content.push(
+      buildTable(
+        ["Control", "Description", "Applicability", "E27 Cross-reference"],
+        annexAControls,
+      ),
+    );
+    content.push(heading2("Excluded Controls"));
+    content.push(
+      buildTable(
+        ["Control", "Description", "Justification"],
+        [
+          ["A.5.6", "Contact with special interest groups", "Not applicable — no relevant industry SIG membership"],
+          ["A.8.4", "Access to source code", "No in-house software development on vessel"],
+          ["A.8.11", "Data masking", "Not applicable — no PII processing in CBS"],
+          ["A.8.12", "Data leakage prevention", "CBS operates in isolated OT network"],
+          ["A.8.23", "Web filtering", "No web browsing from CBS OT zone"],
+          ["A.8.28", "Secure coding", "No in-house development on vessel CBS"],
+        ],
+      ),
+    );
+  }
+
+  // ─── ISO ISMS tables ──────────────────────────────────────
+  if (focus === "iso-isms") {
+    const zones = groupByZone(hardware);
+    content.push(heading2("ISMS Scope Summary"));
+    content.push(
+      buildTable(
+        ["Metric", "Count"],
+        [
+          ["Hardware assets", String(hardware.length)],
+          ["Software components", String(software.length)],
+          ["Security zones", String(zones.size)],
+          ["Network connections", String(hardware.filter((h) => h.ipAddress).length)],
+          ["Assessment checks performed", String(assessments.length)],
+        ],
+      ),
+    );
+  }
+
+  // ─── ISO A.5 tables ───────────────────────────────────────
+  if (focus === "iso-a5") {
+    content.push(heading2("A.5 Control Implementation Status"));
+    const a5Areas: [string, string, string][] = [
+      ["A.5.1–A.5.8", "Policies, Roles, Threat Intel", "Documented"],
+      ["A.5.9–A.5.13", "Asset Management, Acceptable Use", hardware.length > 0 ? "Implemented" : "Pending"],
+      ["A.5.14–A.5.18", "Information Transfer, Access", assessments.length > 0 ? "Assessed" : "Pending"],
+      ["A.5.19–A.5.23", "Supplier Security, Cloud", software.length > 0 ? "Tracked" : "Pending"],
+      ["A.5.24–A.5.28", "Incident Management", "Documented (ref: E27-INC)"],
+      ["A.5.29–A.5.37", "Business Continuity, Compliance", "Documented"],
+    ];
+    content.push(
+      buildTable(
+        ["Control Range", "Area", "Status"],
+        a5Areas,
+      ),
+    );
+  }
+
+  // ─── ISO A.7 tables ───────────────────────────────────────
+  if (focus === "iso-a7") {
+    content.push(heading2("A.7 People Controls Implementation Matrix"));
+    content.push(
+      buildTable(
+        ["Control", "Description", "Implementation Status", "Reference"],
+        [
+          ["A.7.1", "Screening", "Procedure documented", "HR / Manning agent"],
+          ["A.7.2", "Terms and conditions", "Included in crew agreements", "Crew contracts"],
+          ["A.7.3", "Awareness and training", hardware.length > 0 ? "Active — CBS scope documented" : "Pending", "E26-TRA"],
+          ["A.7.4", "Disciplinary process", "Defined in SMS", "ISM Code"],
+          ["A.7.5", "Termination responsibilities", "Procedure documented", "Access revocation SOP"],
+          ["A.7.6", "Confidentiality agreements", "Template in use", "NDA template"],
+          ["A.7.7", "Remote working", "Policy in place", "E26-RAP"],
+          ["A.7.8", "Event reporting", "Procedure documented", "E27-INC"],
+        ],
+      ),
+    );
+  }
+
+  // ─── ISO A.8 tables ───────────────────────────────────────
+  if (focus === "iso-a8") {
+    const serverCount = hardware.filter((h) => h.type === "SERVER" || h.type === "PC").length;
+    const networkCount = hardware.filter((h) => h.type === "NETWORK_DEVICE").length;
+    const otherCount = hardware.length - serverCount - networkCount;
+    content.push(heading2("Endpoint Protection Summary"));
+    content.push(
+      buildTable(
+        ["Device Category", "Count", "SC-11 (Malware)", "SC-13 (Patch)"],
+        [
+          ["Servers / PCs", String(serverCount),
+            String(assessments.filter((a) => a.checkId === "SC-11" && hardware.find((h) => h.id === a.hardwareId && (h.type === "SERVER" || h.type === "PC"))).filter((a) => a.result === "PASS").length) + " PASS",
+            String(assessments.filter((a) => a.checkId === "SC-13" && hardware.find((h) => h.id === a.hardwareId && (h.type === "SERVER" || h.type === "PC"))).filter((a) => a.result === "PASS").length) + " PASS"],
+          ["Network Devices", String(networkCount), "N/A (typically)", "Per vendor policy"],
+          ["OT Devices", String(otherCount), "Application whitelist", "Per vendor policy"],
+        ],
+      ),
+    );
+    content.push(heading2("Software Vulnerability Management Summary"));
+    content.push(
+      buildTable(
+        ["Metric", "Value"],
+        [
+          ["Total software components", String(software.length)],
+          ["With CPE registered", String(software.filter((s) => s.cpe).length)],
+          ["Without CPE (manual review needed)", String(software.filter((s) => !s.cpe).length)],
+          ["Total CVE matches found", String(software.reduce((n, s) => n + s._count.cveMatches, 0))],
+        ],
+      ),
+    );
+  }
+
+  // ─── ISO Cloud tables ─────────────────────────────────────
+  if (focus === "iso-cloud") {
+    content.push(heading2("Cloud Service Inventory"));
+    content.push(
+      buildTable(
+        ["Service Name", "Provider", "Service Type", "Data Classification", "Encryption", "Status"],
+        [
+          ["[Service 1]", "[Provider]", "IaaS / PaaS / SaaS", "[Confidential / Internal / Public]", "TLS 1.2+ / AES-256", "[Active / Planned]"],
+          ["[Service 2]", "[Provider]", "IaaS / PaaS / SaaS", "[Confidential / Internal / Public]", "TLS 1.2+ / AES-256", "[Active / Planned]"],
+          ["SCS Platform", "SCS Provider", "SaaS", "Internal", "TLS 1.2+, AES-256", "Active"],
+        ],
+      ),
+    );
+    content.push(heading2("OT Cloud Connection Policy Matrix"));
+    content.push(
+      buildTable(
+        ["Connection Type", "Permitted", "Condition", "Zone Restriction"],
+        [
+          ["OT Zone → Cloud (direct)", "No", "Air gap required", "OT Zone"],
+          ["DMZ → Cloud", "Conditional", "Via application gateway", "DMZ Zone"],
+          ["Management → Cloud", "Yes", "VPN required, MFA", "Management Zone"],
+          ["Shore Office → Cloud", "Yes", "Standard IT controls", "N/A (shore)"],
+        ],
+      ),
+    );
+  }
+
+  // ─── ISO ICS/OT Extension tables ──────────────────────────
+  if (focus === "iso-ics") {
+    const serverWs = hardware.filter((h) => h.type === "SERVER" || h.type === "PC");
+    const plcSensor = hardware.filter((h) => h.type === "PLC" || h.type === "SENSOR");
+    const netDev = hardware.filter((h) => h.type === "NETWORK_DEVICE");
+    content.push(heading2("OT Asset Scope"));
+    content.push(
+      buildTable(
+        ["Category", "Count", "Examples"],
+        [
+          ["Servers / Workstations", String(serverWs.length), serverWs.slice(0, 3).map((h) => h.name).join(", ") || "—"],
+          ["PLCs / Sensors", String(plcSensor.length), plcSensor.slice(0, 3).map((h) => h.name).join(", ") || "—"],
+          ["Network Devices", String(netDev.length), netDev.slice(0, 3).map((h) => h.name).join(", ") || "—"],
+          ["Other OT Devices", String(hardware.length - serverWs.length - plcSensor.length - netDev.length), "—"],
+        ],
+      ),
+    );
+    // Security zones from data
+    const zones = groupByZone(hardware);
+    content.push(heading2("Security Zones — OT Context"));
+    content.push(
+      buildTable(
+        ["Zone", "Assets", "OT Devices", "IT Devices", "SL-T"],
+        [...zones.entries()].map(([zone, assets]) => {
+          const ot = assets.filter((a) => a.type === "PLC" || a.type === "SENSOR" || a.type === "OTHER_DEVICE").length;
+          return [zone, String(assets.length), String(ot), String(assets.length - ot), "[TBD]"];
+        }),
+      ),
+    );
+  }
+
+  // ─── Risk Policy tables ───────────────────────────────────
+  if (focus === "risk-policy") {
+    if (assessments.length > 0) {
+      const counts = countResults(assessments);
+      content.push(heading2("Current Security Posture"));
+      content.push(
+        buildTable(
+          ["Metric", "Value"],
+          [
+            ["Total assessments", String(counts.total)],
+            ["PASS", String(counts.pass)],
+            ["FAIL", String(counts.fail)],
+            ["PARTIAL", String(counts.partial)],
+            ["Compliance rate", counts.total > 0 ? `${Math.round((counts.pass / counts.total) * 100)}%` : "N/A"],
+          ],
+        ),
+      );
+    }
   }
 
   // Add revision history table for all document types

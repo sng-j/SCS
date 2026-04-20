@@ -15,7 +15,7 @@ import {
 } from "./shared";
 
 export function generateTOP(data: DocumentData): Document {
-  const { project, hardware } = data;
+  const { project, hardware, connections } = data;
 
   const cover = buildCoverPage(project, "Network Topology Description", "E27-TOP");
 
@@ -91,11 +91,50 @@ export function generateTOP(data: DocumentData): Document {
     ),
   ];
 
+  // Connection Map from NetworkConnection data
+  const connectionMap: (Paragraph | Table)[] = [
+    heading1("5. Connection Map"),
+    bodyText(
+      `The following table shows all registered network connections between CBS hardware assets. ` +
+      `${connections.length} connection(s) are registered.`,
+    ),
+  ];
+  if (connections.length > 0) {
+    connectionMap.push(
+      buildTable(
+        ["#", "From", "To", "Medium", "Protocol", "Port", "Encrypted"],
+        connections.map((c, i) => [
+          String(i + 1),
+          c.fromHw?.name || "Unknown",
+          c.toHw?.name || "Unknown",
+          c.medium || "Ethernet",
+          c.protocol || "—",
+          c.port || "—",
+          c.encrypted ? "Yes" : "No",
+        ]),
+      ),
+    );
+  } else {
+    connectionMap.push(bodyText("No network connections have been registered. Please define connections in the DFD editor."));
+  }
+
+  // DFD Diagram Reference
+  const dfdRef: (Paragraph | Table)[] = [
+    heading1("6. DFD Diagram Reference"),
+    bodyText(
+      "The detailed Data Flow Diagram (DFD) is maintained in the system's interactive DFD editor " +
+      "and should be exported separately as a PNG/PDF image for inclusion in the final submission package. " +
+      "The DFD visually represents network topology, security zones, trust boundaries, and data flows."
+    ),
+  ];
+
   return wrapDocument("E27-TOP: Network Topology Description", project, [
     ...cover,
     ...overview,
     ...zoneSection,
     ...hwPerZone,
     ...connSection,
+    ...connectionMap,
+    ...dfdRef,
   ]);
 }

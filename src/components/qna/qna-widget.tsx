@@ -38,7 +38,8 @@ export function QnAWidget() {
   const { locale } = useLocaleStore();
   const { data: session } = useSession();
   const userRole = (session?.user as { role?: string })?.role || "VENDOR";
-  const isStaff = userRole === "ADMIN" || userRole === "SHIPYARD";
+  // Staff = those who answer questions. SHIPYARD (viewer) is read-only.
+  const isStaff = userRole === "ADMIN" || userRole === "SUPPORT";
 
   const [open, setOpen] = useState(false);
   const [qnas, setQnas] = useState<QnaItem[]>([]);
