@@ -355,7 +355,7 @@ export async function GET(request: Request) {
   const runs = await prisma.auditRun.findMany({
     where: runsWhere,
     orderBy: { createdAt: "desc" },
-    select: { id: true, platform: true, results: true, sbomData: true, createdAt: true },
+    select: { id: true, hardwareId: true, platform: true, results: true, sbomData: true, createdAt: true },
   });
 
   const mapped = runs.map((run) => {
@@ -394,6 +394,10 @@ export async function GET(request: Request) {
 
     return {
       id: run.id,
+      // hardwareId needed for AuditRunsList's per-HW grouping — otherwise every
+      // run falls into the "equipment-level" bucket even when it was uploaded
+      // against a specific device.
+      hardwareId: run.hardwareId,
       platform: run.platform,
       device: isPLC ? (results?.device as string) ?? "PLC" : (sysinfo.ComputerName as string) ?? "Unknown",
       os: isPLC ? "PLC" : (sysinfo.OS as string) ?? "",
@@ -401,6 +405,9 @@ export async function GET(request: Request) {
       hasSbom,
       sbomStats,
       e27,
+      // Raw parsed payload so AuditResultViewer can render SystemInfo, SBOM,
+      // services, ports, patches. Without this the client has to re-fetch per run.
+      results,
     };
   });
 
