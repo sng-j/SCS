@@ -945,13 +945,18 @@ function UserMenu({ userName, userEmail }: {
             {/* Sign out */}
             <div className="py-1">
               <button
-                onClick={() => {
-                  // Avoid 0.0.0.0 redirect: if current host is 0.0.0.0, rewrite to localhost
-                  const host = typeof window !== "undefined" ? window.location.host : "";
+                onClick={async () => {
+                  // NextAuth v5 rejects callbackUrl when its origin differs from the
+                  // request origin, so passing a localhost URL while the browser is
+                  // on 0.0.0.0 silently falls back to /login on 0.0.0.0 (non-routable).
+                  // Work around by signing out without redirect, then navigating
+                  // client-side to whichever origin is actually reachable.
+                  await signOut({ redirect: false });
+                  const host = window.location.host;
                   const loginUrl = host.startsWith("0.0.0.0")
                     ? `${window.location.protocol}//localhost:${window.location.port}/login`
                     : "/login";
-                  signOut({ callbackUrl: loginUrl });
+                  window.location.href = loginUrl;
                 }}
                 className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-[#DA1E28] hover:bg-[#FFF1F1] transition-colors"
               >
