@@ -26,6 +26,7 @@ import { useLocaleStore } from "@/stores/locale-store";
 import { tx } from "@/lib/i18n";
 import { showToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
+import { RiskReasoningHover, parseReasoning, canSeeRiskReasoning, type ReasoningPayload } from "@/components/risk/risk-reasoning-hover";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -741,82 +742,8 @@ interface RiskEntry {
   reasoning?: string | null;
 }
 
-interface ReasoningPayload {
-  summary?: string;
-  rules?: Array<{ rule: string; effect: string }>;
-  inputs?: {
-    baseScore: number | null;
-    baseSeverity: string | null;
-    cvssVector: string | null;
-    kevKnown: boolean;
-    hwCategory: string | null;
-    metrics: { AV?: string; AC?: string; PR?: string; UI?: string };
-  };
-  userOverride?: {
-    previousLikelihood: number;
-    previousImpact: number;
-    newLikelihood: number;
-    newImpact: number;
-    at: string;
-    by: string;
-  };
-}
-
-/**
- * Hover tooltip that explains how a risk's likelihood/impact were derived.
- * Only rendered for SUPPORT/ADMIN — vendors see just the final numbers.
- */
-function RiskReasoningHover({ reasoning, locale }: { reasoning: ReasoningPayload; locale: string }) {
-  const hasAuto = !!reasoning.summary && !!reasoning.rules?.length;
-  const override = reasoning.userOverride;
-  return (
-    <div className="absolute z-50 left-full top-0 ml-2 w-80 rounded-lg border border-border bg-white shadow-lg p-3 text-left pointer-events-none">
-      {override && (
-        <div className="mb-2 rounded-md border border-safety-elevated/30 bg-orange-50 px-2 py-1.5">
-          <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-safety-elevated">
-            {tx(locale, "Manually adjusted", "수동 조정됨", "手動調整済み")}
-          </p>
-          <p className="text-[10px] text-text-secondary mt-0.5">
-            L {override.previousLikelihood} → {override.newLikelihood} · I {override.previousImpact} → {override.newImpact}
-          </p>
-          <p className="text-[9px] text-text-tertiary mt-0.5 font-mono">{override.by}</p>
-        </div>
-      )}
-      {hasAuto && (
-        <>
-          <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-text-tertiary mb-1.5">
-            {tx(locale, "Auto-calculation", "자동 산출 근거", "自動算出根拠")}
-          </p>
-          <p className="font-mono text-[11px] text-text mb-2 break-words">{reasoning.summary}</p>
-          <div className="space-y-1 border-t border-border/60 pt-2">
-            {reasoning.rules!.map((r, i) => (
-              r.effect ? (
-                <div key={i} className="flex items-start gap-2 text-[10px] leading-tight">
-                  <span className="font-mono text-text-secondary shrink-0">{r.rule}</span>
-                  <span className="text-text-tertiary flex-1">{r.effect}</span>
-                </div>
-              ) : (
-                <div key={i} className="text-[9px] font-bold text-text-tertiary uppercase tracking-wider pt-1">
-                  {r.rule}
-                </div>
-              )
-            ))}
-          </div>
-          {reasoning.inputs?.cvssVector && (
-            <p className="mt-2 pt-2 border-t border-border/60 font-mono text-[9px] text-text-tertiary break-all">
-              {reasoning.inputs.cvssVector}
-            </p>
-          )}
-        </>
-      )}
-      {!hasAuto && !override && (
-        <p className="text-[10px] text-text-tertiary italic">
-          {tx(locale, "Manually entered risk — no auto-calculation data", "수동 입력 리스크 — 자동 산출 데이터 없음", "手動入力リスク — 自動算出データなし")}
-        </p>
-      )}
-    </div>
-  );
-}
+// Reasoning hover lives in a shared component so the shipyard vessel-detail view
+// can render the same tooltip for SUPPORT/ADMIN reviewers.
 
 const RISK_COLORS: Record<string, { bg: string; text: string }> = {
   CRITICAL: { bg: "#DA1E28", text: "#FFF" },
@@ -835,7 +762,7 @@ function getRiskLabel(score: number): string {
 }
 
 function RiskTab({ projectId, canEdit, locale, userRole }: { projectId: string; canEdit: boolean; locale: string; userRole: string }) {
-  const canSeeReasoning = userRole === "SUPPORT" || userRole === "ADMIN";
+  const canSeeReasoning = canSeeRiskReasoning(userRole);
   const [risks, setRisks] = useState<RiskEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
@@ -1030,10 +957,7 @@ function RiskTab({ projectId, canEdit, locale, userRole }: { projectId: string; 
                       {/* Risk Score — SUPPORT/ADMIN get a hover explaining the auto-calc */}
                       <td className="px-3 py-3 text-center align-top">
                         {(() => {
-                          let parsed: ReasoningPayload | null = null;
-                          if (canSeeReasoning && r.reasoning) {
-                            try { parsed = JSON.parse(r.reasoning) as ReasoningPayload; } catch { parsed = null; }
-                          }
+                          const parsed = canSeeReasoning ? parseReasoning(r.reasoning) : null;
                           const showHover = !!parsed;
                           return (
                             <span className={cn("relative inline-block group/score", showHover && "cursor-help")}

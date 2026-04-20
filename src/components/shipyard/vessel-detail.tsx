@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import {
   Ship, Shield, FileText, Package, Cpu, Server, Monitor, Radio, HardDrive, Network,
@@ -14,6 +15,7 @@ import { showToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { DfdEditor } from "@/components/dfd/dfd-editor";
 import { InlineEditor } from "@/components/inventory/inline-editor";
+import { RiskReasoningHover, parseReasoning, canSeeRiskReasoning } from "@/components/risk/risk-reasoning-hover";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -396,7 +398,21 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
   const [hardware, setHardware] = useState<HwItem[]>([]);
   const [assessments, setAssessments] = useState<AssessItem[]>([]);
   const [documents, setDocuments] = useState<DocItem[]>([]);
-  const [risks, setRisks] = useState<{ id: string; threatId: string; likelihood: number; impact: number; riskLevel: number; status: string; mitigation: string | null }[]>([]);
+  const [risks, setRisks] = useState<{
+    id: string;
+    threatId: string;
+    likelihood: number;
+    impact: number;
+    riskLevel: number;
+    status: string;
+    mitigation: string | null;
+    cveId?: string | null;
+    assetRef?: string | null;
+    reasoning?: string | null;
+  }[]>([]);
+  const { data: session } = useSession();
+  const userRole = (session?.user as { role?: string })?.role;
+  const canSeeReasoning = canSeeRiskReasoning(userRole);
   const [testProc, setTestProc] = useState<{ status: string; hwGroups: { id: string; label: string; hardwareIds: string; hwItems: { no: number; category: string; criteria: string; method: string }[] }[]; fnItems: { softwareName: string | null; section: string; no: number; category: string; criteria: string; method: string }[] } | null>(null);
   const [reviewNote, setReviewNote] = useState("");
   const [revisionModalOpen, setRevisionModalOpen] = useState(false);
@@ -703,17 +719,52 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
                   const score = r.riskLevel || r.likelihood * r.impact;
                   const level = score >= 20 ? "CRITICAL" : score >= 10 ? "HIGH" : score >= 5 ? "MEDIUM" : "LOW";
                   const colors: Record<string, string> = { CRITICAL: "#DA1E28", HIGH: "#EB6200", MEDIUM: "#F1C21B", LOW: "#24A148" };
+                  const parsed = canSeeReasoning ? parseReasoning(r.reasoning) : null;
+                  const showHover = !!parsed;
                   return (
                     <div key={r.id} className="bg-white rounded-xl border border-gray-200 px-4 py-3 flex items-center gap-3">
-                      <div className="h-9 w-9 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0" style={{ background: colors[level] }}>
-                        {score}
-                      </div>
+                      <span
+                        className={cn("relative inline-block group/score shrink-0", showHover && "cursor-help")}
+                        tabIndex={showHover ? 0 : -1}
+                      >
+                        <span
+                          className="h-9 w-9 rounded-lg flex items-center justify-center text-[10px] font-bold text-white relative"
+                          style={{ background: colors[level] }}
+                        >
+                          {score}
+                          {showHover && parsed?.inputs?.kevKnown && (
+                            <span
+                              className="absolute -top-1 -right-1 h-2 w-2 rounded-full ring-2 ring-white"
+                              style={{ background: colors.CRITICAL }}
+                              title="CISA KEV"
+                            />
+                          )}
+                        </span>
+                        {showHover && parsed && (
+                          <span className="invisible opacity-0 group-hover/score:visible group-hover/score:opacity-100 group-focus-within/score:visible group-focus-within/score:opacity-100 transition-opacity duration-100">
+                            <RiskReasoningHover reasoning={parsed} locale={locale} />
+                          </span>
+                        )}
+                      </span>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-[13px] font-bold text-gray-900">{r.threatId}</span>
                           <span className="px-1.5 py-0.5 rounded text-[9px] font-bold" style={{ background: `${colors[level]}15`, color: colors[level] }}>{level}</span>
                           <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-gray-100 text-gray-500">{r.status}</span>
+                          {r.cveId && (
+                            <a
+                              href={`https://nvd.nist.gov/vuln/detail/${r.cveId}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-mono text-[9px] font-bold text-brand hover:underline"
+                            >
+                              {r.cveId}
+                            </a>
+                          )}
                         </div>
+                        {r.assetRef && (
+                          <p className="text-[11px] text-gray-600 mt-0.5 truncate">{r.assetRef}</p>
+                        )}
                         <p className="text-[11px] text-gray-500 mt-0.5">
                           L={r.likelihood} × I={r.impact}
                           {r.mitigation && ` · ${r.mitigation}`}
