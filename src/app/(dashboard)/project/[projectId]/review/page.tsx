@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardBody } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SkeletonCards } from "@/components/ui/skeleton";
+import { WorkflowSteps } from "@/components/ui/workflow-steps";
 import { useLocaleStore } from "@/stores/locale-store";
 import { tx } from "@/lib/i18n";
 import { showToast } from "@/lib/toast";
@@ -123,6 +124,8 @@ export default function ReviewPage() {
   const totalChecks = assessments.length;
 
   return (
+    <div>
+    <WorkflowSteps currentSegment="submit" projectId={projectId} equipmentId={equipmentId} />
     <motion.div
       initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
@@ -273,6 +276,7 @@ export default function ReviewPage() {
         </Card>
       )}
     </motion.div>
+    </div>
   );
 }
 

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSessionUser, verifyProjectAccess, verifyEquipmentOwnership, apiError } from "@/lib/auth-helpers";
 import { safeError } from "@/lib/safe-log";
 import { trackChange } from "@/lib/change-tracker";
+import { autoMatchCveForHardware, autoMatchCveForSoftware } from "@/lib/cve-auto-match";
 
 export const dynamic = "force-dynamic";
 
@@ -66,42 +67,34 @@ export async function PATCH(request: Request, { params }: Params) {
       changedBy: user.id,
     }).catch(() => {});
 
+    // Re-match HW CVEs (sync — wait for completion)
+    await autoMatchCveForHardware(hardwareId, projectId);
+
     // 시스템 SW 입력 → Software 테이블에 자동 등록/업데이트
     if (sysSoftwareCategory !== undefined && sysSoftwareCategory?.trim()) {
       const swName = sysSoftwareCategory.trim();
       const swVersion = sysSoftwareVersion?.trim() || null;
-      // swType 판별: Firmware/RTOS/IOS 계열 → FIRMWARE, 나머지 → OS
       const fwKeywords = ["firmware", "rtos", "ios-xe", "ios", "junos", "vxworks", "freertos", "nuttx"];
       const swType = fwKeywords.some((k) => swName.toLowerCase().includes(k)) ? "FIRMWARE" : "OS";
 
       try {
-        // 해당 HW에 연결된 시스템 SW (OS or FIRMWARE) 찾기
         const existing = await prisma.software.findFirst({
           where: { hardwareId, swType: { in: ["OS", "FIRMWARE"] } },
         });
         if (existing) {
-          // 업데이트
           await prisma.software.update({
             where: { id: existing.id },
             data: { name: swName, version: swVersion, swType },
           });
+          await autoMatchCveForSoftware(existing.id, projectId);
         } else {
-          // 새로 생성
           const hw = await prisma.hardware.findUnique({ where: { id: hardwareId }, select: { equipmentId: true } });
-          await prisma.software.create({
-            data: {
-              projectId,
-              equipmentId: hw?.equipmentId || null,
-              hardwareId,
-              name: swName,
-              version: swVersion,
-              swType,
-            },
+          const newSw = await prisma.software.create({
+            data: { projectId, equipmentId: hw?.equipmentId || null, hardwareId, name: swName, version: swVersion, swType },
           });
+          await autoMatchCveForSoftware(newSw.id, projectId);
         }
-      } catch {
-        // Non-blocking
-      }
+      } catch { /* Non-blocking */ }
     }
 
     return NextResponse.json(hardware);

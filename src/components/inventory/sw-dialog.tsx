@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useForm, useWatch, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Search, X, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import AutocompleteInput from "@/components/ui/autocomplete-input";
@@ -12,6 +12,7 @@ import { tx, formError } from "@/lib/i18n";
 import { useChatStore } from "@/stores/chat-store";
 import { cn } from "@/lib/utils";
 import { type Hardware, type Software, type SwForm, swSchema, SW_TYPES } from "./inventory-types";
+import type { KnownProduct } from "@/lib/known-products";
 
 interface SwDialogProps {
   open: boolean;
@@ -27,6 +28,13 @@ export function SwDialog({ open, onClose, onSave, editing, hardwareList, preSele
   const { locale } = useLocaleStore();
   const [saving, setSaving] = useState(false);
   const [showExtra, setShowExtra] = useState(false);
+
+  // Known product search
+  const [productQuery, setProductQuery] = useState("");
+  const [productResults, setProductResults] = useState<KnownProduct[]>([]);
+  const [productSearching, setProductSearching] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<KnownProduct | null>(null);
+  const [showProductSearch, setShowProductSearch] = useState(true);
 
   const { register, handleSubmit, reset, control, formState: { errors } } = useForm<SwForm>({
     resolver: zodResolver(swSchema),
@@ -69,6 +77,10 @@ export function SwDialog({ open, onClose, onSave, editing, hardwareList, preSele
         cpe: "", brand: "", listeningPort: "",
       });
       setShowExtra(false);
+      setProductQuery("");
+      setProductResults([]);
+      setSelectedProduct(editing ? null : null);
+      setShowProductSearch(!editing);
     }
   }, [open, editing, reset, preSelectedHardwareId]);
 
@@ -85,6 +97,40 @@ export function SwDialog({ open, onClose, onSave, editing, hardwareList, preSele
     name: watchedValues.name || "",
   }), [watchedValues.swType, selectedHwName, watchedValues.name]);
 
+  // Product search with debounce
+  const searchProducts = useCallback(async (q: string) => {
+    if (q.length < 2) { setProductResults([]); return; }
+    setProductSearching(true);
+    try {
+      const res = await fetch(`/api/cve/products?q=${encodeURIComponent(q)}`);
+      if (res.ok) setProductResults(await res.json());
+    } finally { setProductSearching(false); }
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => searchProducts(productQuery), 300);
+    return () => clearTimeout(timer);
+  }, [productQuery, searchProducts]);
+
+  // When a known product is selected, auto-fill form fields
+  const handleSelectProduct = (product: KnownProduct) => {
+    setSelectedProduct(product);
+    setProductQuery("");
+    setProductResults([]);
+    // Auto-fill form
+    reset({
+      ...watchedValues as SwForm,
+      name: product.label,
+      vendor: product.vendor,
+      swType: product.swType,
+      cpe: `${product.cpePrefix}:*:*:*:*:*:*:*`,
+    });
+  };
+
+  const clearSelectedProduct = () => {
+    setSelectedProduct(null);
+  };
+
   const onSubmit = async (data: SwForm) => {
     setSaving(true);
     try { await onSave(data); } finally { setSaving(false); }
@@ -95,6 +141,62 @@ export function SwDialog({ open, onClose, onSave, editing, hardwareList, preSele
   return (
     <Dialog open={open} onClose={onClose} title={editing ? tx(locale, "Edit Software", "소프트웨어 수정", "ソフトウェア編集") : tx(locale, "Add Software", "소프트웨어 추가", "ソフトウェア追加")} maxWidth="max-w-xl">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+
+        {/* ── Known Product Selector ── */}
+        {!editing && (
+          <div className="rounded-xl border border-violet-200 bg-violet-50/30 p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-bold text-violet-700 flex items-center gap-1.5">
+                <Shield size={13} />
+                {tx(locale, "Select Known Product (auto CVE matching)", "알려진 제품 선택 (CVE 자동 매칭)", "既知の製品を選択（CVE自動マッチング）")}
+              </p>
+              {selectedProduct && (
+                <button type="button" onClick={clearSelectedProduct} className="text-[10px] text-text-tertiary hover:text-text transition-colors">
+                  {tx(locale, "Clear", "초기화", "クリア")}
+                </button>
+              )}
+            </div>
+
+            {selectedProduct ? (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-100 border border-violet-300">
+                <span className="text-[12px] font-bold text-violet-800">{selectedProduct.label}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-200 text-violet-700">{selectedProduct.category}</span>
+                <span className="text-[10px] text-violet-600 font-mono">{selectedProduct.vendor}</span>
+                <button type="button" onClick={clearSelectedProduct} className="ml-auto text-violet-400 hover:text-violet-700">
+                  <X size={14} />
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-violet-400 pointer-events-none" />
+                  <input
+                    value={productQuery}
+                    onChange={(e) => setProductQuery(e.target.value)}
+                    placeholder={tx(locale, "Search products... (e.g. Windows, FortiOS, Ubuntu, Cisco)", "제품 검색... (예: Windows, FortiOS, Ubuntu, Cisco)", "製品を検索...")}
+                    className="w-full rounded-lg border border-violet-300 bg-white pl-9 pr-3 py-2 text-[12px] text-text placeholder:text-text-tertiary/50 focus:outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100 transition-all"
+                  />
+                  {productSearching && <div className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />}
+                </div>
+                {productResults.length > 0 && (
+                  <div className="max-h-48 overflow-y-auto rounded-lg border border-border bg-white divide-y divide-border/50">
+                    {productResults.map((p, i) => (
+                      <button key={i} type="button" onClick={() => handleSelectProduct(p)}
+                        className="w-full text-left px-3 py-2 hover:bg-violet-50 transition-colors flex items-center gap-2">
+                        <span className="text-[12px] font-medium text-text">{p.label}</span>
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-surface-secondary text-text-tertiary">{p.category}</span>
+                        <span className="text-[10px] text-text-tertiary font-mono ml-auto">{p.vendor}/{p.product}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <p className="text-[10px] text-text-tertiary">
+                  {tx(locale, "Or enter details manually below", "또는 아래에 직접 입력", "または以下に手動入力")}
+                </p>
+              </>
+            )}
+          </div>
+        )}
 
         {/* ── E27 Required Fields ── */}
         <p className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider">{tx(locale, "E27 Required Fields", "E27 필수 항목", "E27 必須項目")}</p>

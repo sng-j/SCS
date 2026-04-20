@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useForm, useWatch, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Search, X, Cpu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import AutocompleteInput from "@/components/ui/autocomplete-input";
@@ -13,6 +13,7 @@ import { tx, formError } from "@/lib/i18n";
 import { useChatStore } from "@/stores/chat-store";
 import { cn } from "@/lib/utils";
 import { type Hardware, type HwForm, hwSchema, HW_TYPES, ZONE_OPTIONS, DEVICE_FIELD_CONFIG, type FieldConfig, isValidIp, isValidMac } from "./inventory-types";
+import type { KnownHardware } from "@/lib/known-products";
 
 interface HwDialogProps {
   open: boolean;
@@ -26,6 +27,12 @@ export function HwDialog({ open, onClose, onSave, editing, projectId }: HwDialog
   const { locale } = useLocaleStore();
   const [saving, setSaving] = useState(false);
   const [showExtra, setShowExtra] = useState(false);
+
+  // Known hardware search
+  const [hwQuery, setHwQuery] = useState("");
+  const [hwResults, setHwResults] = useState<KnownHardware[]>([]);
+  const [hwSearching, setHwSearching] = useState(false);
+  const [selectedHw, setSelectedHw] = useState<KnownHardware | null>(null);
 
   const { register, handleSubmit, reset, control, formState: { errors } } = useForm<HwForm>({
     resolver: zodResolver(hwSchema),
@@ -76,6 +83,7 @@ export function HwDialog({ open, onClose, onSave, editing, projectId }: HwDialog
         brand: "", identifier: "", category: "", logicalLocation: "", protectionMethod: "",
       });
       setShowExtra(false);
+      setHwQuery(""); setHwResults([]); setSelectedHw(null);
     }
   }, [open, editing, reset]);
 
@@ -91,6 +99,33 @@ export function HwDialog({ open, onClose, onSave, editing, projectId }: HwDialog
   const fc = DEVICE_FIELD_CONFIG[selectedType] || DEVICE_FIELD_CONFIG.OTHER_DEVICE;
   const isVis = (f: keyof FieldConfig) => fc[f] !== "hidden";
 
+  // HW product search
+  const searchHwProducts = useCallback(async (q: string) => {
+    if (q.length < 2) { setHwResults([]); return; }
+    setHwSearching(true);
+    try {
+      const res = await fetch(`/api/cve/products?kind=hw&q=${encodeURIComponent(q)}`);
+      if (res.ok) setHwResults(await res.json());
+    } finally { setHwSearching(false); }
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => searchHwProducts(hwQuery), 300);
+    return () => clearTimeout(timer);
+  }, [hwQuery, searchHwProducts]);
+
+  const handleSelectHw = (product: KnownHardware) => {
+    setSelectedHw(product);
+    setHwQuery("");
+    setHwResults([]);
+    reset({
+      ...watchedValues as HwForm,
+      name: product.label,
+      manufacturer: product.manufacturer,
+      type: product.hwType,
+    });
+  };
+
   const onSubmit = async (data: HwForm) => {
     setSaving(true);
     try { await onSave(data); } finally { setSaving(false); }
@@ -101,6 +136,54 @@ export function HwDialog({ open, onClose, onSave, editing, projectId }: HwDialog
   return (
     <Dialog open={open} onClose={onClose} title={editing ? tx(locale, "Edit Hardware", "하드웨어 수정", "ハードウェア編集") : tx(locale, "Add Hardware", "하드웨어 추가", "ハードウェア追加")} maxWidth="max-w-2xl">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+
+        {/* ── Known HW Product Selector ── */}
+        {!editing && (
+          <div className="rounded-xl border border-blue-200 bg-blue-50/30 p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-bold text-blue-700 flex items-center gap-1.5">
+                <Cpu size={13} />
+                {tx(locale, "Select Known Hardware (auto-fill)", "알려진 하드웨어 선택 (자동 입력)", "既知のハードウェアを選択")}
+              </p>
+              {selectedHw && (
+                <button type="button" onClick={() => setSelectedHw(null)} className="text-[10px] text-text-tertiary hover:text-text transition-colors">
+                  {tx(locale, "Clear", "초기화", "クリア")}
+                </button>
+              )}
+            </div>
+            {selectedHw ? (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-100 border border-blue-300">
+                <span className="text-[12px] font-bold text-blue-800">{selectedHw.label}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-200 text-blue-700">{selectedHw.category}</span>
+                <span className="text-[10px] text-blue-600">{selectedHw.manufacturer}</span>
+                <button type="button" onClick={() => setSelectedHw(null)} className="ml-auto text-blue-400 hover:text-blue-700"><X size={14} /></button>
+              </div>
+            ) : (
+              <>
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-400 pointer-events-none" />
+                  <input value={hwQuery} onChange={(e) => setHwQuery(e.target.value)}
+                    placeholder={tx(locale, "Search... (e.g. FortiGate, PowerEdge, Siemens, Hikvision)", "검색... (예: FortiGate, PowerEdge, Siemens, Hikvision)", "検索...")}
+                    className="w-full rounded-lg border border-blue-300 bg-white pl-9 pr-3 py-2 text-[12px] text-text placeholder:text-text-tertiary/50 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" />
+                  {hwSearching && <div className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />}
+                </div>
+                {hwResults.length > 0 && (
+                  <div className="max-h-48 overflow-y-auto rounded-lg border border-border bg-white divide-y divide-border/50">
+                    {hwResults.map((p, i) => (
+                      <button key={i} type="button" onClick={() => handleSelectHw(p)}
+                        className="w-full text-left px-3 py-2 hover:bg-blue-50 transition-colors flex items-center gap-2">
+                        <span className="text-[12px] font-medium text-text">{p.label}</span>
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-surface-secondary text-text-tertiary">{p.category}</span>
+                        <span className="text-[10px] text-text-tertiary ml-auto">{p.manufacturer}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <p className="text-[10px] text-text-tertiary">{tx(locale, "Or enter details manually below", "또는 아래에 직접 입력", "または以下に手動入力")}</p>
+              </>
+            )}
+          </div>
+        )}
 
         {/* ── E27 Required Fields ── */}
         <p className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider">{tx(locale, "E27 Required Fields", "E27 필수 항목", "E27 必須項目")}</p>

@@ -28,6 +28,7 @@ export interface Hardware {
   resetPeriodDay: number | null;
   software: { id: string; name: string; version: string | null }[];
   _count: { cveMatches: number; assessments: number };
+  swCveCount?: number;
 }
 
 export interface Software {

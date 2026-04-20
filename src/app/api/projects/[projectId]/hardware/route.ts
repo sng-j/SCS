@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSessionUser, verifyProjectAccess, apiError } from "@/lib/auth-helpers";
 import { trackChange } from "@/lib/change-tracker";
 import { logAction } from "@/lib/action-logger";
+import { autoMatchCveForSoftware, autoMatchCveForHardware } from "@/lib/cve-auto-match";
 
 export const dynamic = "force-dynamic";
 
@@ -25,13 +26,22 @@ export async function GET(request: Request, { params }: Params) {
   const hardware = await prisma.hardware.findMany({
     where: { projectId, ...(equipmentId ? { equipmentId } : {}) },
     include: {
-      software: { select: { id: true, name: true, swType: true, version: true, vendor: true, listeningPort: true, purpose: true } },
-      _count: { select: { cveMatches: true, assessments: true } },
+      software: {
+        select: { id: true, name: true, swType: true, version: true, vendor: true, listeningPort: true, purpose: true, _count: { select: { cveMatches: { where: { deletedAt: null } } } } },
+        where: { deletedAt: null },
+      },
+      _count: { select: { cveMatches: { where: { deletedAt: null } }, assessments: { where: { deletedAt: null } } } },
     },
     orderBy: { createdAt: "desc" },
   });
 
-  return NextResponse.json(hardware);
+  // Enrich: add swCveCount (CVEs via software) for each HW
+  const enriched = hardware.map(hw => ({
+    ...hw,
+    swCveCount: hw.software.reduce((sum, sw) => sum + (sw._count?.cveMatches || 0), 0),
+  }));
+
+  return NextResponse.json(enriched);
 }
 
 /** POST /api/projects/[projectId]/hardware — create hardware */
@@ -98,6 +108,9 @@ export async function POST(request: Request, { params }: Params) {
       data: { name, type, manufacturer, model, zone, category },
     }).catch(() => {});
 
+    // Auto-match CVEs for HW (sync)
+    await autoMatchCveForHardware(hardware.id, projectId);
+
     // 자산 등록 시 equipment 상태를 IN_PROGRESS로 자동 변경 (PENDING일 때만)
     if (equipmentId) {
       prisma.equipment.updateMany({
@@ -112,16 +125,19 @@ export async function POST(request: Request, { params }: Params) {
       const swVersion = sysSoftwareVersion?.trim() || null;
       const fwKeywords = ["firmware", "rtos", "ios-xe", "ios", "junos", "vxworks", "freertos", "nuttx"];
       const swType = fwKeywords.some((k: string) => swName.toLowerCase().includes(k)) ? "FIRMWARE" : "OS";
-      prisma.software.create({
-        data: {
-          projectId,
-          equipmentId: equipmentId || null,
-          hardwareId: hardware.id,
-          name: swName,
-          version: swVersion,
-          swType,
-        },
-      }).catch(() => {});
+      try {
+        const newSw = await prisma.software.create({
+          data: {
+            projectId,
+            equipmentId: equipmentId || null,
+            hardwareId: hardware.id,
+            name: swName,
+            version: swVersion,
+            swType,
+          },
+        });
+        await autoMatchCveForSoftware(newSw.id, projectId);
+      } catch { /* non-blocking */ }
     }
 
     return NextResponse.json(hardware, { status: 201 });

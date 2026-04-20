@@ -186,19 +186,6 @@ export default function AssessPage() {
           <ArrowLeft size={14} /> {equipmentId ? (tx(locale, "Equipment", "기자재", "機器")) : (tx(locale, "Project", "프로젝트", "プロジェクト"))}
         </Link>
 
-        {/* 테스트 기능 안내 배너 */}
-        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 flex items-center gap-3">
-          <div className="h-7 w-7 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
-            <span className="text-[12px] font-bold text-amber-700">β</span>
-          </div>
-          <p className="text-[12px] text-amber-800">
-            {tx(locale,
-              "This feature is in testing. You can skip without completing all items.",
-              "이 기능은 테스트 중입니다. 모든 항목을 입력하지 않아도 다음 단계로 넘어갈 수 있습니다.",
-              "この機能はテスト中です。全項目を入力しなくても次のステップに進めます。"
-            )}
-          </p>
-        </div>
 
         <div className="flex items-start justify-between mb-6">
           <div className="flex items-center gap-4">
@@ -630,7 +617,7 @@ function ChangeHistoryTab({ projectId, locale }: { projectId: string; locale: st
 // ─── Risk Assessment Tab ────────────────────────────────────────────────────
 
 interface RiskEntry {
-  id: string; threatId: string; assetRef: string | null;
+  id: string; cveId?: string | null; threatId: string; assetRef: string | null;
   likelihood: number; impact: number; riskLevel: number;
   mitigation: string | null; status: string; createdAt: string;
 }
@@ -658,6 +645,24 @@ function RiskTab({ projectId, canEdit, locale }: { projectId: string; canEdit: b
   const [form, setForm] = useState({ threatId: "", threatCategory: "", scenario: "", assetRef: "", likelihood: "3", impact: "3", mitigation: "", status: "OPEN", treatment: "Mitigate" });
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<RiskEntry | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  const updateRisk = async (riskId: string, field: string, value: number | string) => {
+    setUpdatingId(riskId);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/risks/${riskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [field]: value }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setRisks(prev => prev.map(r => r.id === riskId ? updated : r));
+      }
+    } finally {
+      setUpdatingId(null);
+    }
+  };
 
   const fetchRisks = useCallback(() => {
     setLoading(true);
@@ -776,36 +781,80 @@ function RiskTab({ projectId, canEdit, locale }: { projectId: string; canEdit: b
         <EmptyState icon={BarChart3} title={tx(locale, "No risks registered", "등록된 리스크가 없습니다", "登録されたリスクがありません")} subtitle={tx(locale, "Add risks to start assessment", "리스크를 추가하여 평가를 시작하세요", "リスクを追加して評価を開始してください")} />
       ) : (
         <Card padding="none">
-          <div className="divide-y divide-border">
-            {risks.map((r) => {
-              const label = getRiskLabel(r.riskLevel);
-              const rc = RISK_COLORS[label];
-              const st = statusLabels[r.status] || statusLabels.OPEN;
-              return (
-                <div key={r.id} className="flex items-start gap-4 px-5 py-4 hover:bg-surface-secondary/30 transition-colors">
-                  <div className="h-8 w-8 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0 mt-0.5" style={{ background: rc.bg }}>
-                    {r.riskLevel}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[13px] font-bold text-text">{r.threatId}</span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: rc.bg + "18", color: rc.bg }}>{label}</span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: st.color + "18", color: st.color }}>{locale === "ko" ? st.ko : locale === "ja" ? (st.ja || st.en) : st.en}</span>
-                    </div>
-                    {r.assetRef && <p className="text-[11px] text-text-tertiary">{tx(locale, "Asset:", "자산:", "資産:")} {r.assetRef}</p>}
-                    <p className="text-[11px] text-text-tertiary mt-0.5">
-                      L={r.likelihood} × I={r.impact} = {r.riskLevel}
-                      {r.mitigation && ` · ${r.mitigation}`}
-                    </p>
-                  </div>
-                  {canEdit && (
-                    <button onClick={() => setDeleteTarget(r)} className="h-7 w-7 rounded flex items-center justify-center text-text-tertiary hover:text-safety-high hover:bg-risk-bg transition-colors shrink-0">
-                      <Trash2 size={13} />
-                    </button>
-                  )}
-                </div>
-              );
-            })}
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="border-b border-border bg-surface-secondary/40">
+                  <th className="text-left px-4 py-2.5 font-bold text-text-tertiary w-16">{tx(locale, "ID", "ID", "ID")}</th>
+                  <th className="text-left px-4 py-2.5 font-bold text-text-tertiary">{tx(locale, "Threat / Asset", "위협 / 자산", "脅威/資産")}</th>
+                  <th className="text-center px-3 py-2.5 font-bold text-text-tertiary w-28">{tx(locale, "Likelihood", "가능성", "可能性")}</th>
+                  <th className="text-center px-3 py-2.5 font-bold text-text-tertiary w-28">{tx(locale, "Impact", "영향도", "影響度")}</th>
+                  <th className="text-center px-3 py-2.5 font-bold text-text-tertiary w-16">{tx(locale, "Score", "점수", "スコア")}</th>
+                  <th className="text-center px-3 py-2.5 font-bold text-text-tertiary w-24">{tx(locale, "Status", "상태", "状態")}</th>
+                  {canEdit && <th className="w-10" />}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {risks.map((r) => {
+                  const label = getRiskLabel(r.riskLevel);
+                  const rc = RISK_COLORS[label];
+                  const st = statusLabels[r.status] || statusLabels.OPEN;
+                  const isUpdating = updatingId === r.id;
+                  return (
+                    <tr key={r.id} className={cn("hover:bg-surface-secondary/30 transition-colors", isUpdating && "opacity-60")}>
+                      {/* Threat ID */}
+                      <td className="px-4 py-3 align-top">
+                        <span className="text-[12px] font-bold text-text">{r.threatId}</span>
+                        {r.cveId && (
+                          <a href={`https://nvd.nist.gov/vuln/detail/${r.cveId}`} target="_blank" rel="noopener noreferrer" className="block text-[9px] font-mono text-brand hover:underline mt-0.5">{r.cveId}</a>
+                        )}
+                      </td>
+                      {/* Asset */}
+                      <td className="px-4 py-3 align-top">
+                        <p className="text-[12px] text-text-secondary">{r.assetRef || "—"}</p>
+                        {r.mitigation && <p className="text-[10px] text-text-tertiary mt-0.5 line-clamp-1">{r.mitigation}</p>}
+                      </td>
+                      {/* Likelihood dropdown */}
+                      <td className="px-3 py-3 text-center align-top">
+                        {canEdit ? (
+                          <select value={r.likelihood} onChange={(e) => updateRisk(r.id, "likelihood", parseInt(e.target.value))} className="rounded border border-border bg-white px-2 py-1 text-[12px] font-bold text-text text-center w-full focus:outline-none focus:border-brand">
+                            {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
+                          </select>
+                        ) : <span className="font-bold">{r.likelihood}</span>}
+                      </td>
+                      {/* Impact dropdown */}
+                      <td className="px-3 py-3 text-center align-top">
+                        {canEdit ? (
+                          <select value={r.impact} onChange={(e) => updateRisk(r.id, "impact", parseInt(e.target.value))} className="rounded border border-border bg-white px-2 py-1 text-[12px] font-bold text-text text-center w-full focus:outline-none focus:border-brand">
+                            {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
+                          </select>
+                        ) : <span className="font-bold">{r.impact}</span>}
+                      </td>
+                      {/* Risk Score */}
+                      <td className="px-3 py-3 text-center align-top">
+                        <span className="inline-flex items-center justify-center h-7 w-7 rounded-lg text-[10px] font-bold text-white" style={{ background: rc.bg }}>{r.riskLevel}</span>
+                      </td>
+                      {/* Status dropdown */}
+                      <td className="px-3 py-3 text-center align-top">
+                        {canEdit ? (
+                          <select value={r.status} onChange={(e) => updateRisk(r.id, "status", e.target.value)} className="rounded border border-border bg-white px-2 py-1 text-[11px] font-bold text-center w-full focus:outline-none focus:border-brand" style={{ color: st.color }}>
+                            {Object.entries(statusLabels).map(([k, v]) => <option key={k} value={k}>{locale === "ko" ? v.ko : locale === "ja" ? (v.ja || v.en) : v.en}</option>)}
+                          </select>
+                        ) : <span className="text-[11px] font-bold" style={{ color: st.color }}>{locale === "ko" ? st.ko : st.en}</span>}
+                      </td>
+                      {/* Delete */}
+                      {canEdit && (
+                        <td className="px-2 py-3 align-top">
+                          <button onClick={() => setDeleteTarget(r)} className="h-6 w-6 rounded flex items-center justify-center text-text-tertiary hover:text-safety-high hover:bg-risk-bg transition-colors">
+                            <Trash2 size={12} />
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </Card>
       )}

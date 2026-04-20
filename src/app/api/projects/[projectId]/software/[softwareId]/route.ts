@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser, verifyProjectAccess, apiError } from "@/lib/auth-helpers";
 import { trackChange } from "@/lib/change-tracker";
+import { autoMatchCveForSoftware } from "@/lib/cve-auto-match";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +43,9 @@ export async function PATCH(request: Request, { params }: Params) {
       changeType: "UPDATE", severity: "MEDIUM", reauditRequired: true,
       changedBy: user.id,
     }).catch(() => {});
+
+    // Re-match CVEs on update (sync — wait for completion)
+    await autoMatchCveForSoftware(software.id, projectId);
 
     return NextResponse.json(software);
   } catch {

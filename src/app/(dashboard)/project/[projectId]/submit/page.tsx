@@ -8,7 +8,7 @@ import { motion } from "framer-motion";
 import {
   Send, ArrowLeft, CheckCircle, XCircle, Clock, Eye,
   ThumbsUp, AlertTriangle, Cpu, ChevronRight, Home,
-  MessageSquare, Package, Shield, FileText, Network,
+  MessageSquare, Package, Shield, FileText, Network, ClipboardList,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardBody } from "@/components/ui/card";
@@ -116,6 +116,7 @@ function EquipmentSubmitView({ projectId, equipmentId, locale, userRole }: {
     { id: "sw", icon: Package, label: tx(locale, "Software", "소프트웨어 등록", "ソフトウェア登録"), pass: eq._count.software > 0, detail: `${eq._count.software}` },
     { id: "dfd", icon: Network, label: "DFD", pass: !!eq.dfdDiagram, detail: eq.dfdDiagram ? "✅" : "—" },
     { id: "assess", icon: Shield, label: tx(locale, "Assessment", "보안 평가", "セキュリティ評価"), pass: true, detail: `${assessCount.passed}/13 SC ${tx(locale, "pass", "통과", "適合")}` },
+    { id: "testproc", icon: ClipboardList, label: tx(locale, "Test Procedure", "테스트 절차", "テスト手順"), pass: true, detail: "—" },
     { id: "doc", icon: FileText, label: tx(locale, "Documents", "문서 생성", "文書生成"), pass: true, detail: "—" },
   ] : [];
 

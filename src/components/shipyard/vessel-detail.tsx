@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   Ship, Shield, FileText, Package, Cpu, Server, Monitor, Radio, HardDrive, Network,
-  CheckCircle, Clock, AlertTriangle, Eye, ThumbsUp, MessageSquare, X,
+  CheckCircle, Clock, AlertTriangle, Eye, ThumbsUp, MessageSquare, X, ClipboardList,
   ChevronRight, ArrowLeft, Download, Plus, Edit2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -392,11 +392,12 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
 }) {
   const cfg = STATUS_CFG[eq.status] || STATUS_CFG.PENDING;
   const Icon = cfg.icon;
-  const [tab, setTab] = useState<"assets" | "assessment" | "dfd" | "documents" | "risk">("assets");
+  const [tab, setTab] = useState<"assets" | "assessment" | "dfd" | "testproc" | "documents" | "risk">("assets");
   const [hardware, setHardware] = useState<HwItem[]>([]);
   const [assessments, setAssessments] = useState<AssessItem[]>([]);
   const [documents, setDocuments] = useState<DocItem[]>([]);
   const [risks, setRisks] = useState<{ id: string; threatId: string; likelihood: number; impact: number; riskLevel: number; status: string; mitigation: string | null }[]>([]);
+  const [testProc, setTestProc] = useState<{ status: string; hwGroups: { id: string; label: string; hardwareIds: string; hwItems: { no: number; category: string; criteria: string; method: string }[] }[]; fnItems: { softwareName: string | null; section: string; no: number; category: string; criteria: string; method: string }[] } | null>(null);
   const [reviewNote, setReviewNote] = useState("");
   const [revisionModalOpen, setRevisionModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -407,11 +408,13 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
       fetch(`/api/projects/${projectId}/assessments`).then(async (r) => r.ok ? r.json() : []),
       fetch(`/api/projects/${projectId}/documents?equipmentId=${eq.id}`).then(async (r) => r.ok ? r.json() : []),
       fetch(`/api/projects/${projectId}/risks`).then(async (r) => r.ok ? r.json() : []),
-    ]).then(([hw, assess, docs, riskData]) => {
+      fetch(`/api/projects/${projectId}/test-procedure?equipmentId=${eq.id}`).then(async (r) => r.ok ? r.json() : null),
+    ]).then(([hw, assess, docs, riskData, tp]) => {
       setHardware(hw);
       setAssessments(assess);
       setDocuments(Array.isArray(docs) ? docs : []);
       setRisks(Array.isArray(riskData) ? riskData : []);
+      setTestProc(tp);
     });
   }, [projectId, eq.id, eq.dfdDiagram]);
 
@@ -480,11 +483,12 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
       </div>
 
       {/* Quick stats */}
-      <div className="grid grid-cols-5 gap-3 mb-6">
+      <div className="grid grid-cols-6 gap-3 mb-6">
         <MiniStat label={tx(locale, "Hardware", "하드웨어", "HW")} value={hwCount} unit={tx(locale, "", "개", "")} ok={hwCount > 0} />
         <MiniStat label={tx(locale, "Software", "소프트웨어", "SW")} value={swCount} unit={tx(locale, "", "개", "")} ok={swCount > 0} />
         <MiniStat label="DFD" value={eq.dfdDiagram ? tx(locale, "Created", "생성됨", "作成済") : tx(locale, "None", "미생성", "未作成")} ok={!!eq.dfdDiagram} />
         <MiniStat label={tx(locale, "Assessment", "보안평가", "評価")} value={`${scPassed}/${scTotal}`} ok={scPassed === scTotal && scTotal > 0} warn={scFailed > 0} />
+        <MiniStat label={tx(locale, "Test Proc.", "테스트절차", "テスト手順")} value={testProc ? `${(testProc.hwGroups?.reduce((s, g) => s + g.hwItems.length, 0) || 0) + (testProc.fnItems?.length || 0)}${tx(locale, "", "건", "件")}` : "—"} ok={!!testProc && ((testProc.hwGroups?.some(g => g.hwItems.length > 0)) || (testProc.fnItems?.length > 0))} />
         <MiniStat label={tx(locale, "Documents", "문서", "文書")} value={`${documents.length}${tx(locale, "", "건", "件")}`} ok={documents.length > 0} />
       </div>
 
@@ -494,6 +498,7 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
           { id: "assets" as const, label: tx(locale, "Assets", "자산 현황", "資産"), icon: Package },
           { id: "assessment" as const, label: tx(locale, "Assessment", "보안 평가", "評価"), icon: Shield },
           { id: "dfd" as const, label: "DFD", icon: Network },
+          { id: "testproc" as const, label: tx(locale, "Test Procedure", "테스트 절차", "テスト手順"), icon: ClipboardList },
           { id: "documents" as const, label: tx(locale, "Documents", "벤더 제출 문서", "文書"), icon: FileText },
           { id: "risk" as const, label: tx(locale, "Risk", "리스크", "リスク"), icon: AlertTriangle },
         ]).map((t) => {
@@ -561,6 +566,85 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
               <div className="h-[500px]">
                 <DfdEditor projectId={projectId} hardware={hardware as never[]} equipmentId={eq.id} readOnly />
               </div>
+            )}
+          </div>
+        )}
+
+        {tab === "testproc" && (
+          <div className="space-y-6">
+            {!testProc || (testProc.hwGroups?.every(g => g.hwItems.length === 0) && (!testProc.fnItems || testProc.fnItems.length === 0)) ? (
+              <EmptyTab icon={ClipboardList} text={tx(locale, "No test procedure items registered", "등록된 테스트 절차 항목이 없습니다", "テスト手順項目が登録されていません")} />
+            ) : (
+              <>
+                {/* HW 그룹별 항목 */}
+                {testProc.hwGroups?.filter(g => g.hwItems.length > 0).map(grp => (
+                  <div key={grp.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200">
+                      <Cpu size={14} className="text-violet-600" />
+                      <span className="text-[13px] font-bold text-gray-900">{grp.label}</span>
+                      <span className="text-[11px] text-gray-400">{(() => { try { return JSON.parse(grp.hardwareIds).length; } catch { return 0; } })()}{tx(locale, " devices", "개 기기", "台")}</span>
+                    </div>
+                    <table className="w-full text-[12px]">
+                      <thead>
+                        <tr className="border-b border-gray-100 bg-gray-50/50">
+                          <th className="text-left px-4 py-2 font-bold text-gray-400 w-10">NO</th>
+                          <th className="text-left px-4 py-2 font-bold text-gray-400 w-[25%]">{tx(locale, "Category", "분류", "カテゴリー")}</th>
+                          <th className="text-left px-4 py-2 font-bold text-gray-400 w-[35%]">{tx(locale, "Criteria", "기준", "基準")}</th>
+                          <th className="text-left px-4 py-2 font-bold text-gray-400">{tx(locale, "Method", "방법", "方法")}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {grp.hwItems.map((item, i) => (
+                          <tr key={i}>
+                            <td className="px-4 py-2 text-gray-400 font-mono">{i + 1}</td>
+                            <td className="px-4 py-2 text-gray-700">{item.category || "—"}</td>
+                            <td className="px-4 py-2 text-gray-700 whitespace-pre-wrap">{item.criteria || "—"}</td>
+                            <td className="px-4 py-2 text-gray-700 whitespace-pre-wrap">{item.method || "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+
+                {/* FN 항목 (SW별 + 섹션별 그룹) */}
+                {testProc.fnItems && testProc.fnItems.length > 0 && (() => {
+                  const sections = [...new Set(testProc.fnItems.map(i => `${i.softwareName || "—"}:::${i.section}`))];
+                  return sections.map(key => {
+                    const [swName, section] = key.split(":::");
+                    const items = testProc.fnItems.filter(i => (i.softwareName || "—") === swName && i.section === section);
+                    return (
+                      <div key={key} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                        <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200">
+                          <ClipboardList size={14} className="text-blue-600" />
+                          <span className="text-[13px] font-bold text-gray-900">{section}</span>
+                          <span className="text-[11px] text-gray-400">— {swName}</span>
+                        </div>
+                        <table className="w-full text-[12px]">
+                          <thead>
+                            <tr className="border-b border-gray-100 bg-gray-50/50">
+                              <th className="text-left px-4 py-2 font-bold text-gray-400 w-10">NO</th>
+                              <th className="text-left px-4 py-2 font-bold text-gray-400 w-[25%]">{tx(locale, "Category", "분류", "カテゴリー")}</th>
+                              <th className="text-left px-4 py-2 font-bold text-gray-400 w-[35%]">{tx(locale, "Criteria", "기준", "基準")}</th>
+                              <th className="text-left px-4 py-2 font-bold text-gray-400">{tx(locale, "Method", "방법", "方法")}</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {items.map((item, i) => (
+                              <tr key={i}>
+                                <td className="px-4 py-2 text-gray-400 font-mono">{i + 1}</td>
+                                <td className="px-4 py-2 text-gray-700">{item.category || "—"}</td>
+                                <td className="px-4 py-2 text-gray-700 whitespace-pre-wrap">{item.criteria || "—"}</td>
+                                <td className="px-4 py-2 text-gray-700 whitespace-pre-wrap">{item.method || "—"}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  });
+                })()}
+              </>
             )}
           </div>
         )}

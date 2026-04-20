@@ -110,6 +110,36 @@ export default function InventoryPage() {
   const [diagramImportOpen, setDiagramImportOpen] = useState(false);
   const [addMethodOpen, setAddMethodOpen] = useState(false);
   const [simpleInitialView, setSimpleInitialView] = useState<"choose" | "manual-count">("choose");
+  const [cveHwId, setCveHwId] = useState<string | null>(null);
+  const [cveList, setCveList] = useState<Array<{ id: number; cveId: string; matchType: string; software?: { name: string; version: string | null }; cveDetail?: { description: string | null; baseScore: number | null; baseSeverity: string | null; publishedAt: string | null } | null }>>([]);
+  const [cveLoading, setCveLoading] = useState(false);
+
+  const openCveSidebar = async (hwId: string) => {
+    setCveHwId(hwId);
+    setCveLoading(true);
+    try {
+      // Get SW IDs for this HW, then get their CVE matches with details
+      const hw = hardware.find(h => h.id === hwId);
+      const swIds = hw?.software?.map((s: { id: string }) => s.id) || [];
+      const res = await fetch(`/api/projects/${projectId}/cve-matches`);
+      if (res.ok) {
+        const allMatches = await res.json();
+        const filtered = (Array.isArray(allMatches) ? allMatches : [])
+          .filter((m: { softwareId?: string; hardwareId?: string }) => (m.softwareId && swIds.includes(m.softwareId)) || m.hardwareId === hwId);
+        setCveList(filtered);
+      }
+    } finally {
+      setCveLoading(false);
+    }
+  };
+
+  const deleteCveMatch = async (matchId: number) => {
+    const res = await fetch(`/api/projects/${projectId}/cve-matches?id=${matchId}`, { method: "DELETE" });
+    if (res.ok) {
+      setCveList(prev => prev.filter(c => c.id !== matchId));
+      await fetchAssets(); // refresh HW counts
+    }
+  };
 
   const handleRegenerateDfd = async () => {
     setDfdGenerating(true);
@@ -159,7 +189,10 @@ export default function InventoryPage() {
     const url = editHw ? `/api/projects/${projectId}/hardware/${editHw.id}` : `/api/projects/${projectId}/hardware`;
     const body = equipmentId ? { ...data, equipmentId } : data;
     const res = await fetch(url, { method: editHw ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    if (res.ok) { showToast.success(tx(locale, "Saved", "저장 완료", "保存完了")); setHwDialogOpen(false); setEditHw(null); await fetchAssets(); }
+    if (res.ok) {
+      showToast.success(tx(locale, "Saved", "저장 완료", "保存完了")); setHwDialogOpen(false); setEditHw(null);
+      await fetchAssets();
+    }
     else showToast.error(tx(locale, "Save failed", "저장 실패", "保存失敗"));
   };
 
@@ -167,7 +200,10 @@ export default function InventoryPage() {
     const url = editSw ? `/api/projects/${projectId}/software/${editSw.id}` : `/api/projects/${projectId}/software`;
     const body = equipmentId ? { ...data, equipmentId } : data;
     const res = await fetch(url, { method: editSw ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    if (res.ok) { showToast.success(tx(locale, "Saved", "저장 완료", "保存完了")); setSwDialogOpen(false); setEditSw(null); await fetchAssets(); }
+    if (res.ok) {
+      showToast.success(tx(locale, "Saved", "저장 완료", "保存完了")); setSwDialogOpen(false); setEditSw(null);
+      await fetchAssets();
+    }
     else showToast.error(tx(locale, "Save failed", "저장 실패", "保存失敗"));
   };
 
@@ -383,6 +419,7 @@ export default function InventoryPage() {
                             onAddSw={(hwId) => { setPreSelectedHwId(hwId); setEditSw(null); setSwDialogOpen(true); }}
                             projectId={projectId} equipmentId={equipmentId} onRefresh={fetchAssets}
                             activeHwId={editPanelHwId}
+                            onCveClick={openCveSidebar}
                           />
                         </div>
 
@@ -490,6 +527,75 @@ export default function InventoryPage() {
         <input ref={importRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImport} />
 
         {/* Delete confirm */}
+        {/* CVE Sidebar */}
+        {cveHwId && (
+          <div className="fixed inset-0 z-50 flex justify-end">
+            <div className="absolute inset-0 bg-black/20" onClick={() => setCveHwId(null)} />
+            <div className="relative w-full max-w-md bg-white shadow-2xl border-l border-border overflow-y-auto animate-in slide-in-from-right">
+              <div className="sticky top-0 bg-white border-b border-border px-5 py-4 flex items-center justify-between z-10">
+                <div>
+                  <h3 className="text-[15px] font-bold text-text">
+                    {tx(locale, "CVE Matches", "CVE 매칭 목록", "CVEマッチング")}
+                  </h3>
+                  <p className="text-[11px] text-text-tertiary mt-0.5">
+                    {hardware.find(h => h.id === cveHwId)?.name || ""}
+                    {" · "}{cveList.length}{tx(locale, " vulnerabilities", "건의 취약점", "件の脆弱性")}
+                  </p>
+                </div>
+                <button onClick={() => setCveHwId(null)} className="h-8 w-8 rounded-lg flex items-center justify-center text-text-tertiary hover:bg-surface-secondary transition-colors">
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="p-4 space-y-2">
+                {cveLoading ? (
+                  <div className="flex justify-center py-12"><div className="h-6 w-6 border-2 border-brand border-t-transparent rounded-full animate-spin" /></div>
+                ) : cveList.length === 0 ? (
+                  <p className="text-center text-[12px] text-text-tertiary py-8">{tx(locale, "No CVE matches", "CVE 매칭 없음", "CVEマッチングなし")}</p>
+                ) : (
+                  cveList.map((cve) => {
+                    const d = cve.cveDetail;
+                    const sev = d?.baseSeverity;
+                    const sevColor = sev === "CRITICAL" ? "bg-red-100 text-red-700" : sev === "HIGH" ? "bg-orange-100 text-orange-700" : sev === "MEDIUM" ? "bg-yellow-100 text-yellow-800" : sev === "LOW" ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600";
+                    return (
+                      <div key={cve.id} className="p-3 rounded-xl border border-border bg-surface-secondary/30 hover:bg-surface-secondary/60 transition-colors group">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            {/* CVE ID + Severity + Score */}
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <a href={`https://nvd.nist.gov/vuln/detail/${cve.cveId}`} target="_blank" rel="noopener noreferrer" className="text-[12px] font-bold font-mono text-brand hover:underline">{cve.cveId}</a>
+                              {sev && <span className={`px-1.5 py-px rounded text-[9px] font-bold ${sevColor}`}>{sev}</span>}
+                              {d?.baseScore != null && <span className="text-[11px] font-bold text-text-secondary">{d.baseScore}</span>}
+                            </div>
+                            {/* Software info */}
+                            {cve.software && (
+                              <p className="text-[10px] text-violet-600 font-medium mb-1">
+                                {cve.software.name}{cve.software.version ? ` v${cve.software.version}` : ""}
+                              </p>
+                            )}
+                            {/* Description */}
+                            <p className="text-[11px] text-text-tertiary line-clamp-3 leading-relaxed">{d?.description || "—"}</p>
+                            {/* Published date */}
+                            {d?.publishedAt && (
+                              <p className="text-[9px] text-text-tertiary mt-1.5">{new Date(d.publishedAt).toLocaleDateString()}</p>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => deleteCveMatch(cve.id)}
+                            className="h-7 w-7 rounded-lg flex items-center justify-center text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-red-500 hover:bg-red-50 transition-all shrink-0 mt-1"
+                            title={tx(locale, "Remove (not applicable)", "삭제 (해당 없음)", "削除")}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         <ConfirmDialog
           open={!!deleteTarget}
           onClose={() => setDeleteTarget(null)}
@@ -573,10 +679,11 @@ export default function InventoryPage() {
 
 // ─── Hardware Table ─────────────────────────────────────────────────────────
 
-function HardwareTable({ hardware, locale, canEdit, onEdit, onDelete, onAddSw, projectId, equipmentId, onRefresh, activeHwId }: {
+function HardwareTable({ hardware, locale, canEdit, onEdit, onDelete, onAddSw, projectId, equipmentId, onRefresh, activeHwId, onCveClick }: {
   hardware: Hardware[]; locale: string; canEdit: boolean;
   onEdit: (hw: Hardware) => void; onDelete: (hw: Hardware) => void; onAddSw?: (hwId: string) => void;
   projectId: string; equipmentId?: string | null; onRefresh: () => void; activeHwId?: string | null;
+  onCveClick?: (hwId: string) => void;
 }) {
   if (hardware.length === 0) return <EmptyState icon={Cpu} title={tx(locale, "No hardware", "등록된 하드웨어가 없습니다", "ハードウェアがありません")} subtitle={tx(locale, "Use the buttons above to add hardware", "위 버튼으로 하드웨어를 등록하세요", "上のボタンでハードウェアを追加してください")} />;
 
@@ -600,7 +707,7 @@ function HardwareTable({ hardware, locale, canEdit, onEdit, onDelete, onAddSw, p
         const catLabel = hw.category === "1" ? "I" : hw.category === "2" ? "II" : hw.category === "3" ? "III" : "—";
         const catColor = hw.category === "1" ? "bg-red-50 text-red-700" : hw.category === "2" ? "bg-orange-50 text-orange-700" : hw.category === "3" ? "bg-blue-50 text-blue-700" : "bg-gray-50 text-gray-400";
         const swCount = hw.software?.length || 0;
-        const cveCount = hw._count?.cveMatches || 0;
+        const cveCount = (hw._count?.cveMatches || 0) + (hw.swCveCount || 0);
         const isActive = activeHwId === hw.id;
         const hasMissing = !isHwComplete(hw);
 
@@ -640,7 +747,14 @@ function HardwareTable({ hardware, locale, canEdit, onEdit, onDelete, onAddSw, p
             </div>
             {/* CVE */}
             <div className="flex justify-center">
-              {cveCount > 0 ? <span className="px-1.5 py-px rounded-full bg-red-50 text-red-600 text-[10px] font-bold">{cveCount}</span> : <span className="text-[10px] text-text-tertiary">—</span>}
+              {cveCount > 0 ? (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onCveClick?.(hw.id); }}
+                  className="px-1.5 py-px rounded-full bg-red-50 text-red-600 text-[10px] font-bold hover:bg-red-100 hover:text-red-700 transition-colors cursor-pointer"
+                >
+                  {cveCount}
+                </button>
+              ) : <span className="text-[10px] text-text-tertiary">—</span>}
             </div>
             {/* Delete */}
             {canEdit && (
@@ -926,6 +1040,16 @@ function HwSlidePanel({ hw, swList, locale, canEdit, onClose, onDelete, onAddSw,
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
 
+  // Known HW suggestions (grouped by category)
+  const [mfrSuggestions, setMfrSuggestions] = useState<Record<string, Array<{ label: string; manufacturer: string; series: string; category: string; hwType: string }>>>({});
+  const [showMfrSuggestions, setShowMfrSuggestions] = useState(false);
+  // All HW items (flat) for model filtering
+  const [allHwProducts, setAllHwProducts] = useState<Array<{ label: string; manufacturer: string; series: string; category: string; hwType: string }>>([]);
+  const [showModelSuggestions, setShowModelSuggestions] = useState(false);
+  // Known SW suggestions for sysSoftwareCategory
+  const [swSuggestions, setSwSuggestions] = useState<Record<string, Array<{ label: string; vendor: string; product: string; cpePrefix: string; swType: string; category: string }>>>({});
+  const [showSwSuggestions, setShowSwSuggestions] = useState(false);
+
   // Editable form — initialized from hw data
   const [f, setF] = useState({
     name: hw.name || "", manufacturer: hw.manufacturer || "", model: hw.model || "",
@@ -951,7 +1075,21 @@ function HwSlidePanel({ hw, swList, locale, canEdit, onClose, onDelete, onAddSw,
     setDirty(false);
   }, [hw.id, hw.name, hw.manufacturer, hw.model, hw.category, hw.purpose, hw.location, hw.zone, hw.sysSoftwareCategory, hw.sysSoftwareVersion, hw.ipAddress, hw.macAddress, hw.physicalInterface, hw.commProtocols, hw.protectionMethod, hw.logicalLocation]);
 
-  const up = (k: string, v: string) => { setF((p) => ({ ...p, [k]: v })); setDirty(true); };
+  const up = (k: string, v: string) => {
+    setF((p) => ({ ...p, [k]: v })); setDirty(true);
+    // Fetch HW suggestions
+    if (k === "manufacturer") {
+      fetch(`/api/cve/products?kind=hw&q=${encodeURIComponent(v)}`).then(async r => {
+        if (r.ok) { const d = await r.json(); setMfrSuggestions(d.grouped || {}); setAllHwProducts(d.items || []); setShowMfrSuggestions(true); }
+      }).catch(() => {});
+    }
+    // Fetch SW suggestions
+    if (k === "sysSoftwareCategory") {
+      fetch(`/api/cve/products?kind=sw&q=${encodeURIComponent(v)}`).then(async r => {
+        if (r.ok) { const d = await r.json(); setSwSuggestions(d.grouped || {}); setShowSwSuggestions(true); }
+      }).catch(() => {});
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -1032,8 +1170,94 @@ function HwSlidePanel({ hw, swList, locale, canEdit, onClose, onDelete, onAddSw,
         <div className="px-5 py-4">
           <p className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2.5">{tx(locale, "Basic Info", "기본 정보", "基本情報")}</p>
           <div className="grid grid-cols-2 gap-3">
-            {renderField(tx(locale, "Manufacturer", "제조사", "メーカー"), "manufacturer", { placeholder: "e.g. Siemens", required: true })}
-            {renderField(tx(locale, "Model", "모델", "モデル"), "model", { placeholder: "e.g. S7-1500", required: true })}
+            {/* Manufacturer with known product suggestions */}
+            <div className="space-y-1 relative">
+              <label className={cn("text-[10px] font-bold uppercase tracking-wider flex items-center gap-1", !f.manufacturer.trim() ? "text-red-500" : "text-text-tertiary")}>
+                <span>{tx(locale, "Manufacturer", "제조사", "メーカー")}</span><span className="text-red-500">*</span>
+              </label>
+              <input value={f.manufacturer} onChange={(e) => up("manufacturer", e.target.value)}
+                onFocus={() => { if (Object.keys(mfrSuggestions).length === 0) { fetch("/api/cve/products?kind=hw").then(async r => { if (r.ok) { const d = await r.json(); setMfrSuggestions(d.grouped || {}); } }).catch(() => {}); } setShowMfrSuggestions(true); }}
+                onBlur={() => setTimeout(() => setShowMfrSuggestions(false), 200)}
+                placeholder="e.g. Siemens" disabled={!canEdit}
+                className={cn(canEdit ? inputCls : readOnlyInput, !f.manufacturer.trim() && "border-red-300 bg-red-50/40")} />
+              {showMfrSuggestions && Object.keys(mfrSuggestions).length > 0 && (
+                <div className="absolute z-20 top-full left-0 right-0 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-white shadow-lg">
+                  {Object.entries(mfrSuggestions).map(([cat, items]) => (
+                    <div key={cat}>
+                      <div className="px-3 py-1.5 bg-surface-secondary/60 border-b border-border/50 sticky top-0">
+                        <span className="text-[10px] font-bold text-text-tertiary uppercase">{cat}</span>
+                      </div>
+                      {items.map((s, i) => (
+                        <button key={i} type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setF(p => ({ ...p, manufacturer: s.manufacturer, name: f.name || s.label }));
+                            setDirty(true); setShowMfrSuggestions(false);
+                          }}
+                          className="w-full text-left px-3 py-1.5 hover:bg-blue-50 transition-colors flex items-center gap-2 border-b border-border/30">
+                          <span className="text-[12px] font-medium text-text">{s.label}</span>
+                          <span className="text-[10px] text-text-tertiary ml-auto">{s.manufacturer}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {/* Model with manufacturer-filtered suggestions */}
+            <div className="space-y-1 relative">
+              <label className={cn("text-[10px] font-bold uppercase tracking-wider flex items-center gap-1", !f.model.trim() ? "text-red-500" : "text-text-tertiary")}>
+                <span>{tx(locale, "Model", "모델", "モデル")}</span><span className="text-red-500">*</span>
+              </label>
+              <input value={f.model} onChange={(e) => up("model", e.target.value)}
+                onFocus={() => {
+                  // Load all products if not loaded yet
+                  if (allHwProducts.length === 0) {
+                    fetch("/api/cve/products?kind=hw").then(async r => { if (r.ok) { const d = await r.json(); setAllHwProducts(d.items || []); } }).catch(() => {});
+                  }
+                  setShowModelSuggestions(true);
+                }}
+                onBlur={() => setTimeout(() => setShowModelSuggestions(false), 200)}
+                placeholder="e.g. S7-1500, FortiGate-124G" disabled={!canEdit}
+                className={cn(canEdit ? inputCls : readOnlyInput, !f.model.trim() && "border-red-300 bg-red-50/40")} />
+              {showModelSuggestions && (() => {
+                // Filter by current manufacturer
+                const mfr = f.manufacturer.toLowerCase();
+                const modelQuery = f.model.toLowerCase();
+                const filtered = allHwProducts.filter(p => {
+                  if (mfr && !p.manufacturer.toLowerCase().includes(mfr)) return false;
+                  if (modelQuery && !p.label.toLowerCase().includes(modelQuery) && !p.series.includes(modelQuery)) return false;
+                  return true;
+                });
+                if (filtered.length === 0) return null;
+                // Group by category
+                const grouped: Record<string, typeof filtered> = {};
+                filtered.forEach(p => { if (!grouped[p.category]) grouped[p.category] = []; grouped[p.category].push(p); });
+                return (
+                  <div className="absolute z-20 top-full left-0 right-0 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-white shadow-lg">
+                    {Object.entries(grouped).map(([cat, items]) => (
+                      <div key={cat}>
+                        <div className="px-3 py-1.5 bg-surface-secondary/60 border-b border-border/50 sticky top-0">
+                          <span className="text-[10px] font-bold text-text-tertiary uppercase">{cat}</span>
+                        </div>
+                        {items.map((s, i) => (
+                          <button key={i} type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setF(p => ({ ...p, model: s.label.replace(s.manufacturer + " ", ""), manufacturer: s.manufacturer, name: f.name || s.label }));
+                              setDirty(true); setShowModelSuggestions(false);
+                            }}
+                            className="w-full text-left px-3 py-1.5 hover:bg-blue-50 transition-colors flex items-center gap-2 border-b border-border/30">
+                            <span className="text-[12px] font-medium text-text">{s.label}</span>
+                            <span className="text-[10px] text-text-tertiary ml-auto">{s.manufacturer}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
             {renderField(tx(locale, "Functionality", "기능", "機能"), "purpose", { placeholder: tx(locale, "System role", "시스템 역할", "システム役割"), required: true })}
             {renderField(tx(locale, "Location", "설치 위치", "設置場所"), "location", { placeholder: tx(locale, "e.g. Engine Room", "예: 기관실", "例: 機関室") })}
           </div>
@@ -1083,7 +1307,41 @@ function HwSlidePanel({ hw, swList, locale, canEdit, onClose, onDelete, onAddSw,
                 {tx(locale, "System SW (E27 Recommended)", "시스템 SW (E27 권장)", "システムSW (E27推奨)")}
               </p>
               <div className="grid grid-cols-2 gap-3">
-                {isFieldVisible(hw.type, "sysSoftwareCategory") && renderField("System SW", "sysSoftwareCategory", { placeholder: "Windows, IOS-XE", recommended: true })}
+                {isFieldVisible(hw.type, "sysSoftwareCategory") && (
+                  <div className="space-y-1 relative">
+                    <label className={cn("text-[10px] font-bold uppercase tracking-wider flex items-center gap-1", !f.sysSoftwareCategory.trim() ? "text-amber-600" : "text-text-tertiary")}>
+                      <span>System SW</span>
+                    </label>
+                    <input value={f.sysSoftwareCategory} onChange={(e) => up("sysSoftwareCategory", e.target.value)}
+                      onFocus={() => { if (Object.keys(swSuggestions).length === 0) { fetch("/api/cve/products?kind=sw").then(async r => { if (r.ok) { const d = await r.json(); setSwSuggestions(d.grouped || {}); } }).catch(() => {}); } setShowSwSuggestions(true); }}
+                      onBlur={() => setTimeout(() => setShowSwSuggestions(false), 200)}
+                      placeholder="Windows, IOS-XE, FortiOS" disabled={!canEdit}
+                      className={cn(canEdit ? inputCls : readOnlyInput, !f.sysSoftwareCategory.trim() && "border-amber-200 bg-amber-50/30")} />
+                    {showSwSuggestions && Object.keys(swSuggestions).length > 0 && (
+                      <div className="absolute z-20 top-full left-0 right-0 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-white shadow-lg">
+                        {Object.entries(swSuggestions).map(([cat, items]) => (
+                          <div key={cat}>
+                            <div className="px-3 py-1.5 bg-surface-secondary/60 border-b border-border/50 sticky top-0">
+                              <span className="text-[10px] font-bold text-text-tertiary uppercase">{cat}</span>
+                            </div>
+                            {items.map((s, i) => (
+                              <button key={i} type="button"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  setF(p => ({ ...p, sysSoftwareCategory: s.label }));
+                                  setDirty(true); setShowSwSuggestions(false);
+                                }}
+                                className="w-full text-left px-3 py-1.5 hover:bg-violet-50 transition-colors flex items-center gap-2 border-b border-border/30">
+                                <span className="text-[12px] font-medium text-text">{s.label}</span>
+                                <span className="text-[10px] text-text-tertiary ml-auto">{s.vendor}</span>
+                              </button>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {isFieldVisible(hw.type, "sysSoftwareVersion") && renderField("SW Version", "sysSoftwareVersion", { placeholder: "v10.0", mono: true, recommended: true })}
               </div>
             </>

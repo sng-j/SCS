@@ -4,6 +4,7 @@ import { getSessionUser, verifyProjectAccess, verifyEquipmentOwnership, apiError
 import { safeError } from "@/lib/safe-log";
 import { trackChange } from "@/lib/change-tracker";
 import { logAction } from "@/lib/action-logger";
+import { autoMatchCveForSoftware } from "@/lib/cve-auto-match";
 
 export const dynamic = "force-dynamic";
 
@@ -24,10 +25,10 @@ export async function GET(request: Request, { params }: Params) {
   const equipmentId = searchParams.get("equipmentId");
 
   const software = await prisma.software.findMany({
-    where: { projectId, ...(equipmentId ? { equipmentId } : {}) },
+    where: { projectId, deletedAt: null, ...(equipmentId ? { equipmentId } : {}) },
     include: {
       hardware: { select: { id: true, name: true } },
-      _count: { select: { cveMatches: true } },
+      _count: { select: { cveMatches: { where: { deletedAt: null } } } },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -89,6 +90,9 @@ export async function POST(request: Request, { params }: Params) {
     }).catch(() => {});
 
     logAction(user.id, "SW_CREATE", { entity: "software", entityId: software.id, projectId, data: { name, version, vendor, swType } }).catch(() => {});
+
+    // Auto-match CVEs + generate risks (sync — wait for completion)
+    await autoMatchCveForSoftware(software.id, projectId);
 
     return NextResponse.json(software, { status: 201 });
   } catch (error) {

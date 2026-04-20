@@ -5,7 +5,8 @@ import { getSessionUser, apiError } from "@/lib/auth-helpers";
 export const dynamic = "force-dynamic";
 
 const NVD_API_BASE = "https://services.nvd.nist.gov/rest/json/cves/2.0";
-const BATCH_SIZE = 100;
+const NVD_API_KEY = process.env.NVD_API_KEY || "";
+const BATCH_SIZE = NVD_API_KEY ? 2000 : 100;
 
 /**
  * Extract CVSS v3.1 or v3.0 metrics from an NVD CVE item.
@@ -213,11 +214,12 @@ export async function POST() {
 
     const url = `${NVD_API_BASE}?${params.toString()}`;
 
-    const nvdResponse = await fetch(url, {
-      headers: {
-        "User-Agent": "SCS-v13-CVE-Scanner/1.0",
-      },
-    });
+    const headers: Record<string, string> = {
+      "User-Agent": "SCS-v13-CVE-Scanner/1.0",
+    };
+    if (NVD_API_KEY) headers["apiKey"] = NVD_API_KEY;
+
+    const nvdResponse = await fetch(url, { headers });
 
     if (!nvdResponse.ok) {
       const errorText = await nvdResponse.text().catch(() => "Unknown error");

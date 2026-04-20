@@ -10,6 +10,7 @@ const STEPS = [
   { segment: "inventory", ko: "자산 등록", en: "Inventory", ja: "資産登録" },
   { segment: "dfd", ko: "DFD 생성", en: "DFD", ja: "DFD生成" },
   { segment: "assess", ko: "보안 평가", en: "Assessment", ja: "セキュリティ評価" },
+  { segment: "testproc", ko: "테스트 절차", en: "Test Procedure", ja: "テスト手順" },
   { segment: "document", ko: "문서 생성", en: "Documents", ja: "文書生成" },
   { segment: "submit", ko: "제출", en: "Submit", ja: "提出" },
 ];

@@ -355,6 +355,7 @@ model Assessment {
 model RiskEntry {
   id         String    @id @default(cuid())
   projectId  String
+  cveId      String?
   threatId   String
   assetRef   String?
   likelihood Int
@@ -368,6 +369,7 @@ model RiskEntry {
   project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
+  @@index([cveId])
   @@index([deletedAt])
 }
 
@@ -787,4 +789,79 @@ model VendorAuditResult {
   @@index([vendorId])
   @@index([equipmentId])
   @@index([deletedAt])
+}
+
+// ─── Test Procedure ──────────────────────────────────────────────────────────
+
+model TestProcedure {
+  id                 String                  @id @default(cuid())
+  projectId          String
+  equipmentId        String?
+  status             String                  @default("MANUAL") // MANUAL | UPLOADED
+  uploadedFilePath   String?
+  uploadedFileName   String?
+  uploadedOrigName   String?
+  uploadedMimeType   String?
+  uploadedSize       Int?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+  deletedAt          DateTime?
+  hwGroups           TestProcHwGroup[]
+  hwItems            TestProcedureHwItem[]
+  fnItems            TestProcedureFnItem[]
+
+  @@index([projectId])
+  @@index([equipmentId])
+  @@index([deletedAt])
+}
+
+model TestProcHwGroup {
+  id            String                @id @default(cuid())
+  testProcId    String
+  label         String
+  hardwareIds   String                @db.Text // JSON array: ["hw1","hw2"]
+  sortOrder     Int                   @default(0)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  testProcedure TestProcedure         @relation(fields: [testProcId], references: [id], onDelete: Cascade)
+  hwItems       TestProcedureHwItem[]
+
+  @@index([testProcId])
+}
+
+model TestProcedureHwItem {
+  id              Int                @id @default(autoincrement())
+  testProcId      String
+  hwGroupId       String?
+  no              Int                @default(1)
+  category        String?            @db.Text
+  criteria        String?            @db.Text
+  method          String?            @db.Text
+  sortOrder       Int                @default(0)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  testProcedure   TestProcedure      @relation(fields: [testProcId], references: [id], onDelete: Cascade)
+  hwGroup         TestProcHwGroup?   @relation(fields: [hwGroupId], references: [id], onDelete: Cascade)
+
+  @@index([testProcId])
+  @@index([hwGroupId])
+}
+
+model TestProcedureFnItem {
+  id            Int           @id @default(autoincrement())
+  testProcId    String
+  softwareId    String?
+  softwareName  String?
+  section       String        @default("System Access")
+  no            Int           @default(1)
+  category      String?       @db.Text
+  criteria      String?       @db.Text
+  method        String?       @db.Text
+  sortOrder     Int           @default(0)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  testProcedure TestProcedure @relation(fields: [testProcId], references: [id], onDelete: Cascade)
+
+  @@index([testProcId])
+  @@index([softwareId])
 }

@@ -7,7 +7,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   Package, Shield, FileText, Send, ArrowRight, ArrowLeft,
-  Cpu, AlertCircle, CheckCircle, Network,
+  Cpu, AlertCircle, CheckCircle, Network, ClipboardList,
   Save, ChevronDown,
   Zap, LayoutTemplate, Copy, Trash2,
 } from "lucide-react";
@@ -68,6 +68,7 @@ const WORKFLOW_PHASES = [
   { icon: Package, labelEn: "Inventory", labelKo: "자산 등록", labelJa: "資産登録", descEn: "Register hardware & software", descKo: "HW/SW 목록 입력", descJa: "HW/SWの登録", segment: "inventory", color: "#0F62FE" },
   { icon: Network, labelEn: "DFD", labelKo: "DFD 생성", labelJa: "DFD生成", descEn: "Create data flow diagram", descKo: "데이터 흐름도 생성", descJa: "データフロー図の作成", segment: "inventory?tab=dfd", color: "#24A148" },
   { icon: Shield, labelEn: "Assessment", labelKo: "보안 평가", labelJa: "セキュリティ評価", descEn: "SC-1 to SC-13 checks", descKo: "SC-1~SC-13 체크", descJa: "SC-1〜SC-13チェック", segment: "assess", color: "#EB6200" },
+  { icon: ClipboardList, labelEn: "Test Procedure", labelKo: "테스트 절차", labelJa: "テスト手順", descEn: "Hardware & function inspection", descKo: "하드웨어 및 기능 점검", descJa: "ハードウェア・機能点検", segment: "testproc", color: "#A56EFF" },
   { icon: FileText, labelEn: "Documents", labelKo: "문서 생성", labelJa: "文書生成", descEn: "Generate certification docs", descKo: "인증 문서 생성", descJa: "認証文書の生成", segment: "document", color: "#DA1E28" },
   { icon: Send, labelEn: "Submit", labelKo: "제출", labelJa: "提出", descEn: "Submit to shipyard", descKo: "조선소에 제출", descJa: "造船所に提出", segment: "submit", color: "#8A3FFC" },
 ];
@@ -355,7 +356,7 @@ export default function EquipmentDetailPage() {
           const isApproved = eq.status === "APPROVED";
           // Step completion: CBS info is prerequisite for everything
           // [inventory, DFD, assessment, documents, submit]
-          const stepDone = [hasAssets, hasDfd, hasAssets && hasDfd, isSubmitted, isApproved];
+          const stepDone = [hasAssets, hasDfd, hasAssets && hasDfd, true, isSubmitted, isApproved];
           // Find current step (first incomplete)
           const currentStep = stepDone.findIndex((d) => !d);
 
