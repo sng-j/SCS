@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Cpu, Monitor, Plus, Pencil, Trash2, Network, Package,
   Upload, Download, ArrowLeft, ArrowRight, FileText, Shield, ChevronDown,
-  Server, Radio, HardDrive, AlertCircle, Eye, Radar, CheckSquare, ListPlus, X, CheckCircle, Save,
+  Server, Radio, HardDrive, AlertCircle, Eye, Radar, CheckSquare, ListPlus, X, CheckCircle, Save, Globe,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
@@ -24,6 +24,7 @@ import { DfdEditor } from "@/components/dfd/dfd-editor";
 // DFD viewer uses ReactFlow editor directly
 import { ScanImportDialog } from "@/components/inventory/scan-import-dialog";
 import { DiagramImportDialog } from "@/components/inventory/diagram-import-dialog";
+import { CveBadge, CveMeter, emptySeverity, addToSeverity, type SeverityCounts } from "@/components/inventory/cve-badge";
 import { type Hardware, type Software, type HwForm, type SwForm, HW_TYPES, SW_TYPES, isHwComplete, DEVICE_FIELD_CONFIG, isFieldVisible, getMissingRequiredHw, isValidIp, isValidMac } from "@/components/inventory/inventory-types";
 import { useLocaleStore } from "@/stores/locale-store";
 import { tx } from "@/lib/i18n";
@@ -93,6 +94,8 @@ export default function InventoryPage() {
 
   const [hardware, setHardware] = useState<Hardware[]>([]);
   const [software, setSoftware] = useState<Software[]>([]);
+  const [cveBySwId, setCveBySwId] = useState<Map<string, SeverityCounts>>(new Map());
+  const [cveByHwId, setCveByHwId] = useState<Map<string, SeverityCounts>>(new Map());
   const [loading, setLoading] = useState(true);
 
   const [hwDialogOpen, setHwDialogOpen] = useState(false);
@@ -134,12 +137,45 @@ export default function InventoryPage() {
     setLoading(true);
     try {
       const eqParam = equipmentId ? `?equipmentId=${equipmentId}` : "";
-      const [hwRes, swRes] = await Promise.all([
-        fetch(`/api/projects/${projectId}/hardware${eqParam}`),
-        fetch(`/api/projects/${projectId}/software${eqParam}`),
+      // Use allSettled so a transient network failure on one endpoint (e.g. CVE match
+      // fetch after a browser sleep / HMR reconnect) does not reject the whole batch
+      // and surface as an unhandled "TypeError: Failed to fetch".
+      const safeFetch = (url: string) =>
+        fetch(url).catch((err) => {
+          console.warn(`[inventory] fetch failed: ${url}`, err);
+          return null;
+        });
+      const [hwRes, swRes, cveRes] = await Promise.all([
+        safeFetch(`/api/projects/${projectId}/hardware${eqParam}`),
+        safeFetch(`/api/projects/${projectId}/software${eqParam}`),
+        safeFetch(`/api/projects/${projectId}/cve-matches`),
       ]);
-      if (hwRes.ok) setHardware(await hwRes.json());
-      if (swRes.ok) setSoftware(await swRes.json());
+      if (hwRes?.ok) setHardware(await hwRes.json());
+      if (swRes?.ok) setSoftware(await swRes.json());
+
+      // Build severity maps keyed by softwareId and hardwareId for badge rendering
+      if (cveRes?.ok) {
+        const matches = await cveRes.json() as Array<{
+          softwareId: string | null;
+          hardwareId: string | null;
+          cveDetail: { baseSeverity: string | null } | null;
+        }>;
+        const sw = new Map<string, SeverityCounts>();
+        const hw = new Map<string, SeverityCounts>();
+        for (const m of matches) {
+          const sev = m.cveDetail?.baseSeverity;
+          if (m.softwareId) {
+            if (!sw.has(m.softwareId)) sw.set(m.softwareId, emptySeverity());
+            addToSeverity(sw.get(m.softwareId)!, sev);
+          }
+          if (m.hardwareId) {
+            if (!hw.has(m.hardwareId)) hw.set(m.hardwareId, emptySeverity());
+            addToSeverity(hw.get(m.hardwareId)!, sev);
+          }
+        }
+        setCveBySwId(sw);
+        setCveByHwId(hw);
+      }
     } finally { setLoading(false); }
   }, [projectId, equipmentId]);
 
@@ -372,7 +408,7 @@ export default function InventoryPage() {
 
                       {/* Asset tab content */}
                       {assetTab === "sbom" && (
-                        <SbomView hardware={hardware} software={software} locale={locale} projectId={projectId} equipmentId={equipmentId} onRefresh={fetchAssets} />
+                        <SbomView hardware={hardware} software={software} locale={locale} projectId={projectId} equipmentId={equipmentId} onRefresh={fetchAssets} cveBySwId={cveBySwId} cveByHwId={cveByHwId} />
                       )}
 
                       {assetTab === "hardware" && (<>
@@ -419,6 +455,7 @@ export default function InventoryPage() {
                           onEdit={(sw) => { setEditSw(sw); setSwDialogOpen(true); }}
                           onDelete={(sw) => setDeleteTarget({ type: "sw", item: sw })}
                           projectId={projectId} equipmentId={equipmentId} onRefresh={fetchAssets}
+                          cveBySwId={cveBySwId}
                         />
                       )}
                     </>
@@ -775,10 +812,11 @@ function AuditCell({ hwId, hwName, projectId, equipmentId, locale }: {
 
 // ─── Software Table ─────────────────────────────────────────────────────────
 
-function SoftwareTable({ software, locale, canEdit, onEdit, onDelete, projectId, equipmentId, onRefresh }: {
+function SoftwareTable({ software, locale, canEdit, onEdit, onDelete, projectId, equipmentId, onRefresh, cveBySwId }: {
   software: Software[]; locale: string; canEdit: boolean;
   onEdit: (sw: Software) => void; onDelete: (sw: Software) => void;
   projectId: string; equipmentId?: string | null; onRefresh: () => void;
+  cveBySwId: Map<string, SeverityCounts>;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
@@ -846,9 +884,10 @@ function SoftwareTable({ software, locale, canEdit, onEdit, onDelete, projectId,
                 </th>
               )}
               {[
-                { label: tx(locale, "Name", "이름", "名前"), cls: "text-left" },
-                { label: tx(locale, "Ver.", "버전", "バージョン"), cls: "text-left w-[90px]" },
+                { label: tx(locale, "Name / CPE", "이름 / CPE", "名前 / CPE"), cls: "text-left" },
+                { label: tx(locale, "Ver.", "버전", "バージョン"), cls: "text-left w-[84px]" },
                 { label: tx(locale, "Type", "유형", "タイプ"), cls: "text-left w-[80px]" },
+                { label: "CVE", cls: "text-left w-[72px]" },
                 { label: tx(locale, "Vendor", "벤더", "ベンダー"), cls: "text-left w-[90px] hidden md:table-cell" },
                 { label: tx(locale, "HW", "연결 HW", "HW"), cls: "text-left w-[110px] hidden md:table-cell" },
                 { label: tx(locale, "Purpose", "용도", "用途"), cls: "text-left hidden lg:table-cell" },
@@ -861,6 +900,8 @@ function SoftwareTable({ software, locale, canEdit, onEdit, onDelete, projectId,
           <tbody className="divide-y divide-border/60">
             {software.map((sw, idx) => {
               const isChecked = selected.has(sw.id);
+              const cve = cveBySwId.get(sw.id);
+              const hasCve = !!cve && cve.total > 0;
               return (
                 <tr key={sw.id} className={cn("group hover:bg-brand-lighter/25 transition-colors duration-100", isChecked && "bg-brand-lighter/20", idx % 2 !== 0 && !isChecked && "bg-surface-secondary/15")}>
                   {canEdit && (
@@ -869,9 +910,18 @@ function SoftwareTable({ software, locale, canEdit, onEdit, onDelete, projectId,
                         className="checkbox-cytur" />
                     </td>
                   )}
-                  <td className="px-3 py-2.5">
+                  <td className="px-3 py-2.5 max-w-0">
                     <p className="text-[12px] font-semibold text-text leading-tight truncate">{sw.name}</p>
-                    {sw.modelName && <p className="text-[10px] text-text-tertiary mt-0.5 truncate">{sw.modelName}</p>}
+                    <div className="flex items-center gap-1.5 mt-1">
+                      {sw.cpe ? (
+                        <span className="cpe-chip" title={sw.cpe}>{sw.cpe}</span>
+                      ) : (
+                        <span className="cpe-chip cpe-chip--missing" title={tx(locale, "CPE required for CVE matching", "CVE 매칭에 CPE 필요", "CVEマッチングにCPEが必要")}>
+                          {tx(locale, "no CPE", "CPE 없음", "CPEなし")}
+                        </span>
+                      )}
+                      {sw.modelName && <span className="text-[10px] text-text-tertiary truncate">{sw.modelName}</span>}
+                    </div>
                   </td>
                   <td className="px-3 py-2.5">
                     {sw.version
@@ -882,6 +932,17 @@ function SoftwareTable({ software, locale, canEdit, onEdit, onDelete, projectId,
                     <span className={cn("px-1.5 py-0.5 rounded text-[9px] font-bold", SW_TYPE_COLORS[sw.swType] || "bg-gray-100 text-gray-600")}>
                       {SW_TYPES.find((t) => t.value === sw.swType)?.label || sw.swType}
                     </span>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {hasCve ? (
+                      <CveBadge counts={cve!} />
+                    ) : !sw.cpe ? (
+                      <span className="text-[10px] text-text-tertiary font-mono italic">{tx(locale, "—", "대기", "—")}</span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[10px] text-safety-low font-mono font-bold">
+                        <CheckCircle size={9} strokeWidth={2.5} /> 0
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2.5 text-[11px] text-text-secondary hidden md:table-cell truncate">{sw.vendor || <span className="text-border-strong">—</span>}</td>
                   <td className="px-3 py-2.5 hidden md:table-cell truncate">
@@ -904,10 +965,44 @@ function SoftwareTable({ software, locale, canEdit, onEdit, onDelete, projectId,
           </tbody>
         </table>
       </div>
-      <div className="px-4 py-2 border-t border-border bg-surface-secondary/30">
+      <div className="px-4 py-2 border-t border-border bg-surface-secondary/30 flex items-center justify-between gap-3 flex-wrap">
         <p className="text-[11px] text-text-tertiary">
           {locale === "ko" ? `총 ${software.length}개 항목` : locale === "ja" ? `合計${software.length}件` : `${software.length} item${software.length !== 1 ? "s" : ""} total`}
         </p>
+        {(() => {
+          const agg = software.reduce((acc, s) => {
+            const c = cveBySwId.get(s.id);
+            if (c) {
+              acc.total += c.total;
+              acc.critical += c.critical;
+              acc.high += c.high;
+              acc.medium += c.medium;
+              acc.low += c.low;
+              acc.unknown += c.unknown;
+            }
+            return acc;
+          }, emptySeverity());
+          const missingCpe = software.filter((s) => !s.cpe).length;
+          if (agg.total === 0 && missingCpe === 0) return null;
+          return (
+            <div className="flex items-center gap-3 text-[10px]">
+              {agg.total > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-text-tertiary uppercase tracking-[0.08em] font-bold">
+                    {tx(locale, "CVE", "CVE", "CVE")}
+                  </span>
+                  <CveBadge counts={agg} size="sm" />
+                </div>
+              )}
+              {missingCpe > 0 && (
+                <span className="inline-flex items-center gap-1 text-safety-elevated font-mono font-bold tabular-nums">
+                  <AlertCircle size={10} strokeWidth={2.5} />
+                  {missingCpe} {tx(locale, "without CPE", "CPE 누락", "CPE未登録")}
+                </span>
+              )}
+            </div>
+          );
+        })()}
       </div>
     </Card>
   );
@@ -1173,9 +1268,36 @@ function HwSlidePanel({ hw, swList, locale, canEdit, onClose, onDelete, onAddSw,
 
 // ─── SBOM View ──────────────────────────────────────────────────────────────
 
-function SbomView({ hardware, software, locale, projectId, equipmentId, onRefresh }: { hardware: Hardware[]; software: Software[]; locale: string; projectId?: string; equipmentId?: string | null; onRefresh?: () => void }) {
+function SbomView({ hardware, software, locale, projectId: _projectId, equipmentId: _equipmentId, onRefresh: _onRefresh, cveBySwId, cveByHwId }: {
+  hardware: Hardware[];
+  software: Software[];
+  locale: string;
+  projectId?: string;
+  equipmentId?: string | null;
+  onRefresh?: () => void;
+  cveBySwId: Map<string, SeverityCounts>;
+  cveByHwId: Map<string, SeverityCounts>;
+}) {
   const grouped = hardware.map((hw) => ({ hw, sw: software.filter((s) => s.hardwareId === hw.id) }));
   const unlinked = software.filter((s) => !s.hardwareId);
+
+  // Aggregate SW-level CVE counts per HW when HW has no direct CVE match
+  // (ensures the HW card header meter reflects software-side vulnerabilities too).
+  const effectiveHwCve = (hw: Hardware, swList: Software[]): SeverityCounts => {
+    const direct = cveByHwId.get(hw.id);
+    const agg = direct ? { ...direct } : emptySeverity();
+    for (const s of swList) {
+      const c = cveBySwId.get(s.id);
+      if (!c) continue;
+      agg.total += c.total;
+      agg.critical += c.critical;
+      agg.high += c.high;
+      agg.medium += c.medium;
+      agg.low += c.low;
+      agg.unknown += c.unknown;
+    }
+    return agg;
+  };
 
   return (
     <div className="space-y-3">
@@ -1186,53 +1308,108 @@ function SbomView({ hardware, software, locale, projectId, equipmentId, onRefres
           subtitle={tx(locale, "Software BOM information is displayed after asset registration.", "자산 등록 시 입력한 소프트웨어 구성목록이 표시됩니다.", "資産登録後、ソフトウェア構成リストが表示されます。")}
         />
       )}
-      {grouped.map(({ hw, sw }) => (
-        <Card key={hw.id} padding="none">
-          <div className="px-4 py-3 border-b border-border bg-surface-secondary/30">
-            <div className="flex items-center gap-2">
-              <Cpu size={14} className="text-brand" />
-              <p className="text-body-sm font-bold text-text">{hw.name}</p>
-              <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold", HW_TYPE_COLORS[hw.type] || "bg-gray-100 text-gray-600")}>
-                {HW_TYPES.find((t) => t.value === hw.type)?.label || hw.type}
-              </span>
-            </div>
-          </div>
-          {sw.length === 0 ? (
-            <div className="px-4 py-3 text-body-xs text-text-tertiary italic">{tx(locale, "No linked SW", "연결된 SW 없음", "リンクされたSWなし")}</div>
-          ) : (
-            <div className="divide-y divide-border">
-              {sw.map((s) => (
-                <div key={s.id} className="flex items-center justify-between px-4 py-2.5 pl-10">
-                  <div className="flex items-center gap-2">
-                    <span className="text-body-sm text-text">{s.name}</span>
-                    {s.version && <span className="font-mono text-[11px] text-text-tertiary">{s.version}</span>}
-                  </div>
-                  <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold", SW_TYPE_COLORS[s.swType] || "bg-gray-100 text-gray-600")}>
-                    {SW_TYPES.find((t) => t.value === s.swType)?.label || s.swType}
+      {grouped.map(({ hw, sw }, idx) => {
+        const hwCve = effectiveHwCve(hw, sw);
+        return (
+          <motion.div
+            key={hw.id}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25, delay: Math.min(idx * 0.03, 0.15) }}
+          >
+            <Card padding="none">
+              <div className="px-4 py-3 border-b border-border bg-surface-secondary/30">
+                <div className="flex items-center gap-2">
+                  <Cpu size={14} className="text-brand" />
+                  <p className="text-body-sm font-bold text-text truncate">{hw.name}</p>
+                  <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0", HW_TYPE_COLORS[hw.type] || "bg-gray-100 text-gray-600")}>
+                    {HW_TYPES.find((t) => t.value === hw.type)?.label || hw.type}
                   </span>
+                  <div className="ml-auto shrink-0">
+                    <CveMeter counts={hwCve} locale={locale} />
+                  </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </Card>
-      ))}
+              </div>
+              {sw.length === 0 ? (
+                <div className="px-4 py-3 text-body-xs text-text-tertiary italic">{tx(locale, "No linked SW", "연결된 SW 없음", "リンクされたSWなし")}</div>
+              ) : (
+                <div className="divide-y divide-border/60">
+                  {sw.map((s) => {
+                    const swCve = cveBySwId.get(s.id);
+                    return (
+                      <div key={s.id} className="grid grid-cols-[1fr_auto] gap-x-3 items-center px-4 py-2.5 pl-10 group/row hover:bg-brand-lighter/20 transition-colors">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-body-sm text-text truncate">{s.name}</span>
+                            {s.version && (
+                              <span className="font-mono text-[10px] text-text bg-surface-secondary px-1.5 py-0.5 rounded border border-border/70 shrink-0">
+                                {s.version}
+                              </span>
+                            )}
+                            {s.vendor && <span className="text-[10px] text-text-tertiary truncate">· {s.vendor}</span>}
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-1">
+                            {s.cpe ? (
+                              <span className="cpe-chip" title={s.cpe}>{s.cpe}</span>
+                            ) : (
+                              <span className="cpe-chip cpe-chip--missing" title={tx(locale, "CPE required for CVE matching", "CVE 매칭에 CPE 필요", "CVEマッチングにCPEが必要")}>
+                                {tx(locale, "no CPE", "CPE 없음", "CPEなし")}
+                              </span>
+                            )}
+                            {s.listeningPort && (
+                              <span className="font-mono text-[10px] text-text-tertiary">
+                                <Globe size={9} className="inline mr-0.5 -mt-0.5" />{s.listeningPort}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {swCve && swCve.total > 0 && <CveBadge counts={swCve} />}
+                          <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold", SW_TYPE_COLORS[s.swType] || "bg-gray-100 text-gray-600")}>
+                            {SW_TYPES.find((t) => t.value === s.swType)?.label || s.swType}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Card>
+          </motion.div>
+        );
+      })}
       {unlinked.length > 0 && (
         <Card padding="none">
-          <div className="px-4 py-3 border-b border-border bg-surface-secondary/30">
+          <div className="px-4 py-3 border-b border-border bg-surface-secondary/30 flex items-center gap-2">
+            <AlertCircle size={13} className="text-safety-elevated" />
             <p className="text-body-sm font-bold text-text-tertiary">{tx(locale, "Unlinked SW", "미연결 SW", "未接続SW")}</p>
+            <span className="font-mono text-[10px] text-text-tertiary tabular-nums">({unlinked.length})</span>
           </div>
-          <div className="divide-y divide-border">
-            {unlinked.map((s) => (
-              <div key={s.id} className="flex items-center justify-between px-4 py-2.5">
-                <div className="flex items-center gap-2">
-                  <AlertCircle size={12} className="text-safety-elevated" />
-                  <span className="text-body-sm text-text">{s.name}</span>
+          <div className="divide-y divide-border/60">
+            {unlinked.map((s) => {
+              const swCve = cveBySwId.get(s.id);
+              return (
+                <div key={s.id} className="grid grid-cols-[1fr_auto] gap-x-3 items-center px-4 py-2.5">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-body-sm text-text truncate">{s.name}</span>
+                      {s.version && <span className="font-mono text-[10px] text-text-tertiary">{s.version}</span>}
+                    </div>
+                    {s.cpe ? (
+                      <span className="cpe-chip mt-1" title={s.cpe}>{s.cpe}</span>
+                    ) : (
+                      <span className="cpe-chip cpe-chip--missing mt-1">{tx(locale, "no CPE", "CPE 없음", "CPEなし")}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {swCve && swCve.total > 0 && <CveBadge counts={swCve} />}
+                    <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold", SW_TYPE_COLORS[s.swType] || "bg-gray-100 text-gray-600")}>
+                      {SW_TYPES.find((t) => t.value === s.swType)?.label || s.swType}
+                    </span>
+                  </div>
                 </div>
-                <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold", SW_TYPE_COLORS[s.swType] || "bg-gray-100 text-gray-600")}>
-                  {SW_TYPES.find((t) => t.value === s.swType)?.label || s.swType}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </Card>
       )}
