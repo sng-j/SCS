@@ -292,7 +292,7 @@ export default function DocumentPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {isShipyard && (
+            {isShipyardLike && (
               <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-secondary text-[12px] font-semibold text-text-tertiary">
                 <Lock size={13} />
                 {tx(locale, "Read Only", "읽기 전용", "読み取り専用")}

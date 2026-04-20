@@ -2,7 +2,7 @@
  * E27-SBOM: Software Bill of Materials
  * Lists all software components with their host hardware mapping.
  */
-import type { Document } from "docx";
+import type { Document, Paragraph, Table } from "docx";
 import type { DocumentData } from "./index";
 import {
   buildCoverPage,

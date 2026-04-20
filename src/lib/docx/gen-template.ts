@@ -3342,7 +3342,7 @@ export function generateTemplate(
       const status = scAssess.length === 0 ? "Not Assessed" : passCount === scAssess.length ? "✅ Implemented" : passCount > 0 ? "⚠ Partial" : "❌ Not Implemented";
       return [cap, sc, impl, status];
     });
-    elements.push(heading2("Security Capability Summary"), buildTable(
+    content.push(heading2("Security Capability Summary"), buildTable(
       ["Capability", "E27 SC Ref", "Implementation", "Status"], capRows,
     ));
   }
@@ -3351,13 +3351,13 @@ export function generateTemplate(
   if (focus === "patch-management") {
     // Scope — list devices
     if (hardware.length > 0) {
-      elements.push(heading2("CBS Components in Scope"), buildTable(
+      content.push(heading2("CBS Components in Scope"), buildTable(
         ["#", "Device", "Type", "Zone", "Category"],
         hardware.map((hw, i) => [String(i + 1), hw.name, hw.type, hw.zone || "—", "CAT III"]),
       ));
     }
     // Patch Schedule table
-    elements.push(heading2("Patch Schedule Summary"), buildTable(
+    content.push(heading2("Patch Schedule Summary"), buildTable(
       ["Category", "Frequency", "Method", "Responsible", "Approval"],
       [
         ["CAT I (Navigation/Safety)", "Annually", "Vendor-approved media", "Chief Engineer", "Master + CSO"],
@@ -3367,7 +3367,7 @@ export function generateTemplate(
       ],
     ));
     // Patch Log template
-    elements.push(heading2("Patch Log Template"), buildTable(
+    content.push(heading2("Patch Log Template"), buildTable(
       ["Date", "System", "Patch / KB ID", "Version Before", "Version After", "Tested By", "Applied By"],
       [["", "", "", "", "", "", ""], ["", "", "", "", "", "", ""], ["", "", "", "", "", "", ""]],
     ));

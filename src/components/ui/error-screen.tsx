@@ -12,7 +12,7 @@ export interface ErrorAction {
   label: { en: string; ko: string; ja: string };
   href?: string;
   onClick?: () => void;
-  variant?: "default" | "secondary" | "outline";
+  variant?: "primary" | "secondary" | "outline";
 }
 
 export interface ErrorScreenProps {
@@ -145,7 +145,7 @@ export function ErrorScreen({
         <div className="flex flex-wrap items-center gap-2 mt-8">
           {actions.map((action, i) => {
             const label = action.label[locale as "en" | "ko" | "ja"] || action.label.en;
-            const v = action.variant || (i === 0 ? "default" : "outline");
+            const v = action.variant || (i === 0 ? "primary" : "outline");
             if (action.href) {
               return (
                 <Link key={i} href={action.href}>
