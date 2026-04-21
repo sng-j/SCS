@@ -28,6 +28,12 @@ import { AuditRunsList } from "@/components/audit/audit-runs-list";
 
 interface Equipment {
   id: string; name: string; status: string;
+  description: string | null;
+  securityCategory: number | null;
+  isTypeApproved: boolean;
+  manufacturerName: string | null;
+  productModelName: string | null;
+  updatedAt: string;
   // API returns `vendors` (M2M array). The legacy singular `vendor` was always
   // null at this endpoint, which made the header show "벤더 미배정" even when
   // vendors were assigned.
@@ -35,10 +41,21 @@ interface Equipment {
   _count: { hardware: number; software: number };
   dfdDiagram: { id: string } | null;
 }
+interface SubmissionEvent {
+  id: string; phase: string; status: string;
+  submittedAt: string | null; createdAt: string; updatedAt: string;
+  notes: string | null; reviewNote: string | null;
+}
+interface ChangeEventItem {
+  id: string; subject: string; kind: string; actor: string | null;
+  resolvedAt: string | null; createdAt: string;
+}
 interface Hardware {
   id: string; name: string; type: string; manufacturer: string | null; model: string | null;
   ipAddress: string | null; macAddress?: string | null; zone: string | null;
   location?: string | null; purpose?: string | null; category?: string | null;
+  protectionMethod?: string | null; commProtocols?: string | null; physicalInterface?: string | null;
+  sysSoftwareCategory?: string | null; sysSoftwareVersion?: string | null;
   software?: { id: string; name: string; version: string | null }[];
   _count?: { cveMatches: number };
 }
@@ -104,7 +121,30 @@ function signalColor(pct: number) {
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
-type Section = "assets" | "assessment" | "risk" | "audit" | "documents";
+type Section = "assets" | "assessment" | "risk" | "audit" | "documents" | "timeline";
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Convert an absolute date into a compact relative string (mono-ready). */
+function relativeTime(iso: string, locale: string): string {
+  const d = new Date(iso);
+  const diff = Date.now() - d.getTime();
+  const sec = Math.floor(diff / 1000);
+  const min = Math.floor(sec / 60);
+  const hr = Math.floor(min / 60);
+  const day = Math.floor(hr / 24);
+  if (sec < 60) return tx(locale, "just now", "방금 전", "たった今");
+  if (min < 60) return tx(locale, `${min}m ago`, `${min}분 전`, `${min}分前`);
+  if (hr < 24)  return tx(locale, `${hr}h ago`, `${hr}시간 전`, `${hr}時間前`);
+  if (day < 30) return tx(locale, `${day}d ago`, `${day}일 전`, `${day}日前`);
+  return d.toLocaleDateString(locale === "ko" ? "ko-KR" : locale === "ja" ? "ja-JP" : "en-US");
+}
+
+const CAT_META: Record<number, { label: string; color: string; bg: string; border: string; note: { en: string; ko: string; ja: string } }> = {
+  1: { label: "CAT I",   color: "#DA1E28", bg: "#FFF1F1", border: "#FFC7CD", note: { en: "Essential safety system — failure may endanger ship or crew", ko: "필수 안전 시스템 — 장애 시 선박/승조원 위험", ja: "必須安全システム — 障害時に船舶/乗組員が危険" } },
+  2: { label: "CAT II",  color: "#EB6200", bg: "#FFF3E0", border: "#FFD5AA", note: { en: "Essential operational system — loss of function degrades operation", ko: "필수 운영 시스템 — 기능 상실 시 운영 저하", ja: "必須運用システム — 機能喪失で運用低下" } },
+  3: { label: "CAT III", color: "#0F62FE", bg: "#EDF5FF", border: "#C1D8FF", note: { en: "Non-critical IT — convenience, no operational safety impact", ko: "비중요 IT — 편의용, 안전 운영에 영향 없음", ja: "非重要IT — 便利性のみ、運用安全への影響なし" } },
+};
 
 export default function ViewerEquipmentPage() {
   const { projectId, equipmentId } = useParams<{ projectId: string; equipmentId: string }>();
@@ -117,6 +157,8 @@ export default function ViewerEquipmentPage() {
   const [documents, setDocuments] = useState<Doc[]>([]);
   const [risks, setRisks] = useState<Risk[]>([]);
   const [auditRuns, setAuditRuns] = useState<AuditRunSummary[]>([]);
+  const [submissions, setSubmissions] = useState<SubmissionEvent[]>([]);
+  const [changes, setChanges] = useState<ChangeEventItem[]>([]);
   const [cveBySwId, setCveBySwId] = useState<Map<string, SeverityCounts>>(new Map());
   const [cveByHwId, setCveByHwId] = useState<Map<string, SeverityCounts>>(new Map());
   const [hwCveMatches, setHwCveMatches] = useState<Map<string, ViewerCveMatch[]>>(new Map());
@@ -163,7 +205,9 @@ export default function ViewerEquipmentPage() {
       safe(fetch(`/api/projects/${projectId}/risks`)),
       safe(fetch(`/api/projects/${projectId}/cve-matches`)),
       safe(fetch(`/api/vendor/audit-tools/upload?equipmentId=${equipmentId}`)),
-    ]).then(async ([pRes, eqRes, hwRes, swRes, asRes, docsRes, riskRes, cveRes, auditRes]) => {
+      safe(fetch(`/api/projects/${projectId}/submissions`)),
+      safe(fetch(`/api/projects/${projectId}/changes?filter=all&limit=10`)),
+    ]).then(async ([pRes, eqRes, hwRes, swRes, asRes, docsRes, riskRes, cveRes, auditRes, subRes, chgRes]) => {
       const p = pRes?.ok ? await pRes.json() : null;
       const eqs = eqRes?.ok ? await eqRes.json() : [];
       const hwList: Hardware[] = hwRes?.ok ? await hwRes.json() : [];
@@ -239,6 +283,18 @@ export default function ViewerEquipmentPage() {
           createdAt: r.createdAt,
           hardwareId: r.hardwareId ?? null,
         })));
+      }
+
+      // Submissions (project-level — shows phase progression history)
+      if (subRes?.ok) {
+        const subs = await subRes.json();
+        setSubmissions(Array.isArray(subs) ? subs : []);
+      }
+      // Change events
+      if (chgRes?.ok) {
+        const raw = await chgRes.json();
+        const list = Array.isArray(raw) ? raw : (raw.changes ?? raw.items ?? []);
+        setChanges(list as ChangeEventItem[]);
       }
     }).finally(() => setLoading(false));
   }, [projectId, equipmentId]);
@@ -398,8 +454,13 @@ export default function ViewerEquipmentPage() {
           <span className="tabular-nums">HW {hardware.length}</span>
           <span className="opacity-50">·</span>
           <span className="tabular-nums">SW {software.length}</span>
+          <span className="h-3 w-px bg-border/80" />
+          <span className="tabular-nums">{relativeTime(equipment.updatedAt, locale)}</span>
         </div>
       </motion.div>
+
+      {/* ── Equipment Identity — the "what is this system" card ─────── */}
+      <EquipmentIdentityCard equipment={equipment} locale={locale} />
 
       {/* ── HUD: 5 stat cards — staggered console bootup ─────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -604,7 +665,10 @@ export default function ViewerEquipmentPage() {
         )}
       </motion.div>
 
-      {/* ── Accordions — numbered console sections (01 – 05) ────────── */}
+      {/* ── Top Risks — surface the 3 worst open risks before accordions ─ */}
+      <TopRisksStrip risks={risks} locale={locale} />
+
+      {/* ── Accordions — numbered console sections (01 – 06) ────────── */}
       <div className="space-y-2 pt-1">
         {/* Assets */}
         <AccordionSection
@@ -633,22 +697,45 @@ export default function ViewerEquipmentPage() {
                 <div key={hw.id}>
                   <button
                     onClick={() => setExpandedHw(isExpanded ? null : hw.id)}
-                    className="w-full flex items-center gap-3 px-5 py-3 hover:bg-surface-secondary/30 transition-colors text-left"
+                    className="w-full flex items-start gap-3 px-5 py-3 hover:bg-surface-secondary/30 transition-colors text-left"
                   >
+                    <Cpu size={14} className="text-text-tertiary shrink-0 mt-0.5" strokeWidth={2.25} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Cpu size={12} className="text-text-tertiary" />
                         <p className="text-body-sm font-semibold text-text truncate">{hw.name}</p>
-                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-surface-secondary text-text-tertiary">{hw.type}</span>
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-surface-secondary text-text-tertiary uppercase tracking-[0.06em]">{hw.type}</span>
+                        {hw.zone && <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-brand-lighter text-brand uppercase tracking-[0.06em]">{hw.zone}</span>}
                       </div>
-                      <p className="text-body-xs text-text-tertiary mt-0.5">
+                      <p className="text-body-xs text-text-tertiary mt-0.5 font-mono tracking-tight">
                         {[hw.manufacturer, hw.model].filter(Boolean).join(" ") || "—"}
-                        {hw.ipAddress && ` · IP ${hw.ipAddress}`}
-                        {hw.zone && ` · ${hw.zone}`}
+                        {hw.ipAddress && <><span className="opacity-50 mx-1.5">·</span>{hw.ipAddress}</>}
                       </p>
+                      {/* Dense info chips — purpose / protection / protocol */}
+                      {(hw.purpose || hw.protectionMethod || hw.commProtocols) && (
+                        <div className="flex flex-wrap items-center gap-1 mt-1.5">
+                          {hw.purpose && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] bg-surface-secondary/70 text-text-secondary border border-border/50">
+                              <span className="text-[8px] font-bold uppercase tracking-[0.08em] text-text-tertiary">{tx(locale, "use", "용도", "用途")}</span>
+                              <span className="truncate max-w-[140px]">{hw.purpose}</span>
+                            </span>
+                          )}
+                          {hw.protectionMethod && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] bg-surface-secondary/70 text-text-secondary border border-border/50">
+                              <span className="text-[8px] font-bold uppercase tracking-[0.08em] text-text-tertiary">{tx(locale, "prot", "보호", "保護")}</span>
+                              <span className="truncate max-w-[140px]">{hw.protectionMethod}</span>
+                            </span>
+                          )}
+                          {hw.commProtocols && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono bg-surface-secondary/70 text-text-secondary border border-border/50">
+                              <span className="text-[8px] font-bold uppercase tracking-[0.08em] text-text-tertiary font-sans">proto</span>
+                              <span className="truncate max-w-[120px]">{hw.commProtocols}</span>
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    {hwSev.total > 0 && <CveBadge counts={hwSev} />}
-                    {isExpanded ? <ChevronDown size={14} className="text-text-tertiary shrink-0" /> : <ChevronRight size={14} className="text-text-tertiary shrink-0" />}
+                    {hwSev.total > 0 && <div className="mt-0.5">{<CveBadge counts={hwSev} />}</div>}
+                    {isExpanded ? <ChevronDown size={14} className="text-text-tertiary shrink-0 mt-0.5" /> : <ChevronRight size={14} className="text-text-tertiary shrink-0 mt-0.5" />}
                   </button>
                   <AnimatePresence initial={false}>
                     {isExpanded && (
@@ -906,32 +993,29 @@ export default function ViewerEquipmentPage() {
               {tx(locale, "No documents generated yet", "생성된 문서 없음", "文書未生成")}
             </div>
           ) : (
-            <div className="divide-y divide-border">
-              {documents.map((d) => (
-                <div key={d.id} className="flex items-center gap-3 px-5 py-3 hover:bg-surface-secondary/30 transition-colors">
-                  <FileText size={15} className="text-text-tertiary shrink-0" />
-                  <button onClick={() => openPreview(d)} className="flex-1 min-w-0 text-left group">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[11px] font-mono font-bold text-text-tertiary">{d.docType}</span>
-                      <span className="text-body-sm font-semibold text-text truncate group-hover:text-brand transition-colors">{d.title}</span>
-                      <span className="px-1.5 py-0.5 rounded bg-surface-secondary text-[9px] font-bold text-text-tertiary">v{d.version}</span>
-                    </div>
-                    <p className="text-body-xs text-text-tertiary mt-0.5">
-                      {d.standard} · {d.status}
-                      {d.generatedAt && ` · ${new Date(d.generatedAt).toLocaleDateString(tx(locale, "en-US", "ko-KR", "ja-JP"))}`}
-                    </p>
-                  </button>
-                  <button onClick={() => openPreview(d)} className="p-1.5 rounded-md text-text-tertiary hover:text-brand hover:bg-brand-lighter transition-colors shrink-0" title={tx(locale, "Preview", "미리보기", "プレビュー")}>
-                    <Eye size={14} />
-                  </button>
-                  <a href={`/api/projects/${projectId}/documents/${d.id}/download`} className="p-1.5 rounded-md text-text-tertiary hover:text-brand hover:bg-brand-lighter transition-colors shrink-0" title={tx(locale, "Download", "다운로드", "ダウンロード")}>
-                    <Download size={14} />
-                  </a>
-                </div>
-              ))}
-            </div>
+            <DocumentStandardGroups documents={documents} locale={locale} projectId={projectId} onPreview={openPreview} />
           )}
         </AccordionSection>
+
+        {/* Timeline — activity log (submissions + change events) */}
+        {(submissions.length > 0 || changes.length > 0) && (
+          <AccordionSection
+            id="timeline"
+            num="06"
+            title={tx(
+              locale,
+              `Activity — ${submissions.length + changes.length}`,
+              `활동 이력 — ${submissions.length + changes.length}`,
+              `アクティビティ — ${submissions.length + changes.length}`
+            )}
+            icon={Clock}
+            open={openSections.has("timeline")}
+            onToggle={() => toggleSection("timeline")}
+            motionDelay={0.75}
+          >
+            <ActivityTimeline submissions={submissions} changes={changes} locale={locale} />
+          </AccordionSection>
+        )}
       </div>
 
       {/* Document preview modal */}
@@ -1058,5 +1142,288 @@ function DetailRow({ label, value }: { label: string; value: string | null | und
       <dt className="text-text-tertiary font-medium">{label}</dt>
       <dd className="text-text-secondary font-mono text-right truncate">{value || "—"}</dd>
     </>
+  );
+}
+
+// ─── Equipment Identity Card ─────────────────────────────────────────────────
+
+function EquipmentIdentityCard({ equipment, locale }: { equipment: Equipment; locale: string }) {
+  const cat = equipment.securityCategory ? CAT_META[equipment.securityCategory] : null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: 0.08, ease: [0.2, 0.8, 0.2, 1] }}
+    >
+      <Card padding="none">
+        <div className="p-4 sm:p-5 flex flex-col sm:flex-row gap-4">
+          {/* CAT classification badge — large, color-coded */}
+          {cat ? (
+            <div
+              className="shrink-0 w-28 rounded-lg border px-3 py-2.5 flex flex-col justify-between"
+              style={{ backgroundColor: cat.bg, borderColor: cat.border }}
+            >
+              <div>
+                <p className="text-[9px] font-bold uppercase tracking-[0.12em]" style={{ color: cat.color }}>
+                  {tx(locale, "Category", "분류", "分類")}
+                </p>
+                <p className="text-[22px] font-extrabold mt-0.5 tracking-tight tabular-nums" style={{ color: cat.color }}>
+                  {cat.label}
+                </p>
+              </div>
+              <p className="text-[9px] leading-snug mt-1" style={{ color: cat.color, opacity: 0.85 }}>
+                {cat.note[locale as "en" | "ko" | "ja"] || cat.note.en}
+              </p>
+            </div>
+          ) : (
+            <div className="shrink-0 w-28 rounded-lg border border-border bg-surface-secondary/60 px-3 py-2.5 flex flex-col justify-between">
+              <div>
+                <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-text-tertiary">{tx(locale, "Category", "분류", "分類")}</p>
+                <p className="text-[14px] font-bold mt-0.5 text-text-tertiary">{tx(locale, "Unclassified", "미분류", "未分類")}</p>
+              </div>
+              <p className="text-[9px] text-text-tertiary">{tx(locale, "No CAT level set", "보안 분류 미지정", "分類未指定")}</p>
+            </div>
+          )}
+
+          {/* Description + meta */}
+          <div className="flex-1 min-w-0 flex flex-col">
+            {equipment.description ? (
+              <p className="text-body-sm text-text leading-relaxed">{equipment.description}</p>
+            ) : (
+              <p className="text-body-sm text-text-tertiary italic">
+                {tx(locale, "No system description provided by vendor", "벤더의 시스템 설명 없음", "ベンダー説明なし")}
+              </p>
+            )}
+
+            <dl className="mt-3 pt-3 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-2 text-[11px]">
+              <IdentityField label={tx(locale, "Manufacturer", "제조사", "製造元")} value={equipment.manufacturerName} />
+              <IdentityField label={tx(locale, "Model", "모델", "モデル")} value={equipment.productModelName} />
+              <div>
+                <dt className="text-[9px] font-bold uppercase tracking-[0.1em] text-text-tertiary">{tx(locale, "Type approval", "타입 승인", "型式承認")}</dt>
+                <dd className="mt-0.5">
+                  {equipment.isTypeApproved ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-safety-low">
+                      <CheckCircle size={11} strokeWidth={2.5} />
+                      {tx(locale, "Certified", "인증됨", "認証済")}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-safety-elevated">
+                      <AlertCircle size={11} strokeWidth={2.5} />
+                      {tx(locale, "Not certified", "미인증", "未認証")}
+                    </span>
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[9px] font-bold uppercase tracking-[0.1em] text-text-tertiary">{tx(locale, "Last updated", "최근 업데이트", "最終更新")}</dt>
+                <dd className="mt-0.5 text-[11px] font-mono tabular-nums text-text-secondary">{relativeTime(equipment.updatedAt, locale)}</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+      </Card>
+    </motion.div>
+  );
+}
+
+function IdentityField({ label, value }: { label: string; value: string | null | undefined }) {
+  return (
+    <div>
+      <dt className="text-[9px] font-bold uppercase tracking-[0.1em] text-text-tertiary">{label}</dt>
+      <dd className="mt-0.5 text-[11px] font-mono text-text-secondary truncate">{value || <span className="text-text-tertiary italic font-sans">—</span>}</dd>
+    </div>
+  );
+}
+
+// ─── Top Risks Strip ────────────────────────────────────────────────────────
+
+function TopRisksStrip({ risks, locale }: { risks: Risk[]; locale: string }) {
+  // Only surface OPEN risks with score >= 12 (High+). Cap at 3 — anything more
+  // belongs inside the Risk accordion so the top strip stays scannable.
+  const top = [...risks]
+    .filter((r) => r.status === "OPEN" && r.riskLevel >= 12)
+    .sort((a, b) => b.riskLevel - a.riskLevel)
+    .slice(0, 3);
+  if (top.length === 0) return null;
+  const colors: Record<string, string> = { CRITICAL: "#DA1E28", HIGH: "#EB6200", MEDIUM: "#F1C21B", LOW: "#24A148" };
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: 0.4, ease: [0.2, 0.8, 0.2, 1] }}
+    >
+      <Card padding="none">
+        <div className="px-4 py-2.5 border-b border-border flex items-center gap-2 bg-gradient-to-r from-risk-bg/50 to-transparent">
+          <AlertTriangle size={12} className="text-safety-high" strokeWidth={2.5} />
+          <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-safety-high">
+            {tx(locale, "Top open risks", "최우선 리스크", "最優先リスク")}
+          </span>
+          <span className="font-mono text-[10px] tabular-nums text-text-tertiary">[{String(top.length).padStart(2, "0")}]</span>
+        </div>
+        <ul className="divide-y divide-border/60">
+          {top.map((r) => {
+            const level = r.riskLevel >= 20 ? "CRITICAL" : r.riskLevel >= 12 ? "HIGH" : "MEDIUM";
+            return (
+              <li key={r.id} className="flex items-center gap-3 px-4 py-3">
+                {/* Score pill — huge, instantly readable */}
+                <div
+                  className="h-10 w-10 rounded-lg flex items-center justify-center shrink-0 font-mono text-[13px] font-extrabold text-white tabular-nums"
+                  style={{ background: colors[level] }}
+                >
+                  {r.riskLevel}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[12px] font-bold text-text font-mono">{r.threatId}</span>
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-[0.06em]" style={{ background: `${colors[level]}15`, color: colors[level] }}>{level}</span>
+                    {r.cveId && (
+                      <a
+                        href={`https://nvd.nist.gov/vuln/detail/${r.cveId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-mono text-[10px] font-bold text-brand hover:underline"
+                      >
+                        {r.cveId}
+                      </a>
+                    )}
+                    <span className="font-mono text-[9px] text-text-tertiary tracking-tight">L {r.likelihood} × I {r.impact}</span>
+                  </div>
+                  {r.assetRef && <p className="text-[11px] text-text-secondary mt-0.5 truncate">{r.assetRef}</p>}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </Card>
+    </motion.div>
+  );
+}
+
+// ─── Documents grouped by standard ──────────────────────────────────────────
+
+function DocumentStandardGroups({
+  documents, locale, projectId, onPreview,
+}: {
+  documents: Doc[]; locale: string; projectId: string; onPreview: (d: Doc) => void;
+}) {
+  // Group by standard prefix; preserve vendor authoring order within each bucket
+  const STANDARD_ORDER = ["E27", "E26", "IEC", "NIST", "ISO"];
+  const groups = new Map<string, Doc[]>();
+  for (const d of documents) {
+    const key = STANDARD_ORDER.find((s) => d.standard?.startsWith(s)) || d.standard || "—";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(d);
+  }
+  const ordered = [...groups.entries()].sort(([a], [b]) => {
+    const ia = STANDARD_ORDER.indexOf(a); const ib = STANDARD_ORDER.indexOf(b);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+  });
+
+  return (
+    <div className="divide-y divide-border">
+      {ordered.map(([std, docs]) => (
+        <section key={std}>
+          <div className="px-5 py-2 bg-surface-secondary/40 flex items-center gap-2">
+            <span className="font-mono text-[10px] font-bold tracking-[0.08em] text-text-secondary uppercase">{std}</span>
+            <span className="font-mono text-[10px] tabular-nums text-text-tertiary">[{String(docs.length).padStart(2, "0")}]</span>
+          </div>
+          <div className="divide-y divide-border/60">
+            {docs.map((d) => (
+              <div key={d.id} className="flex items-center gap-3 px-5 py-2.5 hover:bg-surface-secondary/30 transition-colors">
+                <FileText size={14} className="text-text-tertiary shrink-0" />
+                <button onClick={() => onPreview(d)} className="flex-1 min-w-0 text-left group">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] font-mono font-bold text-text-tertiary tracking-tight">{d.docType}</span>
+                    <span className="text-body-sm font-semibold text-text truncate group-hover:text-brand transition-colors">{d.title}</span>
+                    <span className="px-1.5 py-0.5 rounded bg-surface-secondary text-[9px] font-bold text-text-tertiary tabular-nums">v{d.version}</span>
+                  </div>
+                  <p className="text-[10px] text-text-tertiary mt-0.5 font-mono">
+                    {d.status}
+                    {d.generatedAt && <><span className="opacity-50 mx-1.5">·</span>{new Date(d.generatedAt).toLocaleDateString(locale === "ko" ? "ko-KR" : locale === "ja" ? "ja-JP" : "en-US")}</>}
+                  </p>
+                </button>
+                <button onClick={() => onPreview(d)} className="p-1.5 rounded-md text-text-tertiary hover:text-brand hover:bg-brand-lighter transition-colors shrink-0" title={tx(locale, "Preview", "미리보기", "プレビュー")}>
+                  <Eye size={14} />
+                </button>
+                <a href={`/api/projects/${projectId}/documents/${d.id}/download`} className="p-1.5 rounded-md text-text-tertiary hover:text-brand hover:bg-brand-lighter transition-colors shrink-0" title={tx(locale, "Download", "다운로드", "ダウンロード")}>
+                  <Download size={14} />
+                </a>
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+// ─── Activity Timeline ──────────────────────────────────────────────────────
+
+function ActivityTimeline({
+  submissions, changes, locale,
+}: {
+  submissions: SubmissionEvent[]; changes: ChangeEventItem[]; locale: string;
+}) {
+  // Interleave and sort by date descending
+  type Entry = { kind: "submission"; at: string; label: string; meta: string; icon: React.ElementType; color: string }
+              | { kind: "change";     at: string; label: string; meta: string; icon: React.ElementType; color: string };
+  const entries: Entry[] = [];
+
+  for (const s of submissions) {
+    const subStatus = s.status || s.phase;
+    const color =
+      subStatus === "APPROVED" ? "#24A148" :
+      subStatus === "SUBMITTED" || subStatus === "UNDER_REVIEW" ? "#EB6200" :
+      subStatus === "REVISION_REQUESTED" ? "#DA1E28" :
+      "#0F62FE";
+    const at = s.submittedAt || s.updatedAt || s.createdAt;
+    entries.push({
+      kind: "submission",
+      at,
+      label: `${s.phase} · ${s.status}`,
+      meta: s.reviewNote || s.notes || "",
+      icon: s.status === "APPROVED" ? CheckCircle : s.status === "REVISION_REQUESTED" ? XCircle : Clock,
+      color,
+    });
+  }
+  for (const c of changes) {
+    entries.push({
+      kind: "change",
+      at: c.createdAt,
+      label: c.subject,
+      meta: [c.kind, c.actor].filter(Boolean).join(" · "),
+      icon: c.resolvedAt ? CheckCircle : AlertCircle,
+      color: c.resolvedAt ? "#24A148" : "#EB6200",
+    });
+  }
+  entries.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+
+  if (entries.length === 0) return null;
+
+  return (
+    <ol className="relative pl-5">
+      {/* Vertical rail */}
+      <span aria-hidden className="absolute left-1.5 top-3 bottom-3 w-px bg-border" />
+      {entries.map((e, i) => {
+        const Icon = e.icon;
+        return (
+          <li key={i} className="relative py-2.5 pr-4">
+            {/* Node dot */}
+            <span
+              aria-hidden
+              className="absolute -left-[11.5px] top-3 h-2.5 w-2.5 rounded-full ring-2 ring-white"
+              style={{ background: e.color }}
+            />
+            <div className="flex items-center gap-2 flex-wrap">
+              <Icon size={11} style={{ color: e.color }} strokeWidth={2.5} />
+              <span className="text-[11px] font-bold text-text">{e.label}</span>
+              <span className="ml-auto font-mono text-[10px] tabular-nums text-text-tertiary">{relativeTime(e.at, locale)}</span>
+            </div>
+            {e.meta && <p className="text-[10px] text-text-tertiary mt-0.5 line-clamp-2">{e.meta}</p>}
+          </li>
+        );
+      })}
+    </ol>
   );
 }

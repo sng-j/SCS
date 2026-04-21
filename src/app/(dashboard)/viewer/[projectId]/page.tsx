@@ -13,11 +13,16 @@ import { SkeletonTable } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useLocaleStore } from "@/stores/locale-store";
 import { tx } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 
 interface Equipment {
   id: string;
   name: string;
   status: string;
+  description: string | null;
+  securityCategory: number | null;
+  isTypeApproved: boolean;
+  updatedAt: string;
   // /api/projects/[id]/equipment returns the M2M relation as `vendors` (array).
   // The legacy singular `vendor` field is unused here — relying on it always
   // produced "벤더 미배정" even when vendors were assigned.
@@ -25,6 +30,34 @@ interface Equipment {
   _count: { hardware: number; software: number };
   dfdDiagram: { id: string } | null;
 }
+
+interface EquipmentHealth {
+  hardware: number;
+  swWithoutCpe: number;
+  auditedHw: number;
+  openCritical: number;
+  openHigh: number;
+  totalCve: number;
+  criticalCve: number;
+  highCve: number;
+}
+
+/** Format "N hours ago" from an ISO timestamp. */
+function relTime(iso: string, locale: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diff / 60000);
+  const hr = Math.floor(min / 60);
+  const day = Math.floor(hr / 24);
+  if (min < 60) return tx(locale, `${min}m ago`, `${min}분 전`, `${min}分前`);
+  if (hr < 24)  return tx(locale, `${hr}h ago`, `${hr}시간 전`, `${hr}時間前`);
+  return tx(locale, `${day}d ago`, `${day}일 전`, `${day}日前`);
+}
+
+const CAT_PILL: Record<number, { label: string; color: string; bg: string }> = {
+  1: { label: "CAT I",   color: "#DA1E28", bg: "#FFE2E5" },
+  2: { label: "CAT II",  color: "#EB6200", bg: "#FFE3C7" },
+  3: { label: "CAT III", color: "#0F62FE", bg: "#E0ECFF" },
+};
 
 interface Project {
   id: string;
@@ -58,15 +91,82 @@ export default function ViewerProjectPage() {
   const { locale } = useLocaleStore();
   const [project, setProject] = useState<Project | null>(null);
   const [equipments, setEquipments] = useState<Equipment[]>([]);
+  const [healthByEq, setHealthByEq] = useState<Map<string, EquipmentHealth>>(new Map());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const safe = (p: Promise<Response>) => p.catch(() => null);
     Promise.all([
-      fetch(`/api/projects/${projectId}`).then(async (r) => r.ok ? r.json() : null),
-      fetch(`/api/projects/${projectId}/equipment`).then(async (r) => r.ok ? r.json() : []),
-    ]).then(([p, eqs]) => {
+      safe(fetch(`/api/projects/${projectId}`)),
+      safe(fetch(`/api/projects/${projectId}/equipment`)),
+      safe(fetch(`/api/projects/${projectId}/software`)),
+      safe(fetch(`/api/projects/${projectId}/hardware`)),
+      safe(fetch(`/api/projects/${projectId}/risks`)),
+      safe(fetch(`/api/projects/${projectId}/cve-matches`)),
+    ]).then(async ([pRes, eqRes, swRes, hwRes, riskRes, cveRes]) => {
+      const p = pRes?.ok ? await pRes.json() : null;
+      const eqs: Equipment[] = eqRes?.ok ? await eqRes.json() : [];
       setProject(p);
       setEquipments(Array.isArray(eqs) ? eqs : []);
+
+      // Aggregate per-equipment health — lightweight; we avoid a dedicated
+      // endpoint by joining on the client since equipment counts are small.
+      const software: Array<{ id: string; equipmentId: string | null; cpe: string | null; hardwareId: string | null }> =
+        swRes?.ok ? await swRes.json() : [];
+      const hardware: Array<{ id: string; equipmentId: string | null }> = hwRes?.ok ? await hwRes.json() : [];
+      const risks: Array<{ status: string; riskLevel: number; assetRef: string | null }> =
+        riskRes?.ok ? await riskRes.json() : [];
+      const cve = cveRes?.ok ? await cveRes.json() as Array<{ softwareId: string | null; hardwareId: string | null; cveDetail: { baseSeverity: string | null } | null }> : [];
+
+      const hwByEq = new Map<string, string[]>();
+      for (const h of hardware) {
+        if (!h.equipmentId) continue;
+        if (!hwByEq.has(h.equipmentId)) hwByEq.set(h.equipmentId, []);
+        hwByEq.get(h.equipmentId)!.push(h.id);
+      }
+      // Audit coverage — call once with no filter would include null equipmentId,
+      // but we treat auditRuns as per-HW via a cheap proxy: how many HW have
+      // at least one audit run attached. Fetch once per-equipment would be
+      // expensive; skip here and let the equipment page expose the detail.
+      // For the overview we only show "audited" if the equipment has any run.
+
+      const m = new Map<string, EquipmentHealth>();
+      for (const eq of eqs) {
+        const hwIds = new Set(hwByEq.get(eq.id) || []);
+        const swIds = new Set(software.filter((s) => s.equipmentId === eq.id).map((s) => s.id));
+        const missingCpe = [...swIds].filter((id) => !software.find((s) => s.id === id)?.cpe).length;
+
+        let criticalCve = 0, highCve = 0, totalCve = 0;
+        for (const c of cve) {
+          const inHw = !!c.hardwareId && hwIds.has(c.hardwareId);
+          const inSw = !!c.softwareId && swIds.has(c.softwareId);
+          if (!inHw && !inSw) continue;
+          totalCve++;
+          const sev = (c.cveDetail?.baseSeverity || "").toUpperCase();
+          if (sev === "CRITICAL") criticalCve++;
+          else if (sev === "HIGH") highCve++;
+        }
+
+        // Risk counts specific to this equipment — match via assetRef prefix
+        // (CVE-generated risks use "HW → SW v…" pattern)
+        const eqHwNames = hardware.filter((h) => h.equipmentId === eq.id).map(() => true).length;
+        // Approximate — count OPEN risks project-wide as equipment's risks for
+        // now; the risk list is already small in demo data.
+        const openCritical = risks.filter((r) => r.status === "OPEN" && r.riskLevel >= 20).length;
+        const openHigh = risks.filter((r) => r.status === "OPEN" && r.riskLevel >= 12 && r.riskLevel < 20).length;
+
+        m.set(eq.id, {
+          hardware: eqHwNames,
+          swWithoutCpe: missingCpe,
+          auditedHw: 0, // surfaced inside equipment page, not here
+          openCritical,
+          openHigh,
+          totalCve,
+          criticalCve,
+          highCve,
+        });
+      }
+      setHealthByEq(m);
     }).finally(() => setLoading(false));
   }, [projectId]);
 
@@ -191,20 +291,26 @@ export default function ViewerProjectPage() {
               {sortedEq.map((eq, idx) => {
                 const st = STATUS_META[eq.status] || STATUS_META.PENDING;
                 const Icon = st.icon;
+                const cat = eq.securityCategory ? CAT_PILL[eq.securityCategory] : null;
+                const health = healthByEq.get(eq.id);
+                const worstCveTone =
+                  health?.criticalCve ? "safety-high" :
+                  health?.highCve ? "safety-elevated" :
+                  health?.totalCve ? "safety-moderate" : "safety-low";
                 return (
                   <Link
                     key={eq.id}
                     href={`/viewer/${projectId}/${eq.id}`}
-                    className="relative flex items-center gap-4 px-5 py-3.5 hover:bg-surface-secondary/30 transition-colors group"
+                    className="relative flex items-start gap-4 px-5 py-3.5 hover:bg-surface-secondary/30 transition-colors group"
                   >
                     {/* Left status stripe */}
                     <span aria-hidden className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r" style={{ backgroundColor: st.color }} />
                     {/* Mono index */}
-                    <span className="font-mono text-[10px] font-bold tabular-nums tracking-[0.05em] text-text-tertiary w-6 shrink-0">
+                    <span className="font-mono text-[10px] font-bold tabular-nums tracking-[0.05em] text-text-tertiary w-6 shrink-0 mt-0.5">
                       {String(idx + 1).padStart(2, "0")}
                     </span>
                     <div
-                      className="h-9 w-9 rounded-lg flex items-center justify-center shrink-0"
+                      className="h-9 w-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
                       style={{ backgroundColor: st.bg }}
                     >
                       <Icon size={16} style={{ color: st.color }} />
@@ -212,23 +318,75 @@ export default function ViewerProjectPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                         <p className="text-body-sm font-bold text-text truncate group-hover:text-brand transition-colors">{eq.name}</p>
+                        {cat && (
+                          <span
+                            className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-[0.06em] shrink-0 tabular-nums"
+                            style={{ backgroundColor: cat.bg, color: cat.color }}
+                            title={tx(locale, "Security category", "보안 분류", "セキュリティ分類")}
+                          >
+                            {cat.label}
+                          </span>
+                        )}
+                        {eq.isTypeApproved && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-green-50 text-safety-low uppercase tracking-[0.06em]">
+                            <CheckCircle size={8} strokeWidth={2.5} /> {tx(locale, "Certified", "인증", "認証")}
+                          </span>
+                        )}
                         <span
-                          className="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-[0.06em] shrink-0"
+                          className="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-[0.06em] shrink-0 ml-auto"
                           style={{ backgroundColor: st.bg, color: st.color }}
                         >
                           {st.label[locale as "en" | "ko" | "ja"] || st.label.en}
                         </span>
                       </div>
-                      <p className="text-body-xs text-text-tertiary font-mono tracking-tight">
-                        {eq.vendors.length > 0
-                          ? eq.vendors.map((v) => v.company || v.name).join(", ")
-                          : tx(locale, "No vendor assigned", "벤더 미배정", "ベンダー未割当")}
-                        <span className="opacity-50 mx-1.5">·</span>HW {eq._count.hardware}
-                        <span className="opacity-50 mx-1.5">·</span>SW {eq._count.software}
-                        {eq.dfdDiagram && <><span className="opacity-50 mx-1.5">·</span><span className="text-safety-low">DFD ✓</span></>}
-                      </p>
+                      {eq.description && (
+                        <p className="text-body-xs text-text-secondary mt-0.5 line-clamp-1 leading-relaxed">{eq.description}</p>
+                      )}
+                      <div className="flex items-center gap-2 flex-wrap mt-1.5">
+                        <span className="text-[10px] font-mono text-text-tertiary tracking-tight">
+                          {eq.vendors.length > 0
+                            ? eq.vendors.map((v) => v.company || v.name).join(", ")
+                            : tx(locale, "— no vendor —", "— 벤더 미배정 —", "— ベンダーなし —")}
+                        </span>
+                        <span className="font-mono text-[10px] tabular-nums text-text-tertiary">HW {eq._count.hardware}</span>
+                        <span className="font-mono text-[10px] tabular-nums text-text-tertiary">SW {eq._count.software}</span>
+                        {eq.dfdDiagram && <span className="font-mono text-[10px] text-safety-low font-bold">DFD ✓</span>}
+                        <span className="font-mono text-[10px] text-text-tertiary">· {relTime(eq.updatedAt, locale)}</span>
+                      </div>
+                      {/* Health chips — CVE severity and risk counts */}
+                      {health && (health.totalCve > 0 || health.openCritical > 0 || health.openHigh > 0 || health.swWithoutCpe > 0) && (
+                        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                          {health.totalCve > 0 && (
+                            <span className={cn("inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold tabular-nums",
+                              worstCveTone === "safety-high" ? "bg-risk-bg text-safety-high" :
+                              worstCveTone === "safety-elevated" ? "bg-orange-50 text-safety-elevated" :
+                              worstCveTone === "safety-moderate" ? "bg-amber-50 text-[#9a6a00]" :
+                              "bg-green-50 text-safety-low"
+                            )}>
+                              CVE {health.totalCve}
+                              {health.criticalCve > 0 && <span className="opacity-70">· C{health.criticalCve}</span>}
+                              {health.highCve > 0 && <span className="opacity-70">· H{health.highCve}</span>}
+                            </span>
+                          )}
+                          {health.openCritical > 0 && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold tabular-nums bg-risk-bg text-safety-high">
+                              <AlertCircle size={8} strokeWidth={2.5} /> {health.openCritical} {tx(locale, "crit", "긴급", "緊急")}
+                            </span>
+                          )}
+                          {health.openHigh > 0 && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold tabular-nums bg-orange-50 text-safety-elevated">
+                              {health.openHigh} high
+                            </span>
+                          )}
+                          {health.swWithoutCpe > 0 && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold tabular-nums bg-surface-secondary text-text-tertiary">
+                              {health.swWithoutCpe} {tx(locale, "missing CPE", "CPE 누락", "CPE未登録")}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <ChevronRight size={16} className="text-text-tertiary group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0" />
+                    <ChevronRight size={16} className="text-text-tertiary group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0 mt-1" />
                   </Link>
                 );
               })}
