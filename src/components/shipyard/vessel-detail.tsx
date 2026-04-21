@@ -502,8 +502,12 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
         }),
       });
       if (res.ok) {
-        const r = await fetch(`/api/projects/${projectId}/risks`);
-        if (r.ok) setRisks(await r.json());
+        // Optimistic append — the POST returns the created record, so we
+        // can update state synchronously without a second fetch (the earlier
+        // GET-after-POST had a race where the row sometimes didn't show up
+        // until a manual refresh).
+        const created = await res.json();
+        setRisks((prev) => [created, ...prev]);
         setAddRiskOpen(false);
         showToast.success(tx(locale, "Risk added", "리스크 추가됨", "リスク追加済み"));
       } else {
