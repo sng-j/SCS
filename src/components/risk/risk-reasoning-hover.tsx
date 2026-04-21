@@ -64,7 +64,10 @@ export function RiskReasoningHover({
   const hasAuto = !!reasoning.summary && !!reasoning.rules?.length;
   const override = reasoning.userOverride;
   return (
-    <div className="absolute z-50 left-full top-0 ml-2 w-80 rounded-lg border border-border bg-white shadow-lg p-3 text-left pointer-events-none">
+    // Positioned below-and-right-aligned so the 320px panel never clips at the
+    // viewport edge — previous `left-full ml-2` layout pushed the tooltip off
+    // screen whenever the trigger was near the right side of the table.
+    <div className="absolute z-50 top-full right-0 mt-2 w-[min(20rem,calc(100vw-2rem))] rounded-lg border border-border bg-white shadow-lg p-3 text-left pointer-events-none">
       {override && (
         <div className="mb-2 rounded-md border border-safety-elevated/30 bg-orange-50 px-2 py-1.5">
           <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-safety-elevated">

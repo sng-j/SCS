@@ -130,6 +130,20 @@ export default function ViewerProjectPage() {
       // expensive; skip here and let the equipment page expose the detail.
       // For the overview we only show "audited" if the equipment has any run.
 
+      // Build a Set of HW names for each equipment so we can filter project-
+      // wide risks down to the ones that reference this equipment's assets.
+      // (CVE-generated risks use assetRef = "HW name → SW name v…"; manual
+      //  risks may use any free-form prefix, so HW-name substring match gives
+      //  the best coverage without backend changes.)
+      const hwNamesByEq = new Map<string, string[]>();
+      for (const eq of eqs) {
+        const names = hardware
+          .filter((h) => h.equipmentId === eq.id)
+          .map((h) => (h as unknown as { name?: string }).name)
+          .filter((n): n is string => !!n);
+        hwNamesByEq.set(eq.id, names);
+      }
+
       const m = new Map<string, EquipmentHealth>();
       for (const eq of eqs) {
         const hwIds = new Set(hwByEq.get(eq.id) || []);
@@ -147,16 +161,19 @@ export default function ViewerProjectPage() {
           else if (sev === "HIGH") highCve++;
         }
 
-        // Risk counts specific to this equipment — match via assetRef prefix
-        // (CVE-generated risks use "HW → SW v…" pattern)
-        const eqHwNames = hardware.filter((h) => h.equipmentId === eq.id).map(() => true).length;
-        // Approximate — count OPEN risks project-wide as equipment's risks for
-        // now; the risk list is already small in demo data.
-        const openCritical = risks.filter((r) => r.status === "OPEN" && r.riskLevel >= 20).length;
-        const openHigh = risks.filter((r) => r.status === "OPEN" && r.riskLevel >= 12 && r.riskLevel < 20).length;
+        // Equipment-scoped risk counts — match assetRef against the HW names
+        // belonging to this equipment. Risks with no assetRef (legacy / manual)
+        // are excluded here; they surface in the equipment page's Risk tab.
+        const eqHwNames = hwNamesByEq.get(eq.id) || [];
+        const belongs = (assetRef: string | null) => {
+          if (!assetRef) return false;
+          return eqHwNames.some((n) => assetRef.includes(n));
+        };
+        const openCritical = risks.filter((r) => r.status === "OPEN" && r.riskLevel >= 20 && belongs(r.assetRef)).length;
+        const openHigh = risks.filter((r) => r.status === "OPEN" && r.riskLevel >= 12 && r.riskLevel < 20 && belongs(r.assetRef)).length;
 
         m.set(eq.id, {
-          hardware: eqHwNames,
+          hardware: eqHwNames.length,
           swWithoutCpe: missingCpe,
           auditedHw: 0, // surfaced inside equipment page, not here
           openCritical,
