@@ -16,6 +16,7 @@ export async function PATCH(request: Request, { params }: Params) {
   const { projectId, riskId } = await params;
   const hasAccess = await verifyProjectAccess(user.id, projectId, user.role, user.shipyardId);
   if (!hasAccess) return apiError("Forbidden", 403);
+  if (user.role === "SHIPYARD") return apiError("Read-only role cannot edit risks", 403);
 
   try {
     // Verify the risk entry belongs to this project
@@ -101,6 +102,7 @@ export async function DELETE(_request: Request, { params }: Params) {
   const { projectId, riskId } = await params;
   const hasAccess = await verifyProjectAccess(user.id, projectId, user.role, user.shipyardId);
   if (!hasAccess) return apiError("Forbidden", 403);
+  if (user.role === "SHIPYARD") return apiError("Read-only role cannot delete risks", 403);
 
   try {
     const existing = await prisma.riskEntry.findFirst({

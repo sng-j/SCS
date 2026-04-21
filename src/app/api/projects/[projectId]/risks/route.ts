@@ -33,6 +33,9 @@ export async function POST(request: Request, { params }: Params) {
   const { projectId } = await params;
   const hasAccess = await verifyProjectAccess(user.id, projectId, user.role, user.shipyardId);
   if (!hasAccess) return apiError("Forbidden", 403);
+  // SHIPYARD is a read-only viewer — UI already hides the create button but
+  // the API layer must also refuse or a crafted request could slip by.
+  if (user.role === "SHIPYARD") return apiError("Read-only role cannot create risks", 403);
 
   try {
     const body = await request.json();

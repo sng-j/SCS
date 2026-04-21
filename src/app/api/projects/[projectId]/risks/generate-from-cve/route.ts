@@ -16,6 +16,7 @@ export async function POST(
   const { projectId } = await params;
   const hasAccess = await verifyProjectAccess(user.id, projectId, user.role, user.shipyardId);
   if (!hasAccess) return apiError("Forbidden", 403);
+  if (user.role === "SHIPYARD") return apiError("Read-only role cannot generate risks", 403);
 
   // Get all CveMatches for this project's software; carry the host HW's category
   // so the scorer can weight impact by asset criticality (CAT I/II/III).

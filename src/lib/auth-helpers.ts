@@ -120,3 +120,17 @@ export function apiError(message: string, status: number, code?: string) {
     { status },
   );
 }
+
+/**
+ * True when the role may issue write requests against project-scoped
+ * resources. SHIPYARD is the viewer role and must never mutate data —
+ * call this after verifyProjectAccess on any POST/PATCH/PUT/DELETE
+ * endpoint that should be off-limits to viewers.
+ *
+ * ADMIN, SUPPORT, and VENDOR are permitted; individual endpoints layer
+ * further restrictions (e.g. VENDOR must own the equipment) on top of
+ * this gate.
+ */
+export function isWriteRole(role: string | null | undefined): boolean {
+  return role === "ADMIN" || role === "SUPPORT" || role === "VENDOR";
+}

@@ -43,6 +43,9 @@ export async function POST(request: Request, { params }: Params) {
   const { projectId } = await params;
   const hasAccess = await verifyProjectAccess(user.id, projectId, user.role, user.shipyardId);
   if (!hasAccess) return apiError("Forbidden", 403);
+  // SHIPYARD is a read-only viewer; VENDOR is further restricted below to
+  // only their own equipment hardware.
+  if (user.role === "SHIPYARD") return apiError("Read-only role cannot record assessments", 403);
 
   try {
     const body = await request.json();
