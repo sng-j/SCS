@@ -481,6 +481,8 @@ function VendorEditSection({ vendor, locale, onUpdate }: {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [saving, setSaving] = useState(false);
+  const [resetIpOpen, setResetIpOpen] = useState(false);
+  const [resettingIp, setResettingIp] = useState(false);
 
   useEffect(() => {
     if (vendor) {
@@ -564,16 +566,7 @@ function VendorEditSection({ vendor, locale, onUpdate }: {
           </div>
           <div className="flex items-center justify-between pt-1">
             <button
-              onClick={async () => {
-                if (!confirm(tx(locale, "Reset IP whitelist? The vendor will need to re-login.", "IP 화이트리스트를 초기화하시겠습니까? 벤더는 재로그인이 필요합니다.", "IPホワイトリストをリセットしますか？"))) return;
-                const res = await fetch("/api/shipyard/vendors", {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ id: vendor.id, resetIp: true }),
-                });
-                if (res.ok) showToast.success(tx(locale, "IP reset complete", "IP 초기화 완료", "IPリセット完了"));
-                else showToast.error(tx(locale, "Failed", "실패", "失敗"));
-              }}
+              onClick={() => setResetIpOpen(true)}
               className="px-3 py-1.5 rounded-lg text-[11px] font-semibold text-red-500 border border-red-200 hover:bg-red-50 transition-colors"
             >
               {tx(locale, "Reset IP", "IP 초기화", "IPリセット")}
@@ -589,6 +582,37 @@ function VendorEditSection({ vendor, locale, onUpdate }: {
           </div>
         </div>
       )}
+
+      {/* IP whitelist reset confirmation — replaces native browser confirm() */}
+      <ConfirmDialog
+        open={resetIpOpen}
+        onClose={() => setResetIpOpen(false)}
+        onConfirm={async () => {
+          setResettingIp(true);
+          try {
+            const res = await fetch("/api/shipyard/vendors", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id: vendor.id, resetIp: true }),
+            });
+            if (res.ok) showToast.success(tx(locale, "IP reset complete", "IP 초기화 완료", "IPリセット完了"));
+            else showToast.error(tx(locale, "Failed", "실패", "失敗"));
+          } finally {
+            setResettingIp(false);
+            setResetIpOpen(false);
+          }
+        }}
+        title={tx(locale, "Reset IP whitelist?", "IP 화이트리스트 초기화", "IPホワイトリストをリセット")}
+        description={tx(
+          locale,
+          `${vendor.name}'s registered IP list will be cleared. The vendor will be forced to re-login from their current network.`,
+          `${vendor.name}의 등록된 IP 목록이 지워집니다. 벤더는 현재 네트워크에서 재로그인해야 합니다.`,
+          `${vendor.name}の登録IPリストがクリアされます。現在のネットワークから再ログインが必要です。`,
+        )}
+        confirmLabel={tx(locale, "Reset", "초기화", "リセット")}
+        cancelLabel={tx(locale, "Cancel", "취소", "キャンセル")}
+        loading={resettingIp}
+      />
     </div>
   );
 }

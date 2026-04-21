@@ -25,6 +25,7 @@ import {
 } from "@/components/inventory/cve-badge";
 import { AuditRunsList } from "@/components/audit/audit-runs-list";
 import { CveSidebar } from "@/components/inventory/cve-sidebar";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -107,6 +108,7 @@ export function ShipyardVesselDetail({ projectId, project, initialEqId }: { proj
   const [eqForm, setEqForm] = useState({ id: "", name: "", description: "", vendorIds: [] as string[] });
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [eqDeleteTarget, setEqDeleteTarget] = useState<Equipment | null>(null);
 
   useEffect(() => {
     if (!addOpen && !editOpen) return;
@@ -158,7 +160,8 @@ export function ShipyardVesselDetail({ projectId, project, initialEqId }: { proj
   };
 
   const handleDeleteEquipment = async (id: string) => {
-    if (!confirm(tx(locale, "Are you sure you want to delete this equipment? All related hardware, software, and assessments will be permanently removed.", "정말 이 기자재를 삭제하시겠습니까? 관련된 모든 하드웨어, 소프트웨어, 보안평가 데이터가 영구 삭제됩니다.", "この機器を削除してもよろしいですか？"))) return;
+    // Confirmation is handled by the ConfirmDialog rendered at the bottom of
+    // the component; this function is called only after the user confirms.
     setDeletingId(id);
     try {
       const res = await fetch(`/api/projects/${projectId}/equipment?id=${id}`, { method: "DELETE" });
@@ -312,7 +315,7 @@ export function ShipyardVesselDetail({ projectId, project, initialEqId }: { proj
                         <Edit2 size={15} />
                       </button>
                       <button
-                        onClick={(e) => { e.stopPropagation(); handleDeleteEquipment(eq.id); }}
+                        onClick={(e) => { e.stopPropagation(); setEqDeleteTarget(eq); }}
                         disabled={deletingId === eq.id}
                         className="p-2 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
                         title={tx(locale, "Delete", "삭제", "削除")}
@@ -426,6 +429,28 @@ export function ShipyardVesselDetail({ projectId, project, initialEqId }: { proj
           </div>
         </div>
       )}
+
+      {/* Equipment delete confirmation — replaces the native browser confirm() */}
+      <ConfirmDialog
+        open={!!eqDeleteTarget}
+        onClose={() => setEqDeleteTarget(null)}
+        onConfirm={() => {
+          if (eqDeleteTarget) {
+            handleDeleteEquipment(eqDeleteTarget.id);
+            setEqDeleteTarget(null);
+          }
+        }}
+        title={tx(locale, "Delete equipment?", "기자재 삭제", "機器削除")}
+        description={tx(
+          locale,
+          `"${eqDeleteTarget?.name ?? ""}" and all of its hardware, software, assessments, and audit runs will be permanently removed. This cannot be undone.`,
+          `"${eqDeleteTarget?.name ?? ""}" 및 관련된 모든 하드웨어, 소프트웨어, 보안평가, 감사 결과가 영구 삭제됩니다. 되돌릴 수 없습니다.`,
+          `"${eqDeleteTarget?.name ?? ""}" および関連するすべてのハードウェア、ソフトウェア、評価、監査結果が削除されます。`,
+        )}
+        confirmLabel={tx(locale, "Delete", "삭제", "削除")}
+        cancelLabel={tx(locale, "Cancel", "취소", "キャンセル")}
+        loading={!!deletingId}
+      />
     </div>
   );
 }
@@ -535,16 +560,26 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
     } finally { setAutoGenBusy(false); }
   };
 
-  const deleteRisk = async (riskId: string) => {
-    if (!confirm(tx(locale, "Delete this risk?", "이 리스크를 삭제하시겠습니까?", "このリスクを削除しますか？"))) return;
+  // Risk deletion is confirmed via ConfirmDialog; this helper runs the actual
+  // request once the user has accepted. Called from the dialog's onConfirm.
+  const [riskDeleteTarget, setRiskDeleteTarget] = useState<string | null>(null);
+  const confirmDeleteRisk = async () => {
+    const riskId = riskDeleteTarget;
+    if (!riskId) return;
     setDeletingRiskId(riskId);
     try {
       const res = await fetch(`/api/projects/${projectId}/risks/${riskId}`, { method: "DELETE" });
       if (res.ok) {
         setRisks((prev) => prev.filter((r) => r.id !== riskId));
-        showToast.success(tx(locale, "Deleted", "삭제됨", "削除済み"));
+        showToast.success(tx(locale, "Risk deleted", "리스크 삭제됨", "リスク削除済み"));
+      } else {
+        const d = await res.json().catch(() => ({}));
+        showToast.error(d.error || tx(locale, "Delete failed", "삭제 실패", "削除失敗"));
       }
-    } finally { setDeletingRiskId(null); }
+    } finally {
+      setDeletingRiskId(null);
+      setRiskDeleteTarget(null);
+    }
   };
 
   // Upsert the same SC result against every HW in this equipment. The vendor
@@ -1269,7 +1304,7 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
                       </div>
                       {canReview && (
                         <button
-                          onClick={() => deleteRisk(r.id)}
+                          onClick={() => setRiskDeleteTarget(r.id)}
                           disabled={isDeleting}
                           className="self-start p-1.5 rounded-md text-text-tertiary opacity-0 group-hover/risk:opacity-100 hover:text-safety-high hover:bg-risk-bg transition-all shrink-0"
                           title={tx(locale, "Delete risk", "리스크 삭제", "リスク削除")}
@@ -1306,6 +1341,23 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
           </div>
         </div>
       )}
+
+      {/* Risk delete confirmation — replaces the native browser confirm() */}
+      <ConfirmDialog
+        open={!!riskDeleteTarget}
+        onClose={() => setRiskDeleteTarget(null)}
+        onConfirm={confirmDeleteRisk}
+        title={tx(locale, "Delete risk?", "리스크 삭제", "リスク削除")}
+        description={tx(
+          locale,
+          "This risk entry will be permanently removed. This cannot be undone.",
+          "이 리스크가 영구 삭제됩니다. 되돌릴 수 없습니다.",
+          "このリスクは完全に削除されます。取り消しできません。",
+        )}
+        confirmLabel={tx(locale, "Delete", "삭제", "削除")}
+        cancelLabel={tx(locale, "Cancel", "취소", "キャンセル")}
+        loading={!!deletingRiskId}
+      />
     </div>
   );
 }
