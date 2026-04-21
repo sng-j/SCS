@@ -456,6 +456,56 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
   const { data: session } = useSession();
   const userRole = (session?.user as { role?: string })?.role;
   const canSeeReasoning = canSeeRiskReasoning(userRole);
+  // SUPPORT and ADMIN act as reviewers for this project — they can edit SC
+  // check results and tune risk scoring/mitigation even though other sections
+  // (assets, DFD, docs, testproc) stay read-only. SHIPYARD viewer can't edit.
+  const canReview = userRole === "SUPPORT" || userRole === "ADMIN";
+  const [updatingAssessKey, setUpdatingAssessKey] = useState<string | null>(null);
+  const [updatingRiskId, setUpdatingRiskId] = useState<string | null>(null);
+
+  // Upsert the same SC result against every HW in this equipment. The vendor
+  // page tracks per-HW results for audit trail; the reviewer-facing view
+  // collapses to one result per SC so the cell here fans the update out to
+  // every HW to keep the two sides in sync.
+  const updateScResult = async (checkId: string, result: string) => {
+    if (hardware.length === 0) return;
+    setUpdatingAssessKey(checkId);
+    try {
+      await Promise.all(
+        hardware.map((hw) =>
+          fetch(`/api/projects/${projectId}/assessments`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ hardwareId: hw.id, checkId, standard: "E27", result }),
+          }),
+        ),
+      );
+      // Refresh assessments
+      const r = await fetch(`/api/projects/${projectId}/assessments`);
+      if (r.ok) setAssessments(await r.json());
+    } finally {
+      setUpdatingAssessKey(null);
+    }
+  };
+
+  // Patch a single risk field — the API recomputes riskLevel + reasoning
+  // override when likelihood/impact changes.
+  const updateRisk = async (riskId: string, field: "likelihood" | "impact" | "status" | "mitigation", value: number | string) => {
+    setUpdatingRiskId(riskId);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/risks/${riskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [field]: value }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setRisks((prev) => prev.map((r) => (r.id === riskId ? { ...r, ...updated } : r)));
+      }
+    } finally {
+      setUpdatingRiskId(null);
+    }
+  };
   const [testProc, setTestProc] = useState<{ status: string; hwGroups: { id: string; label: string; hardwareIds: string; hwItems: { no: number; category: string; criteria: string; method: string }[] }[]; fnItems: { softwareName: string | null; section: string; no: number; category: string; criteria: string; method: string }[] } | null>(null);
   const [reviewNote, setReviewNote] = useState("");
   const [revisionModalOpen, setRevisionModalOpen] = useState(false);
@@ -690,25 +740,59 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
 
         {tab === "assessment" && (
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            {assessments.length === 0 ? (
-              <EmptyTab icon={Shield} text={tx(locale, "No assessment data yet", "보안 평가 데이터가 없습니다", "評価データなし")} />
+            {hardware.length === 0 ? (
+              <EmptyTab icon={Shield} text={tx(locale, "Register hardware first to record SC results", "먼저 하드웨어를 등록하세요", "ハードウェア未登録")} />
             ) : (
               SC_NAMES.map((name, i) => {
                 const checkId = `SC-${i + 1}`;
                 const result = assessments.find((a) => a.checkId === checkId)?.result || "NOT_CHECKED";
+                const isUpdating = updatingAssessKey === checkId;
                 return (
-                  <div key={i} className={cn("flex items-center gap-3 px-4 py-3 border-b border-gray-100 last:border-0",
-                    result === "FAIL" && "bg-red-50/50")}>
+                  <div key={i} className={cn("flex items-center gap-3 px-4 py-3 border-b border-gray-100 last:border-0 transition-colors",
+                    result === "FAIL" && "bg-red-50/50",
+                    isUpdating && "opacity-60")}>
                     <div className={cn("h-7 w-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
-                      result === "PASS" ? "bg-green-100 text-green-600" : result === "FAIL" ? "bg-red-100 text-red-600" : "bg-gray-100 text-gray-400")}>
-                      {result === "PASS" ? "✓" : result === "FAIL" ? "✗" : "—"}
+                      result === "PASS" ? "bg-green-100 text-green-600" :
+                      result === "FAIL" ? "bg-red-100 text-red-600" :
+                      result === "PARTIAL" ? "bg-orange-100 text-orange-600" :
+                      result === "NOT_APPLICABLE" ? "bg-gray-100 text-gray-400" :
+                      "bg-gray-100 text-gray-400")}>
+                      {result === "PASS" ? "✓" : result === "FAIL" ? "✗" : result === "PARTIAL" ? "!" : "—"}
                     </div>
                     <span className="text-[12px] font-semibold text-gray-600 w-12">{checkId}</span>
                     <span className="text-[12px] text-gray-700 flex-1">{name}</span>
-                    <span className={cn("text-[11px] font-bold",
-                      result === "PASS" ? "text-green-600" : result === "FAIL" ? "text-red-600" : "text-gray-300")}>
-                      {result === "PASS" ? "PASS" : result === "FAIL" ? "FAIL" : tx(locale, "Not checked", "미확인", "未確認")}
-                    </span>
+                    {canReview ? (
+                      <select
+                        value={result}
+                        onChange={(e) => updateScResult(checkId, e.target.value)}
+                        disabled={isUpdating}
+                        className={cn(
+                          "rounded-md border px-2 py-1 text-[11px] font-bold focus:outline-none focus:ring-2 focus:ring-brand/20 cursor-pointer",
+                          result === "PASS" ? "border-green-200 bg-green-50 text-green-700" :
+                          result === "FAIL" ? "border-red-200 bg-red-50 text-red-700" :
+                          result === "PARTIAL" ? "border-orange-200 bg-orange-50 text-orange-700" :
+                          "border-gray-200 bg-white text-gray-400"
+                        )}
+                      >
+                        <option value="NOT_CHECKED">{tx(locale, "Not checked", "미확인", "未確認")}</option>
+                        <option value="PASS">{tx(locale, "PASS", "PASS", "合格")}</option>
+                        <option value="FAIL">{tx(locale, "FAIL", "FAIL", "不合格")}</option>
+                        <option value="PARTIAL">{tx(locale, "PARTIAL", "일부", "一部")}</option>
+                        <option value="NOT_APPLICABLE">N/A</option>
+                      </select>
+                    ) : (
+                      <span className={cn("text-[11px] font-bold",
+                        result === "PASS" ? "text-green-600" :
+                        result === "FAIL" ? "text-red-600" :
+                        result === "PARTIAL" ? "text-orange-600" :
+                        "text-gray-300")}>
+                        {result === "PASS" ? "PASS" :
+                         result === "FAIL" ? "FAIL" :
+                         result === "PARTIAL" ? tx(locale, "PARTIAL", "일부", "一部") :
+                         result === "NOT_APPLICABLE" ? "N/A" :
+                         tx(locale, "Not checked", "미확인", "未確認")}
+                      </span>
+                    )}
                   </div>
                 );
               })
@@ -861,16 +945,18 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
                   const score = r.riskLevel || r.likelihood * r.impact;
                   const level = score >= 20 ? "CRITICAL" : score >= 10 ? "HIGH" : score >= 5 ? "MEDIUM" : "LOW";
                   const colors: Record<string, string> = { CRITICAL: "#DA1E28", HIGH: "#EB6200", MEDIUM: "#F1C21B", LOW: "#24A148" };
+                  const statusColors: Record<string, string> = { OPEN: "#DA1E28", MITIGATED: "#24A148", ACCEPTED: "#0F62FE", TRANSFERRED: "#8D8D8D" };
                   const parsed = canSeeReasoning ? parseReasoning(r.reasoning) : null;
                   const showHover = !!parsed;
+                  const isUpdating = updatingRiskId === r.id;
                   return (
-                    <div key={r.id} className="bg-white rounded-xl border border-gray-200 px-4 py-3 flex items-center gap-3">
+                    <div key={r.id} className={cn("bg-white rounded-xl border border-gray-200 px-4 py-3 flex items-start gap-3 transition-opacity", isUpdating && "opacity-60")}>
                       <span
                         className={cn("relative inline-block group/score shrink-0", showHover && "cursor-help")}
                         tabIndex={showHover ? 0 : -1}
                       >
                         <span
-                          className="h-9 w-9 rounded-lg flex items-center justify-center text-[10px] font-bold text-white relative"
+                          className="h-9 w-9 rounded-lg flex items-center justify-center text-[10px] font-bold text-white relative tabular-nums"
                           style={{ background: colors[level] }}
                         >
                           {score}
@@ -891,8 +977,7 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-[13px] font-bold text-gray-900">{r.threatId}</span>
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold" style={{ background: `${colors[level]}15`, color: colors[level] }}>{level}</span>
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-gray-100 text-gray-500">{r.status}</span>
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold tracking-[0.06em]" style={{ background: `${colors[level]}15`, color: colors[level] }}>{level}</span>
                           {r.cveId && (
                             <a
                               href={`https://nvd.nist.gov/vuln/detail/${r.cveId}`}
@@ -907,10 +992,65 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
                         {r.assetRef && (
                           <p className="text-[11px] text-gray-600 mt-0.5 truncate">{r.assetRef}</p>
                         )}
-                        <p className="text-[11px] text-gray-500 mt-0.5">
-                          L={r.likelihood} × I={r.impact}
-                          {r.mitigation && ` · ${r.mitigation}`}
-                        </p>
+                        {canReview ? (
+                          <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                            {/* Likelihood / Impact dropdowns */}
+                            <label className="inline-flex items-center gap-1 text-[10px] font-mono text-text-tertiary">
+                              <span>L</span>
+                              <select
+                                value={r.likelihood}
+                                onChange={(e) => updateRisk(r.id, "likelihood", parseInt(e.target.value))}
+                                disabled={isUpdating}
+                                className="rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[11px] font-bold text-gray-900 cursor-pointer focus:outline-none focus:border-brand"
+                              >
+                                {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
+                              </select>
+                            </label>
+                            <span className="text-[10px] font-mono text-text-tertiary">×</span>
+                            <label className="inline-flex items-center gap-1 text-[10px] font-mono text-text-tertiary">
+                              <span>I</span>
+                              <select
+                                value={r.impact}
+                                onChange={(e) => updateRisk(r.id, "impact", parseInt(e.target.value))}
+                                disabled={isUpdating}
+                                className="rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[11px] font-bold text-gray-900 cursor-pointer focus:outline-none focus:border-brand"
+                              >
+                                {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
+                              </select>
+                            </label>
+                            <span className="text-[10px] font-mono text-text-tertiary">=</span>
+                            <span className="font-mono text-[11px] font-bold tabular-nums px-1.5 py-0.5 rounded" style={{ background: `${colors[level]}15`, color: colors[level] }}>{score}</span>
+                            {/* Status dropdown */}
+                            <select
+                              value={r.status}
+                              onChange={(e) => updateRisk(r.id, "status", e.target.value)}
+                              disabled={isUpdating}
+                              className="rounded border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-bold cursor-pointer focus:outline-none focus:border-brand ml-1"
+                              style={{ color: statusColors[r.status] || "#8D8D8D" }}
+                            >
+                              <option value="OPEN">{tx(locale, "OPEN", "미조치", "未対応")}</option>
+                              <option value="MITIGATED">{tx(locale, "MITIGATED", "완화", "緩和")}</option>
+                              <option value="ACCEPTED">{tx(locale, "ACCEPTED", "수용", "受容")}</option>
+                              <option value="TRANSFERRED">{tx(locale, "TRANSFERRED", "이전", "転嫁")}</option>
+                            </select>
+                          </div>
+                        ) : (
+                          <div className="mt-1 flex items-center gap-2">
+                            <p className="text-[11px] text-gray-500 font-mono">L {r.likelihood} × I {r.impact} = <span className="font-bold" style={{ color: colors[level] }}>{score}</span></p>
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold" style={{ background: `${statusColors[r.status] || "#8D8D8D"}15`, color: statusColors[r.status] || "#8D8D8D" }}>{r.status}</span>
+                          </div>
+                        )}
+                        {/* Mitigation — editable inline for reviewers */}
+                        {canReview ? (
+                          <MitigationEditor
+                            value={r.mitigation || ""}
+                            onSave={(v) => updateRisk(r.id, "mitigation", v)}
+                            locale={locale}
+                            disabled={isUpdating}
+                          />
+                        ) : (
+                          r.mitigation && <p className="text-[11px] text-gray-500 mt-1">· {r.mitigation}</p>
+                        )}
                       </div>
                     </div>
                   );
@@ -1276,6 +1416,72 @@ function AssetReviewPanel({
         hardwareSoftwareIds={cveSidebarHwId ? software.filter((s) => s.hardwareId === cveSidebarHwId).map((s) => s.id) : []}
         onClose={() => setCveSidebarHwId(null)}
       />
+    </div>
+  );
+}
+
+// ─── Risk mitigation inline editor ──────────────────────────────────────────
+
+/**
+ * Inline mitigation editor — shows a plain text line with a pencil affordance,
+ * morphs into a textarea on click, and patches the backend on blur or Enter.
+ * Keeps the risk row compact by avoiding a modal dialog.
+ */
+function MitigationEditor({
+  value, onSave, locale, disabled,
+}: {
+  value: string;
+  onSave: (next: string) => void;
+  locale: string;
+  disabled?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  useEffect(() => { setDraft(value); }, [value]);
+
+  const commit = () => {
+    setEditing(false);
+    if (draft !== value) onSave(draft);
+  };
+
+  if (!editing) {
+    return (
+      <button
+        onClick={() => !disabled && setEditing(true)}
+        disabled={disabled}
+        className="mt-1.5 block w-full text-left group/mit"
+      >
+        <p className="text-[11px] text-gray-500 leading-relaxed flex items-start gap-1.5">
+          <span className="text-[9px] font-bold uppercase tracking-[0.08em] text-text-tertiary shrink-0 pt-px">
+            {tx(locale, "Mitigation", "완화 조치", "緩和策")}
+          </span>
+          <span className={cn("flex-1", !value && "italic text-gray-400")}>
+            {value || tx(locale, "Click to add mitigation…", "클릭하여 완화 조치 입력…", "クリックして対策を入力…")}
+          </span>
+          <Edit2 size={10} className="text-text-tertiary shrink-0 opacity-0 group-hover/mit:opacity-100 transition-opacity" />
+        </p>
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-1.5">
+      <textarea
+        autoFocus
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") { setDraft(value); setEditing(false); }
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) commit();
+        }}
+        rows={2}
+        className="w-full rounded-lg border border-brand/40 bg-white px-2.5 py-1.5 text-[11px] text-gray-800 resize-none focus:outline-none focus:ring-2 focus:ring-brand/20"
+        placeholder={tx(locale, "Describe mitigation / controls applied", "완화 조치 / 통제 조치를 기입하세요", "緩和策 / 対策を記入")}
+      />
+      <p className="text-[9px] text-text-tertiary mt-0.5">
+        {tx(locale, "⌘+Enter to save · Esc to cancel", "⌘+Enter 저장 · Esc 취소", "⌘+Enter 保存 · Esc キャンセル")}
+      </p>
     </div>
   );
 }
