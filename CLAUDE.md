@@ -133,3 +133,4 @@ npx next dev -H 0.0.0.0 -p 7000
 - `next-env.d.ts`는 Next.js가 자동 생성. 수동 수정 금지.
 - 에러 페이지(`ErrorScreen` 컴포넌트)는 프로덕션에서 `error.message`/stack trace를 노출하지 않고 `error.digest`만 참조 ID로 보여준다.
 - 로그인 실패는 `LOCKED` / `INVALID_CREDENTIALS` 2가지로만 응답 (사용자 열거 방지).
+- **쓰기 API는 반드시 `isWriteRole(user.role)` 가드 필수** (`src/lib/auth-helpers.ts`). SHIPYARD는 뷰어 role이라 `verifyProjectAccess`만으론 차단 못 함. 신규 POST/PATCH/DELETE 핸들러 추가 시 `if (!hasAccess) …` 바로 다음 줄에 `if (!isWriteRole(user.role)) return apiError("Read-only role cannot modify this resource", 403);` 삽입. VENDOR 소유권 체크(`vendors: { some: { id: user.id } }`) 이미 있는 경우는 중복 불필요.
