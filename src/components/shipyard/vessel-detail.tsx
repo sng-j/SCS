@@ -462,6 +462,86 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
   const canReview = userRole === "SUPPORT" || userRole === "ADMIN";
   const [updatingAssessKey, setUpdatingAssessKey] = useState<string | null>(null);
   const [updatingRiskId, setUpdatingRiskId] = useState<string | null>(null);
+  const [addRiskOpen, setAddRiskOpen] = useState(false);
+  const [addRiskSaving, setAddRiskSaving] = useState(false);
+  const [autoGenBusy, setAutoGenBusy] = useState(false);
+  const [deletingRiskId, setDeletingRiskId] = useState<string | null>(null);
+
+  // Next auto-incremented threat ID — convention is T-### zero-padded.
+  const nextThreatId = () => {
+    let max = 0;
+    for (const r of risks) {
+      const m = r.threatId.match(/^T-(\d+)$/);
+      if (m) max = Math.max(max, parseInt(m[1]));
+    }
+    return `T-${String(max + 1).padStart(3, "0")}`;
+  };
+
+  const [riskForm, setRiskForm] = useState({
+    threatId: "", assetRef: "", likelihood: 3, impact: 3, status: "OPEN", mitigation: "",
+  });
+
+  const openAddRisk = () => {
+    setRiskForm({ threatId: nextThreatId(), assetRef: "", likelihood: 3, impact: 3, status: "OPEN", mitigation: "" });
+    setAddRiskOpen(true);
+  };
+
+  const submitAddRisk = async () => {
+    if (!riskForm.threatId.trim()) { showToast.error(tx(locale, "Threat ID is required", "위협 ID를 입력하세요", "脅威IDを入力してください")); return; }
+    setAddRiskSaving(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/risks`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          threatId: riskForm.threatId.trim(),
+          assetRef: riskForm.assetRef.trim() || undefined,
+          likelihood: riskForm.likelihood,
+          impact: riskForm.impact,
+          status: riskForm.status,
+          mitigation: riskForm.mitigation.trim() || undefined,
+        }),
+      });
+      if (res.ok) {
+        const r = await fetch(`/api/projects/${projectId}/risks`);
+        if (r.ok) setRisks(await r.json());
+        setAddRiskOpen(false);
+        showToast.success(tx(locale, "Risk added", "리스크 추가됨", "リスク追加済み"));
+      } else {
+        const d = await res.json().catch(() => ({}));
+        showToast.error(d.error || tx(locale, "Failed to create", "생성 실패", "作成失敗"));
+      }
+    } finally { setAddRiskSaving(false); }
+  };
+
+  const autoGenerateFromCve = async () => {
+    setAutoGenBusy(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/risks/generate-from-cve`, { method: "POST" });
+      if (res.ok) {
+        const out = await res.json();
+        const r = await fetch(`/api/projects/${projectId}/risks`);
+        if (r.ok) setRisks(await r.json());
+        showToast.success(tx(locale,
+          `Generated ${out.created ?? 0} risk(s) from CVE matches`,
+          `CVE 매칭 기반 ${out.created ?? 0}건 생성됨`,
+          `CVE一致から ${out.created ?? 0} 件生成`));
+      } else {
+        showToast.error(tx(locale, "Auto-generate failed", "자동 생성 실패", "自動生成失敗"));
+      }
+    } finally { setAutoGenBusy(false); }
+  };
+
+  const deleteRisk = async (riskId: string) => {
+    if (!confirm(tx(locale, "Delete this risk?", "이 리스크를 삭제하시겠습니까?", "このリスクを削除しますか？"))) return;
+    setDeletingRiskId(riskId);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/risks/${riskId}`, { method: "DELETE" });
+      if (res.ok) {
+        setRisks((prev) => prev.filter((r) => r.id !== riskId));
+        showToast.success(tx(locale, "Deleted", "삭제됨", "削除済み"));
+      }
+    } finally { setDeletingRiskId(null); }
+  };
 
   // Upsert the same SC result against every HW in this equipment. The vendor
   // page tracks per-HW results for audit trail; the reviewer-facing view
@@ -919,6 +999,136 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
 
         {tab === "risk" && (
           <div className="space-y-2">
+            {canReview && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button size="sm" onClick={openAddRisk}>
+                  <Plus size={14} /> {tx(locale, "Add risk", "리스크 추가", "リスク追加")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={autoGenerateFromCve}
+                  loading={autoGenBusy}
+                  title={tx(locale,
+                    "Generate risks automatically from CVE matches",
+                    "CVE 매칭 기반으로 리스크 자동 생성",
+                    "CVE一致からリスクを自動生成")}
+                >
+                  {!autoGenBusy && <Shield size={14} />}
+                  {tx(locale, "Generate from CVE", "CVE 기반 자동 생성", "CVEから自動生成")}
+                </Button>
+              </div>
+            )}
+
+            {/* Inline create form — expands under the button row */}
+            <AnimatePresence initial={false}>
+              {canReview && addRiskOpen && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2, ease: [0.2, 0.8, 0.2, 1] }}
+                  className="overflow-hidden"
+                >
+                  <div className="bg-white rounded-xl border border-brand/20 p-4 shadow-sm">
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brand">
+                        {tx(locale, "New risk entry", "새 리스크 추가", "新しいリスク")}
+                      </p>
+                      <button
+                        onClick={() => setAddRiskOpen(false)}
+                        className="p-1 rounded hover:bg-surface-secondary text-text-tertiary hover:text-text transition-colors"
+                        aria-label={tx(locale, "Close", "닫기", "閉じる")}
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-6 gap-2.5">
+                      <label className="md:col-span-2 flex flex-col gap-1">
+                        <span className="text-[9px] font-bold uppercase tracking-[0.1em] text-text-tertiary">{tx(locale, "Threat ID", "위협 ID", "脅威ID")}</span>
+                        <input
+                          value={riskForm.threatId}
+                          onChange={(e) => setRiskForm({ ...riskForm, threatId: e.target.value })}
+                          className="rounded-md border border-border bg-white px-2.5 py-1.5 text-[12px] font-mono focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/15"
+                          placeholder="T-007"
+                        />
+                      </label>
+                      <label className="md:col-span-4 flex flex-col gap-1">
+                        <span className="text-[9px] font-bold uppercase tracking-[0.1em] text-text-tertiary">{tx(locale, "Asset / Scenario", "자산 / 시나리오", "資産 / シナリオ")}</span>
+                        <input
+                          value={riskForm.assetRef}
+                          onChange={(e) => setRiskForm({ ...riskForm, assetRef: e.target.value })}
+                          className="rounded-md border border-border bg-white px-2.5 py-1.5 text-[12px] focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/15"
+                          placeholder={tx(locale, "e.g. Bridge LAN — unauthorized access", "예: 브리지 LAN — 비인가 접근", "例: ブリッジLAN — 不正アクセス")}
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1">
+                        <span className="text-[9px] font-bold uppercase tracking-[0.1em] text-text-tertiary">{tx(locale, "Likelihood", "가능성", "可能性")}</span>
+                        <select
+                          value={riskForm.likelihood}
+                          onChange={(e) => setRiskForm({ ...riskForm, likelihood: parseInt(e.target.value) })}
+                          className="rounded-md border border-border bg-white px-2 py-1.5 text-[12px] font-bold focus:outline-none focus:border-brand"
+                        >
+                          {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
+                        </select>
+                      </label>
+                      <label className="flex flex-col gap-1">
+                        <span className="text-[9px] font-bold uppercase tracking-[0.1em] text-text-tertiary">{tx(locale, "Impact", "영향도", "影響度")}</span>
+                        <select
+                          value={riskForm.impact}
+                          onChange={(e) => setRiskForm({ ...riskForm, impact: parseInt(e.target.value) })}
+                          className="rounded-md border border-border bg-white px-2 py-1.5 text-[12px] font-bold focus:outline-none focus:border-brand"
+                        >
+                          {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
+                        </select>
+                      </label>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[9px] font-bold uppercase tracking-[0.1em] text-text-tertiary">{tx(locale, "Score", "점수", "スコア")}</span>
+                        <div className="h-[34px] inline-flex items-center justify-center rounded-md border border-border bg-surface-secondary/40 px-2 font-mono text-[13px] font-bold tabular-nums"
+                          style={{ color:
+                            (riskForm.likelihood * riskForm.impact) >= 20 ? "#DA1E28" :
+                            (riskForm.likelihood * riskForm.impact) >= 12 ? "#EB6200" :
+                            (riskForm.likelihood * riskForm.impact) >= 6 ? "#9a6a00" : "#24A148" }}>
+                          {riskForm.likelihood * riskForm.impact}
+                        </div>
+                      </div>
+                      <label className="md:col-span-2 flex flex-col gap-1">
+                        <span className="text-[9px] font-bold uppercase tracking-[0.1em] text-text-tertiary">{tx(locale, "Status", "상태", "状態")}</span>
+                        <select
+                          value={riskForm.status}
+                          onChange={(e) => setRiskForm({ ...riskForm, status: e.target.value })}
+                          className="rounded-md border border-border bg-white px-2 py-1.5 text-[12px] font-bold focus:outline-none focus:border-brand"
+                        >
+                          <option value="OPEN">{tx(locale, "OPEN", "미조치", "未対応")}</option>
+                          <option value="MITIGATED">{tx(locale, "MITIGATED", "완화", "緩和")}</option>
+                          <option value="ACCEPTED">{tx(locale, "ACCEPTED", "수용", "受容")}</option>
+                          <option value="TRANSFERRED">{tx(locale, "TRANSFERRED", "이전", "転嫁")}</option>
+                        </select>
+                      </label>
+                      <label className="md:col-span-6 flex flex-col gap-1">
+                        <span className="text-[9px] font-bold uppercase tracking-[0.1em] text-text-tertiary">{tx(locale, "Mitigation", "완화 조치", "緩和策")}</span>
+                        <textarea
+                          value={riskForm.mitigation}
+                          onChange={(e) => setRiskForm({ ...riskForm, mitigation: e.target.value })}
+                          rows={2}
+                          className="rounded-md border border-border bg-white px-2.5 py-1.5 text-[12px] resize-none focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/15"
+                          placeholder={tx(locale, "Describe the control or mitigation plan", "완화 조치 / 통제 방안 설명", "緩和策 / 対策の説明")}
+                        />
+                      </label>
+                    </div>
+                    <div className="flex justify-end gap-2 mt-3">
+                      <Button size="sm" variant="outline" onClick={() => setAddRiskOpen(false)} disabled={addRiskSaving}>
+                        {tx(locale, "Cancel", "취소", "キャンセル")}
+                      </Button>
+                      <Button size="sm" onClick={submitAddRisk} loading={addRiskSaving}>
+                        {tx(locale, "Save risk", "리스크 저장", "リスク保存")}
+                      </Button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {risks.length === 0 ? (
               <EmptyTab icon={AlertTriangle} text={tx(locale, "No risk entries registered", "등록된 리스크가 없습니다", "リスクなし")} />
             ) : (
@@ -949,8 +1159,9 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
                   const parsed = canSeeReasoning ? parseReasoning(r.reasoning) : null;
                   const showHover = !!parsed;
                   const isUpdating = updatingRiskId === r.id;
+                  const isDeleting = deletingRiskId === r.id;
                   return (
-                    <div key={r.id} className={cn("bg-white rounded-xl border border-gray-200 px-4 py-3 flex items-start gap-3 transition-opacity", isUpdating && "opacity-60")}>
+                    <div key={r.id} className={cn("bg-white rounded-xl border border-gray-200 px-4 py-3 flex items-start gap-3 transition-opacity group/risk", (isUpdating || isDeleting) && "opacity-60")}>
                       <span
                         className={cn("relative inline-block group/score shrink-0", showHover && "cursor-help")}
                         tabIndex={showHover ? 0 : -1}
@@ -1052,6 +1263,17 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
                           r.mitigation && <p className="text-[11px] text-gray-500 mt-1">· {r.mitigation}</p>
                         )}
                       </div>
+                      {canReview && (
+                        <button
+                          onClick={() => deleteRisk(r.id)}
+                          disabled={isDeleting}
+                          className="self-start p-1.5 rounded-md text-text-tertiary opacity-0 group-hover/risk:opacity-100 hover:text-safety-high hover:bg-risk-bg transition-all shrink-0"
+                          title={tx(locale, "Delete risk", "리스크 삭제", "リスク削除")}
+                          aria-label={tx(locale, "Delete risk", "리스크 삭제", "リスク削除")}
+                        >
+                          <X size={13} />
+                        </button>
+                      )}
                     </div>
                   );
                 })}
