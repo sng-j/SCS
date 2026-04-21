@@ -4,6 +4,7 @@ import {
   getSessionUser,
   verifyProjectAccess,
   apiError,
+  isWriteRole,
 } from "@/lib/auth-helpers";
 import crypto from "crypto";
 
@@ -21,6 +22,7 @@ export async function POST(request: Request, { params }: Params) {
   const { projectId } = await params;
   const hasAccess = await verifyProjectAccess(user.id, projectId, user.role, user.shipyardId);
   if (!hasAccess) return apiError("Forbidden", 403);
+  if (!isWriteRole(user.role)) return apiError("Read-only role cannot modify this resource", 403);
 
   let standard = "E27";
   try {
@@ -138,6 +140,7 @@ export async function GET(_request: Request, { params }: Params) {
   const { projectId } = await params;
   const hasAccess = await verifyProjectAccess(user.id, projectId, user.role, user.shipyardId);
   if (!hasAccess) return apiError("Forbidden", 403);
+  if (!isWriteRole(user.role)) return apiError("Read-only role cannot modify this resource", 403);
 
   const packages = await prisma.compliancePackage.findMany({
     where: { projectId },

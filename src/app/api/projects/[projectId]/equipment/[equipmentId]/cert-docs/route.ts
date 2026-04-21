@@ -3,7 +3,7 @@ import { writeFileSync, mkdirSync, existsSync, unlinkSync } from "fs";
 import path from "path";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser, verifyProjectAccess, apiError } from "@/lib/auth-helpers";
+import { getSessionUser, verifyProjectAccess, apiError, isWriteRole } from "@/lib/auth-helpers";
 import { certDocsDir } from "@/lib/upload-dir";
 
 export const dynamic = "force-dynamic";

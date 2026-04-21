@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser, verifyProjectAccess, apiError } from "@/lib/auth-helpers";
+import { getSessionUser, verifyProjectAccess, apiError, isWriteRole } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 

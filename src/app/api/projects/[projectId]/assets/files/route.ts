@@ -4,6 +4,7 @@ import {
   getSessionUser,
   verifyProjectAccess,
   apiError,
+  isWriteRole,
 } from "@/lib/auth-helpers";
 import { writeFile, mkdir, unlink } from "fs/promises";
 import path from "path";
@@ -43,6 +44,7 @@ export async function GET(request: Request, { params }: Params) {
   const { projectId } = await params;
   const hasAccess = await verifyProjectAccess(user.id, projectId, user.role, user.shipyardId);
   if (!hasAccess) return apiError("Forbidden", 403);
+  if (!isWriteRole(user.role)) return apiError("Read-only role cannot modify this resource", 403);
 
   const { searchParams } = new URL(request.url);
   const hardwareId = searchParams.get("hardwareId");
@@ -87,6 +89,7 @@ export async function POST(request: Request, { params }: Params) {
   const { projectId } = await params;
   const hasAccess = await verifyProjectAccess(user.id, projectId, user.role, user.shipyardId);
   if (!hasAccess) return apiError("Forbidden", 403);
+  if (!isWriteRole(user.role)) return apiError("Read-only role cannot modify this resource", 403);
 
   try {
     const formData = await request.formData();
@@ -177,6 +180,7 @@ export async function DELETE(request: Request, { params }: Params) {
   const { projectId } = await params;
   const hasAccess = await verifyProjectAccess(user.id, projectId, user.role, user.shipyardId);
   if (!hasAccess) return apiError("Forbidden", 403);
+  if (!isWriteRole(user.role)) return apiError("Read-only role cannot modify this resource", 403);
 
   const { searchParams } = new URL(request.url);
   const fileId = searchParams.get("id");
