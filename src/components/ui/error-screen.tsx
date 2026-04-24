@@ -61,9 +61,10 @@ export function ErrorScreen({
   const [now, setNow] = useState<string | null>(null);
 
   useEffect(() => {
-    // Timestamp rendered only client-side to avoid hydration mismatch
-    const d = new Date();
-    setNow(d.toISOString().replace("T", " ").slice(0, 19) + " UTC");
+    // Timestamp rendered only client-side so SSR/CSR markup matches.
+    // setState-in-effect is the standard hydration-safe pattern here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNow(new Date().toISOString().replace("T", " ").slice(0, 19) + " UTC");
   }, []);
 
   const isDev = process.env.NODE_ENV === "development";

@@ -26,6 +26,8 @@ export interface Hardware {
   sysSoftwareVersion: string | null;
   additionalIps: string | null;
   resetPeriodDay: number | null;
+  auditExempt?: boolean;
+  auditExemptReason?: string | null;
   software: { id: string; name: string; version: string | null }[];
   _count: { cveMatches: number; assessments: number };
   swCveCount?: number;

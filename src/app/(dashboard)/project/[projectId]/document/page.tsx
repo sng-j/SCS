@@ -209,7 +209,7 @@ export default function DocumentPage() {
   const handleDownload = useCallback(
     async (doc: DocumentRecord, title: string) => {
       const res = await fetch(
-        `/api/projects/${projectId}/documents/${doc.id}/download`,
+        `/api/projects/${projectId}/documents/${doc.id}/download${equipmentId ? `?equipmentId=${equipmentId}` : ""}`,
       );
       if (!res.ok) {
         showToast.error(tx(locale, "Download failed", "다운로드 실패", "ダウンロード失敗"));
@@ -314,7 +314,7 @@ export default function DocumentPage() {
                     for (const doc of docs) {
                       if (!doc) continue;
                       try {
-                        const res = await fetch(`/api/projects/${projectId}/documents/${doc.id}/preview`);
+                        const res = await fetch(`/api/projects/${projectId}/documents/${doc.id}/preview${equipmentId ? `?equipmentId=${equipmentId}` : ""}`);
                         if (res.ok) {
                           let html = await res.text();
                           // Extract body content only (between <body> and </body>)
@@ -332,7 +332,7 @@ export default function DocumentPage() {
                     for (const doc of docs) {
                       if (!doc) continue;
                       try {
-                        const res = await fetch(`/api/projects/${projectId}/documents/${doc.id}/preview`);
+                        const res = await fetch(`/api/projects/${projectId}/documents/${doc.id}/preview${equipmentId ? `?equipmentId=${equipmentId}` : ""}`);
                         if (res.ok) fullPages.push(await res.text());
                       } catch { /* skip */ }
                     }
@@ -515,7 +515,7 @@ export default function DocumentPage() {
                                 size="sm"
                                 variant="ghost"
                                 onClick={() =>
-                                  window.open(`/api/projects/${projectId}/documents/${doc.id}/preview`, "_blank")
+                                  window.open(`/api/projects/${projectId}/documents/${doc.id}/preview${equipmentId ? `?equipmentId=${equipmentId}` : ""}`, "_blank")
                                 }
                                 title={tx(locale, "Preview", "미리보기", "プレビュー")}
                               >
@@ -719,6 +719,7 @@ function ShipyardDocumentView({ projectId, locale }: { projectId: string; locale
                   {doc && (
                     <div className="flex gap-2 shrink-0">
                       <button onClick={() => {
+                        // ShipyardDocumentView is for E26 (ship-level) docs — no equipmentId scope.
                         window.open(`/api/projects/${projectId}/documents/${doc.id}/preview`, "_blank");
                       }} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors">
                         <Eye size={13} /> {tx(locale, "Preview", "미리보기", "プレビュー")}

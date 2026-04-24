@@ -4,7 +4,7 @@
 // Server-side only (uses child_process for Tesseract CLI)
 
 import { execSync } from "child_process";
-import { writeFileSync, unlinkSync, existsSync } from "fs";
+import { unlinkSync, existsSync } from "fs";
 import path from "path";
 import os from "os";
 
@@ -291,7 +291,6 @@ export function groupOcrItems(items: OcrItem[], zones: ZoneBoundary[]): DeviceCa
 
   // Category/ID patterns
   const CAT_PATTERN = /\((WH|EER|SGR|Bridge|STBD Console)\)/;
-  const ID_PATTERN = /(?:NO?|No\.?)\d[\d\-]+/g;
 
   // ── Pass 1: Group same-line items (y±15px, sequential x gap <100px) ──
 

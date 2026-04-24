@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useCallback } from "react";
+import { useEffect } from "react";
 
 /**
  * 저장되지 않은 변경사항이 있을 때 페이지 이탈 경고를 표시합니다.

@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser, verifyProjectAccess, apiError } from "@/lib/auth-helpers";
+// Shared 5×5 → severity mapping lives in one module. Aliased to `riskLabel`
+// so the local call-sites in this file stay compact.
+import { riskSeverity as riskLabel } from "@/lib/risk-severity";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +52,40 @@ interface ProjectCtx {
   classification: string | null;
   systemName: string | null;
 }
+
+interface ConnectionItem {
+  id: string;
+  fromHw: { id: string; name: string; equipmentId: string | null } | null;
+  toHw: { id: string; name: string; equipmentId: string | null } | null;
+  medium: string | null;
+  protocol: string | null;
+  encrypted: boolean;
+  port: string | null;
+  label: string | null;
+}
+
+interface RiskItem {
+  id: string;
+  threatId: string;
+  cveId: string | null;
+  assetRef: string | null;
+  likelihood: number;
+  impact: number;
+  riskLevel: number;
+  status: string;
+  mitigation: string | null;
+}
+
+interface DfdData {
+  id: string;
+  data: string; // JSON: { nodes: [...], edges: [...] }
+}
+
+interface EquipmentCtx {
+  id: string;
+  name: string;
+}
+
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -211,12 +248,12 @@ function previewAUD(hw: HwItem[], assessments: AssItem[]): string {
   return html;
 }
 
-function previewTOP(hw: HwItem[]): string {
+function previewTOP(hw: HwItem[], connections: ConnectionItem[], dfd: DfdData | null, equipment: EquipmentCtx | null): string {
   const zones = groupBy(hw, (h) => h.zone || "Unassigned");
 
   let html = section(
     "1. Overview",
-    `Network topology description covering ${hw.length} asset(s) across ${zones.size} security zone(s): ${[...zones.keys()].join(", ")}.`,
+    `Network topology description${equipment ? ` for equipment "${equipment.name}"` : ""} covering ${hw.length} asset(s) across ${zones.size} security zone(s): ${[...zones.keys()].join(", ")}.`,
   );
 
   // Zone overview
@@ -235,21 +272,56 @@ function previewTOP(hw: HwItem[]): string {
   for (const [zone, assets] of zones) {
     html += `<h3>3.${idx}. ${esc(zone)}</h3>`;
     html += table(
-      ["Asset Name", "Type", "IP Address", "Location"],
-      assets.map((a) => [esc(a.name), esc(a.type), esc(a.ipAddress || "—"), esc(a.location || "—")]),
+      ["Asset Name", "Type", "IP Address", "MAC", "Location"],
+      assets.map((a) => [esc(a.name), esc(a.type), esc(a.ipAddress || "—"), esc(a.macAddress || "—"), esc(a.location || "—")]),
     );
     idx++;
   }
 
-  // Network connections (assets with IP)
+  // Registered network connections (from NetworkConnection table / DFD wizard)
+  html += `<h2>4. Network & Serial Flow Matrix</h2>`;
+  if (connections.length > 0) {
+    html += `<p>${connections.length} connection(s) registered between CBS assets.</p>`;
+    html += table(
+      ["#", "From", "To", "Medium", "Protocol", "Port", "Encrypted", "Label"],
+      connections.map((c, i) => [
+        String(i + 1),
+        esc(c.fromHw?.name || "—"),
+        esc(c.toHw?.name || "—"),
+        esc(c.medium || "Ethernet"),
+        esc(c.protocol || "—"),
+        esc(c.port || "—"),
+        c.encrypted ? "Yes" : "No",
+        esc(c.label || "—"),
+      ]),
+    );
+  } else {
+    html += `<p><em>No connections registered yet. Define flows in the DFD editor for a complete topology document.</em></p>`;
+  }
+
+  // Inline DFD diagram so reviewers do not have to chase a separate PNG export.
+  html += `<h2>5. Data Flow Diagram</h2>`;
+  if (dfd && dfd.data) {
+    html += `<p>Rendered from the current DFD (version ${esc(String((dfd as { id: string; data: string }).id).slice(0, 8))}). For the interactive version use the DFD editor.</p>`;
+    html += dfdSvg(dfd.data);
+  } else if (equipment) {
+    html += `<p><em>No DFD has been drawn for this equipment yet. Open the DFD editor to create one — it will be embedded here automatically on next generation.</em></p>`;
+  } else {
+    html += `<p><em>DFD is only embedded for equipment-scoped previews. Open this document from a specific equipment context to see the diagram.</em></p>`;
+  }
+
+  // Networked assets summary (with software co-location)
   const networked = hw.filter((h) => h.ipAddress);
   if (networked.length > 0) {
-    html += `<h2>4. Network Connections</h2>`;
+    html += `<h2>6. IP-Addressable Asset Summary</h2>`;
     html += table(
-      ["#", "Asset Name", "IP Address", "MAC Address", "Zone", "Connected Software"],
+      ["#", "Asset Name", "IP Address", "MAC Address", "Zone", "Software on Asset"],
       networked.map((h, i) => [
         String(i + 1), esc(h.name), esc(h.ipAddress || "—"), esc(h.macAddress || "—"),
-        esc(h.zone || "—"), h.software.map((s) => esc(s.name)).join(", ") || "—",
+        esc(h.zone || "—"),
+        h.software.length > 0
+          ? h.software.map((s) => esc(`${s.name}${s.version ? ` v${s.version}` : ""}`)).join(", ")
+          : "—",
       ]),
     );
   }
@@ -257,7 +329,7 @@ function previewTOP(hw: HwItem[]): string {
   return html;
 }
 
-function previewVUL(hw: HwItem[], sw: SwItem[], assessments: AssItem[]): string {
+function previewVUL(hw: HwItem[], sw: SwItem[], assessments: AssItem[], risks: RiskItem[]): string {
   const counts = { pass: 0, fail: 0, partial: 0, total: assessments.length };
   for (const a of assessments) {
     if (a.result === "PASS") counts.pass++;
@@ -265,29 +337,86 @@ function previewVUL(hw: HwItem[], sw: SwItem[], assessments: AssItem[]): string 
     if (a.result === "PARTIAL") counts.partial++;
   }
   const zones = groupBy(hw, (h) => h.zone || "Unassigned");
+  const totalCveMatches = sw.reduce((acc, s) => acc + (s._count?.cveMatches || 0), 0);
 
   let html = section(
     "1. Purpose and Scope",
     `This document identifies and assesses cybersecurity vulnerabilities in the CBS of this vessel. Scope: ${hw.length} hardware and ${sw.length} software assets.`,
   );
 
-  html += section("2. Vulnerability Identification Methods", "The following methods were used:", [
+  html += section("2. Regulatory Reference", "Vulnerability identification and treatment follow:", [
+    "IACS UR E27 Rev.2 — Cyber resilience of on-board systems and equipment",
+    "IACS UR E26 — Cyber resilience of ships",
+    "IEC 62443-3-3 — System security requirements",
+  ]);
+
+  html += section("3. Vulnerability Identification Methods", "The following methods were used:", [
     "Automated CVE matching against the NVD for all registered software (CPE-based)",
+    "CISA KEV cross-reference for known-exploited vulnerabilities",
     "Security configuration assessment (SC-1 through SC-13) for each hardware asset",
     "Manual review of software versions against known vulnerability advisories",
   ]);
 
   html += section(
-    "3. CBS Overview",
-    `${hw.length} hardware assets across ${zones.size} zone(s): ${[...zones.keys()].join(", ")}. ${sw.length} software components registered.`,
+    "4. CBS Overview",
+    `${hw.length} hardware assets across ${zones.size} zone(s): ${[...zones.keys()].join(", ")}. ${sw.length} software components registered. ${totalCveMatches} CVE match(es) attached to software inventory.`,
   );
 
-  html += `<h2>4. Security Assessment Summary</h2>`;
+  html += `<h2>5. Security Assessment Summary</h2>`;
   html += `<p>${counts.total} checks performed: ${counts.pass} PASS, ${counts.fail} FAIL, ${counts.partial} PARTIAL.</p>`;
+
+  // Software inventory with CVE counts — gives the reviewer a direct at-a-
+  // glance map of which SW is contributing the project's CVE exposure.
+  html += `<h2>6. Software Inventory (CVE Reference)</h2>`;
+  html += table(
+    ["Software", "Version", "Vendor", "Type", "CPE", "CVE Matches"],
+    sw.map((s) => [
+      esc(s.name), esc(s.version || "—"), esc(s.vendor || "—"),
+      esc(s.swType), esc(s.cpe || "Not registered"),
+      String(s._count?.cveMatches || 0),
+    ]),
+  );
+
+  // Per-HW CVE load — helpful when the fleet has many SW components.
+  const hwCveLoad = hw.map((h) => {
+    const swOnHw = sw.filter((s) => s.hardware?.id === h.id);
+    const total = swOnHw.reduce((acc, s) => acc + (s._count?.cveMatches || 0), 0);
+    return { h, swCount: swOnHw.length, total };
+  }).filter((r) => r.swCount > 0);
+  if (hwCveLoad.length > 0) {
+    html += `<h2>7. CVE Load by Hardware</h2>`;
+    html += table(
+      ["Hardware", "Type", "Zone", "SW Components", "CVE Matches"],
+      hwCveLoad.map((r) => [
+        esc(r.h.name), esc(r.h.type), esc(r.h.zone || "—"),
+        String(r.swCount), String(r.total),
+      ]),
+    );
+  }
+
+  // Risk register — the vulnerabilities that have graduated to scored risks.
+  if (risks.length > 0) {
+    html += `<h2>8. Risk Register (from CVE Matching)</h2>`;
+    const withCve = risks.filter((r) => r.cveId);
+    html += `<p>${risks.length} risk entr${risks.length === 1 ? "y" : "ies"} (${withCve.length} CVE-derived). Sorted by score.</p>`;
+    html += table(
+      ["Threat ID", "CVE", "Asset", "L", "I", "Score", "Level", "Status"],
+      risks.map((r) => [
+        esc(r.threatId),
+        esc(r.cveId || "—"),
+        esc(r.assetRef || "—"),
+        String(r.likelihood),
+        String(r.impact),
+        String(r.riskLevel),
+        riskLabel(r.riskLevel),
+        esc(r.status),
+      ]),
+    );
+  }
 
   const findings = assessments.filter((a) => a.result === "FAIL" || a.result === "PARTIAL");
   if (findings.length > 0) {
-    html += `<h2>5. Failed and Partial Items</h2><p>${findings.length} item(s) require remediation:</p>`;
+    html += `<h2>9. Failed and Partial Items</h2><p>${findings.length} item(s) require remediation:</p>`;
     html += table(
       ["Hardware", "Type", "Zone", "Check", "Result", "Evidence", "Notes"],
       findings.map((a) => {
@@ -665,7 +794,7 @@ function previewE26CRP(project: ProjectCtx): string {
   );
 }
 
-function previewE26CRA(hw: HwItem[], sw: SwItem[], assessments: AssItem[]): string {
+function previewE26CRA(hw: HwItem[], sw: SwItem[], assessments: AssItem[], risks: RiskItem[]): string {
   const counts = { pass: 0, fail: 0, partial: 0, total: assessments.length };
   for (const a of assessments) {
     if (a.result === "PASS") counts.pass++;
@@ -704,13 +833,83 @@ function previewE26CRA(hw: HwItem[], sw: SwItem[], assessments: AssItem[]): stri
     );
   }
 
-  html += section("5. Risk Treatment Options", "For each identified risk:", [
+  // Risk Register — previously the E26-CRA preview stopped at generic
+  // treatment-option bullets; now we emit the actual RiskEntry rows tied to
+  // this scope so classification society reviewers see real data.
+  html += `<h2>5. Risk Register</h2>`;
+  if (risks.length === 0) {
+    html += `<p><em>No risk entries have been recorded yet. Run CVE-based risk generation or add manual entries before submitting.</em></p>`;
+  } else {
+    html += `<p>${risks.length} risk entr${risks.length === 1 ? "y" : "ies"} currently recorded. Sorted by score.</p>`;
+    html += table(
+      ["Threat ID", "CVE", "Asset", "L", "I", "Score", "Level", "Status"],
+      risks.map((r) => [
+        esc(r.threatId), esc(r.cveId || "—"), esc(r.assetRef || "—"),
+        String(r.likelihood), String(r.impact), String(r.riskLevel),
+        riskLabel(r.riskLevel), esc(r.status),
+      ]),
+    );
+
+    const levelCounts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0, NEGLIGIBLE: 0 } as Record<string, number>;
+    for (const r of risks) levelCounts[riskLabel(r.riskLevel)]++;
+    html += `<h3>5.1 Risk Summary</h3>`;
+    html += table(
+      ["Level", "Count", "Required Action"],
+      [
+        ["CRITICAL", String(levelCounts.CRITICAL), "Immediate action — escalate to CSO within 48h"],
+        ["HIGH", String(levelCounts.HIGH), "Remediation plan within 30 days"],
+        ["MEDIUM", String(levelCounts.MEDIUM), "Address in next maintenance cycle"],
+        ["LOW", String(levelCounts.LOW), "Accept or address as resources allow"],
+        ["NEGLIGIBLE", String(levelCounts.NEGLIGIBLE), "Track in log; no active mitigation required"],
+      ],
+    );
+  }
+
+  html += section("6. Risk Treatment Options", "For each identified risk:", [
     "MITIGATE — Additional controls to reduce risk",
     "ACCEPT — Within acceptable threshold",
     "TRANSFER — Shared through contracts or insurance",
     "AVOID — Change activity or configuration to eliminate risk",
   ]);
 
+  return html;
+}
+
+function previewRiskTreatment(project: ProjectCtx, risks: RiskItem[]): string {
+  let html = section(
+    "1. Purpose and Scope",
+    `ISO/IEC 27001:2022 Risk Treatment Plan for vessel "${project.vesselName}". Documents the treatment decision for every identified cyber risk.`,
+  );
+  html += section("2. Treatment Options", "For every risk the owner selects one of:", [
+    "Mitigate — apply additional controls to reduce likelihood or impact",
+    "Accept — residual risk is within tolerance; document justification",
+    "Transfer — risk shared via contract or insurance",
+    "Avoid — change the activity so the risk no longer applies",
+  ]);
+  html += `<h2>3. Risk Treatment Register</h2>`;
+  if (risks.length === 0) {
+    html += `<p><em>No risk entries have been recorded yet.</em></p>`;
+  } else {
+    const treatmentFromStatus: Record<string, string> = {
+      OPEN: "Pending (Mitigate)", MITIGATED: "Mitigate",
+      ACCEPTED: "Accept", TRANSFERRED: "Transfer",
+    };
+    html += table(
+      ["Threat ID", "Asset / CVE", "Level", "Score", "Treatment", "Control / Mitigation"],
+      risks.map((r) => [
+        esc(r.threatId),
+        esc(r.assetRef || r.cveId || "—"),
+        riskLabel(r.riskLevel),
+        String(r.riskLevel),
+        esc(treatmentFromStatus[r.status] || r.status),
+        esc(r.mitigation || "Not yet documented"),
+      ]),
+    );
+    const openCount = risks.filter((r) => r.status === "OPEN").length;
+    if (openCount > 0) {
+      html += `<p><strong>Action required:</strong> ${openCount} risk entr${openCount === 1 ? "y remains" : "ies remain"} untreated (status OPEN).</p>`;
+    }
+  }
   return html;
 }
 
@@ -1160,19 +1359,100 @@ function buildPreview(
   hw: HwItem[],
   sw: SwItem[],
   assessments: AssItem[],
+  connections: ConnectionItem[],
+  risks: RiskItem[],
+  dfdDiagram: DfdData | null,
+  equipment: EquipmentCtx | null,
 ): string {
-  switch (docType) {
-    case "E27-CBS":  return previewCBS(hw);
-    case "E27-SBOM": return previewSBOM(sw);
-    case "E27-AUD":  return previewAUD(hw, assessments);
-    case "E27-TOP":  return previewTOP(hw);
-    case "E27-VUL":  return previewVUL(hw, sw, assessments);
-    case "E27-ACC":  return previewACC(hw, assessments);
-    case "E27-MON":  return previewMON(hw, assessments);
-    case "E26-ZCD":  return previewE26SZD(hw);
-    case "E26-INV":  return previewE26INV(hw, sw);
-    case "E26-CRA":  return previewE26CRA(hw, sw, assessments);
-    default:         return previewGeneric(docType, title, hw, sw, assessments);
+  const main = (() => {
+    switch (docType) {
+      case "E27-CBS":  return previewCBS(hw);
+      case "E27-SBOM": return previewSBOM(sw);
+      case "E27-AUD":  return previewAUD(hw, assessments);
+      case "E27-TOP":  return previewTOP(hw, connections, dfdDiagram, equipment);
+      case "E27-VUL":  return previewVUL(hw, sw, assessments, risks);
+      case "E27-ACC":  return previewACC(hw, assessments);
+      case "E27-MON":  return previewMON(hw, assessments);
+      case "E26-ZCD":  return previewE26SZD(hw);
+      case "E26-INV":  return previewE26INV(hw, sw);
+      case "E26-CRA":  return previewE26CRA(hw, sw, assessments, risks);
+      case "ISO-RTP":  return previewRiskTreatment(project, risks);
+      default:         return previewGeneric(docType, title, hw, sw, assessments);
+    }
+  })();
+  return main + approvalBlock();
+}
+
+// Every preview ends with the Prepared / Reviewed / Approved table so the
+// HTML export looks like the final docx.
+function approvalBlock(): string {
+  return `<h2>Approval & Signatures</h2>
+<p>This document is considered effective once all signatures below are completed.</p>
+${table(
+  ["Role", "Name", "Title / Organization", "Date", "Signature"],
+  [
+    ["Prepared by", "", "", "", ""],
+    ["Reviewed by", "", "", "", ""],
+    ["Approved by", "", "", "", ""],
+  ],
+)}`;
+}
+
+// Inline SVG rendering of the equipment's DFD so the E27-TOP preview
+// actually shows the diagram rather than telling the reader to look
+// somewhere else. Parses the same xyflow JSON the DFD editor saves.
+function dfdSvg(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw) as {
+      nodes?: { id: string; position?: { x: number; y: number }; data?: { label?: string } }[];
+      edges?: { source: string; target: string; label?: string }[];
+    };
+    const nodes = parsed.nodes || [];
+    const edges = parsed.edges || [];
+    if (nodes.length === 0) return `<p><em>DFD has no nodes defined yet.</em></p>`;
+
+    const NW = 160, NH = 60, PAD = 40;
+    const xs = nodes.map((n) => n.position?.x ?? 0);
+    const ys = nodes.map((n) => n.position?.y ?? 0);
+    const minX = Math.min(...xs), minY = Math.min(...ys);
+    const maxX = Math.max(...xs) + NW, maxY = Math.max(...ys) + NH;
+    const width = Math.max(maxX - minX + PAD * 2, 800);
+    const height = Math.max(maxY - minY + PAD * 2, 400);
+
+    const nodePos = new Map<string, { x: number; y: number }>();
+    for (const n of nodes) {
+      nodePos.set(n.id, {
+        x: (n.position?.x ?? 0) - minX + PAD,
+        y: (n.position?.y ?? 0) - minY + PAD,
+      });
+    }
+
+    const edgeSvg = edges.map((e) => {
+      const a = nodePos.get(e.source);
+      const b = nodePos.get(e.target);
+      if (!a || !b) return "";
+      const x1 = a.x + NW / 2, y1 = a.y + NH / 2;
+      const x2 = b.x + NW / 2, y2 = b.y + NH / 2;
+      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+      const lbl = e.label ? `<text x="${mx}" y="${my - 4}" font-size="10" fill="#525252" text-anchor="middle">${esc(e.label)}</text>` : "";
+      return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#8D8D8D" stroke-width="1.5" marker-end="url(#arrow)"/>${lbl}`;
+    }).join("");
+
+    const nodeSvg = nodes.map((n) => {
+      const p = nodePos.get(n.id)!;
+      const label = n.data?.label || n.id;
+      return `<g><rect x="${p.x}" y="${p.y}" width="${NW}" height="${NH}" rx="6" fill="#EDF5FF" stroke="#0F62FE" stroke-width="1.5"/><text x="${p.x + NW / 2}" y="${p.y + NH / 2 + 4}" font-size="12" font-weight="600" fill="#161616" text-anchor="middle">${esc(label.length > 22 ? label.slice(0, 21) + "…" : label)}</text></g>`;
+    }).join("");
+
+    return `<div style="overflow:auto;border:1px solid #C6C6C6;border-radius:6px;padding:8px;background:#fff">
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" style="display:block;max-width:100%">
+  <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8D8D8D"/></marker></defs>
+  ${edgeSvg}
+  ${nodeSvg}
+</svg>
+</div>`;
+  } catch {
+    return `<p><em>DFD data could not be parsed.</em></p>`;
   }
 }
 
@@ -1262,7 +1542,7 @@ function wrapHtml(
 
 // ─── GET handler ────────────────────────────────────────────────────────────
 
-export async function GET(_request: Request, { params }: Params) {
+export async function GET(request: Request, { params }: Params) {
   const user = await getSessionUser();
   if (!user) return apiError("Unauthorized", 401);
 
@@ -1277,15 +1557,33 @@ export async function GET(_request: Request, { params }: Params) {
 
   if (!document) return apiError("Document not found", 404);
 
-  const [project, hardware, software, assessments] = await Promise.all([
+  // Preview must honour the same equipment scope as the docx generator
+  // (src/lib/docx/index.ts): E27 + IEC-SCR/CSR are equipment-level, E26 and
+  // the rest are vessel-level. Otherwise per-equipment VUL/AUD/TOP previews
+  // leak every asset in the project.
+  const { searchParams } = new URL(request.url);
+  const equipmentIdParam = searchParams.get("equipmentId") || undefined;
+  const isEquipmentLevel = document.docType.startsWith("E27") || ["IEC-SCR", "IEC-CSR"].includes(document.docType);
+  const equipmentId = isEquipmentLevel ? equipmentIdParam : undefined;
+
+  const hwFilter = equipmentId ? { projectId, equipmentId } : { projectId };
+  const swFilter = equipmentId ? { projectId, equipmentId } : { projectId };
+  const assessFilter = equipmentId
+    ? { hardware: { projectId, equipmentId } }
+    : { hardware: { projectId } };
+
+  const [project, hardware, software, assessments, connections, risks, dfdDiagram, equipment] = await Promise.all([
     prisma.project.findUnique({ where: { id: projectId } }),
     prisma.hardware.findMany({
-      where: { projectId },
-      include: { software: { select: { id: true, name: true, version: true } } },
+      where: hwFilter,
+      include: {
+        software: { select: { id: true, name: true, version: true } },
+        _count: { select: { cveMatches: true, assessments: true } },
+      },
       orderBy: { name: "asc" },
     }),
     prisma.software.findMany({
-      where: { projectId },
+      where: swFilter,
       include: {
         hardware: { select: { id: true, name: true } },
         _count: { select: { cveMatches: true } },
@@ -1293,10 +1591,37 @@ export async function GET(_request: Request, { params }: Params) {
       orderBy: { name: "asc" },
     }),
     prisma.assessment.findMany({
-      where: { hardware: { projectId } },
+      where: assessFilter,
       include: { hardware: { select: { id: true, name: true, type: true } } },
       orderBy: [{ hardware: { name: "asc" } }, { checkId: "asc" }],
     }),
+    prisma.networkConnection.findMany({
+      where: equipmentId
+        ? { projectId, OR: [{ fromHw: { equipmentId } }, { toHw: { equipmentId } }] }
+        : { projectId },
+      include: {
+        fromHw: { select: { id: true, name: true, equipmentId: true } },
+        toHw: { select: { id: true, name: true, equipmentId: true } },
+      },
+    }),
+    prisma.riskEntry.findMany({
+      where: equipmentId
+        ? { projectId, equipmentId, deletedAt: null }
+        : { projectId, deletedAt: null },
+      select: {
+        id: true, threatId: true, cveId: true, assetRef: true,
+        likelihood: true, impact: true, riskLevel: true, status: true, mitigation: true,
+      },
+      orderBy: [{ riskLevel: "desc" }, { threatId: "asc" }],
+    }),
+    // DFD diagram — equipment-level when scoped, else null (project-level
+    // docs don't have a single diagram).
+    equipmentId
+      ? prisma.dfdDiagram.findUnique({ where: { equipmentId } })
+      : Promise.resolve(null),
+    equipmentId
+      ? prisma.equipment.findUnique({ where: { id: equipmentId }, select: { id: true, name: true } })
+      : Promise.resolve(null),
   ]);
 
   if (!project) return apiError("Project not found", 404);
@@ -1315,6 +1640,10 @@ export async function GET(_request: Request, { params }: Params) {
     hardware as HwItem[],
     software as SwItem[],
     assessments as AssItem[],
+    connections as ConnectionItem[],
+    risks as RiskItem[],
+    dfdDiagram,
+    equipment,
   );
 
   const html = wrapHtml(projectCtx, {

@@ -178,7 +178,7 @@ export async function GET() {
         }),
       })),
       signupRequests: signupRequests.map((s) => ({ id: s.id, email: s.email, name: s.name, company: s.company, createdAt: s.createdAt.toISOString() })),
-      vendors: allVendors.map((v) => ({ id: v.id, name: v.name, company: v.company, email: v.email, eqCount: (v._count as any).assignedEquipments, lastActive: v.updatedAt.toISOString() })),
+      vendors: allVendors.map((v) => ({ id: v.id, name: v.name, company: v.company, email: v.email, eqCount: (v._count as { assignedEquipments: number }).assignedEquipments, lastActive: v.updatedAt.toISOString() })),
       stuckEquipment,
       recentActivity: recentActivity.map((a) => ({ id: a.id, type: a.entityType, action: a.changeType, vessel: a.project?.vesselName, createdAt: a.createdAt.toISOString() })),
     };

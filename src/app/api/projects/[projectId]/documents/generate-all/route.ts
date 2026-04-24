@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser, verifyProjectAccess, apiError, isWriteRole } from "@/lib/auth-helpers";
-import { ALL_DOC_TYPES } from "@/lib/docx";
+import { ALL_DOC_TYPES, canGenerateDocType } from "@/lib/docx";
 
 export const dynamic = "force-dynamic";
 
@@ -30,10 +30,18 @@ export async function POST(request: Request, { params }: Params) {
   });
   if (!submission) return apiError("Submission not found", 404);
 
-  // Filter doc types by standard if specified (e.g., "E27", "E26")
+  // Filter doc types by standard if specified (e.g., "E27", "E26") AND by
+  // the caller's role — a VENDOR must not be able to generate E26/IEC/NIST/
+  // ISO documents even if they pass `?standard=E26` explicitly.
   const docTypes = Object.entries(ALL_DOC_TYPES).filter(
-    ([key]) => !standard || key.startsWith(standard)
+    ([key]) =>
+      (!standard || key.startsWith(standard)) &&
+      canGenerateDocType(user.role, key),
   );
+
+  if (docTypes.length === 0) {
+    return apiError("No document types are available for your role in the requested scope", 403);
+  }
 
   const results: { docType: string; title: string; status: "created" | "updated" }[] = [];
 

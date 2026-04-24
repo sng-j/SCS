@@ -117,6 +117,29 @@ export default function TestProcPage() {
   const [newGroupLabel, setNewGroupLabel] = useState("");
   const [activeGroupId, setActiveGroupId] = useState<string>("");
   const [creatingGroup, setCreatingGroup] = useState(false);
+
+  // Persist the active group in the URL so a refresh keeps the same tab open
+  // and users can bookmark / share a direct link to one group. Falls back to
+  // the first group when nothing is selected yet so the detail panel is never
+  // empty unless there really are no groups.
+  useEffect(() => {
+    if (activeGroupId) return;
+    if (hwGroups.length === 0) return;
+    const urlGroup = searchParams.get("group");
+    const match = urlGroup ? hwGroups.find((g) => g.id === urlGroup) : null;
+    setActiveGroupId(match ? match.id : hwGroups[0].id);
+  }, [hwGroups, activeGroupId, searchParams]);
+
+  // Keep the URL in sync with the selected tab. replaceState avoids polluting
+  // the back-button stack — switching tabs shouldn't count as navigation.
+  useEffect(() => {
+    if (!activeGroupId) return;
+    const params = new URLSearchParams(searchParams.toString());
+    if (params.get("group") !== activeGroupId) {
+      params.set("group", activeGroupId);
+      window.history.replaceState(null, "", `?${params.toString()}`);
+    }
+  }, [activeGroupId, searchParams]);
   // Per-SW sections: { swId: ["Section A", "Section B"] }
   const [fnSectionsMap, setFnSectionsMap] = useState<Record<string, string[]>>({});
   const [activeFnSection, setActiveFnSection] = useState<string>("");
@@ -766,10 +789,12 @@ export default function TestProcPage() {
                         <div className="flex gap-1.5 flex-wrap items-center mb-5">
                           {hwGroups.map((grp) => {
                             const memberIds: string[] = (() => { try { return JSON.parse(grp.hardwareIds); } catch { return []; } })();
+                            const memberNames = hardware.filter(h => memberIds.includes(h.id)).map(h => h.name);
                             return (
                               <div key={grp.id} className="relative group/grp flex items-center">
                                 <button
                                   onClick={() => setActiveGroupId(grp.id)}
+                                  title={memberNames.length > 0 ? memberNames.join(", ") : undefined}
                                   className={cn(
                                     "px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-all border",
                                     activeGroupId === grp.id
@@ -809,8 +834,9 @@ export default function TestProcPage() {
                           const members = hardware.filter(h => memberIds.includes(h.id));
                           return (
                             <Card padding="none">
-                              {/* 그룹 헤더 */}
-                              <div className="flex items-center gap-3 px-5 py-3 border-b border-border bg-surface-secondary/50">
+                              {/* 그룹 헤더 — 소속 기기 이름을 칩으로 노출해서 어느 HW가 묶였는지 한눈에 보이게 함.
+                                  칩 개수가 많아지면 +N 처리하고, 전체 이름은 title 툴팁으로 폴백. */}
+                              <div className="flex items-start gap-3 px-5 py-3 border-b border-border bg-surface-secondary/50">
                                 <div className="h-7 w-7 rounded-md bg-violet-50 border border-violet-200 flex items-center justify-center shrink-0">
                                   <Cpu size={13} className="text-violet-600" />
                                 </div>
@@ -821,6 +847,32 @@ export default function TestProcPage() {
                                       {tx(locale, `${members.length} devices`, `${members.length}개 기기`, `${members.length}台`)}
                                     </span>
                                   </p>
+                                  {members.length > 0 && (() => {
+                                    const MAX_CHIPS = 3;
+                                    const shown = members.slice(0, MAX_CHIPS);
+                                    const hidden = members.slice(MAX_CHIPS);
+                                    return (
+                                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                        {shown.map((m) => (
+                                          <span
+                                            key={m.id}
+                                            title={m.name}
+                                            className="inline-flex max-w-[220px] items-center rounded-md border border-violet-200 bg-white px-2 py-0.5 text-[11px] font-medium text-violet-700 truncate"
+                                          >
+                                            {m.name}
+                                          </span>
+                                        ))}
+                                        {hidden.length > 0 && (
+                                          <span
+                                            title={hidden.map((m) => m.name).join(", ")}
+                                            className="inline-flex items-center rounded-md border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-700 cursor-help"
+                                          >
+                                            +{hidden.length}
+                                          </span>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                                 {canEdit && (
                                   <Button size="sm" onClick={() => saveGroupItems(activeGroup.id)} loading={saving}>

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser, verifyProjectAccess, apiError } from "@/lib/auth-helpers";
-import { generateDocx } from "@/lib/docx";
+import { generateDocx, canGenerateDocType } from "@/lib/docx";
 import archiver from "archiver";
 import { PassThrough } from "stream";
 
@@ -22,9 +22,22 @@ export async function GET(request: Request, { params }: Params) {
 
   const { searchParams } = new URL(request.url);
   const submissionId = searchParams.get("submissionId");
-  const equipmentId = searchParams.get("equipmentId") || undefined;
+  const equipmentIdParam = searchParams.get("equipmentId") || undefined;
 
   if (!submissionId) return apiError("submissionId is required", 400);
+
+  // Same guard as the single-document download route — equipmentId must
+  // belong to this project. Prevents a caller with project access from
+  // scoping bundle content to another equipment's assets.
+  let equipmentId: string | undefined;
+  if (equipmentIdParam) {
+    const eq = await prisma.equipment.findFirst({
+      where: { id: equipmentIdParam, projectId },
+      select: { id: true },
+    });
+    if (!eq) return apiError("equipmentId does not belong to this project", 400);
+    equipmentId = eq.id;
+  }
 
   // Get all generated documents for this submission
   const documents = await prisma.document.findMany({
@@ -51,14 +64,17 @@ export async function GET(request: Request, { params }: Params) {
   const passThrough = new PassThrough();
   archive.pipe(passThrough);
 
-  // Generate each document and add to archive
+  // Generate each document the caller is allowed to receive and add to the
+  // archive. Role-scoped: vendors get E27 only, shipyard/admin get the lot.
   for (const doc of documents) {
+    if (!canGenerateDocType(user.role, doc.docType)) continue;
     try {
       const buffer = await generateDocx(projectId, doc.docType, equipmentId);
       const filename = `${doc.docType}_${doc.title.replace(/[^a-zA-Z0-9가-힣_-\s]/g, "").replace(/\s+/g, "_")}.docx`;
       archive.append(buffer, { name: filename });
-    } catch {
-      // Skip failed documents
+    } catch (e) {
+      // Skip failed documents but log server-side so ops can diagnose.
+      console.error(`[documents.bundle] skipped ${doc.docType}:`, e);
     }
   }
 

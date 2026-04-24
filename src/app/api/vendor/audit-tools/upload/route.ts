@@ -162,8 +162,47 @@ export async function POST(request: Request) {
     });
 
     // ─── Auto-map assets from SystemInfo ─────────────────────────────
-    const autoMapped = { hardware: 0, software: 0 };
+    const autoMapped = { hardware: 0, software: 0, replaced: 0, hwUpdated: 0 };
     try {
+      // Helpers to derive HW form fields from the audit payload. Same
+      // mapping works for Windows (SystemInfo.* fields) and Linux (DMI +
+      // NetworkSettings.interfaces + OpenPorts) because linux_audit.py now
+      // also publishes Manufacturer/Model under SystemInfo.
+      const net = (data.NetworkSettings ?? {}) as { interfaces?: { name?: string; mac?: string; addrs?: string[]; state?: string }[] };
+      const firstIf = (net.interfaces || []).find((i) => {
+        const n = (i.name || "").toLowerCase();
+        if (n === "lo" || n.startsWith("docker") || n.startsWith("br-") || n.startsWith("veth")) return false;
+        const addrs = i.addrs || [];
+        return addrs.some((a) => a && !a.startsWith("127."));
+      });
+      const firstIpRaw = (firstIf?.addrs || []).find((a) => a && !a.startsWith("127."));
+      // Strip CIDR suffix and any IPv6 for the primary IP field; keep the
+      // full form in the report.
+      const primaryIp = firstIpRaw ? firstIpRaw.split("/")[0] : null;
+      const primaryMac = firstIf?.mac || null;
+
+      // Summarise listening ports into a "SSH:22, HTTP:80" style string for
+      // the comms-protocols field. SystemInfo.OpenPorts on Linux, Windows
+      // uses Services list of listening ports too.
+      const ports = (data.OpenPorts ?? []) as { Port?: number; Process?: string }[];
+      const protoSummary = ports.length > 0
+        ? [...new Set(ports.map((p) => {
+            const proc = (p.Process || "").split("/")[0].trim();
+            return proc ? `${proc.toUpperCase()}:${p.Port}` : `${p.Port}`;
+          }))].slice(0, 12).join(", ")
+        : null;
+
+      // Physical interface summary from NIC list — "eth0 (Ethernet), wlan0 (WLAN)".
+      const ifSummary = (net.interfaces || [])
+        .filter((i) => i.name && i.name !== "lo")
+        .map((i) => {
+          const n = (i.name || "").toLowerCase();
+          const kind = n.startsWith("wl") ? "WLAN" : n.startsWith("en") || n.startsWith("eth") ? "Ethernet" : "Other";
+          return `${i.name} (${kind})`;
+        })
+        .slice(0, 8)
+        .join(", ") || null;
+
       // Auto-create Hardware from SystemInfo if equipment has none
       const hwCount = await prisma.hardware.count({ where: { equipmentId } });
       if (hwCount === 0 && sysinfo.ComputerName) {
@@ -175,57 +214,104 @@ export async function POST(request: Request) {
             type: "PC",
             manufacturer: sysinfo.Manufacturer || null,
             model: sysinfo.Model || null,
+            ipAddress: primaryIp,
+            macAddress: primaryMac,
+            physicalInterface: ifSummary,
+            commProtocols: protoSummary,
+            sysSoftwareCategory: sysinfo.OS ? String(sysinfo.OS).split(" ")[0] : null,
+            sysSoftwareVersion: sysinfo.OSVersion ? String(sysinfo.OSVersion) : null,
           },
         });
         autoMapped.hardware++;
       }
 
-      // Auto-register OS as Software — hardwareId 단위 중복 체크
-      if (sysinfo.OS) {
-        const osName = String(sysinfo.OS).split(" ").slice(0, 4).join(" ");
-        const osWhere: Record<string, unknown> = hardwareId
-          ? { hardwareId, swType: "OS" }
-          : { equipmentId, name: { contains: osName.split(" ").slice(0, 2).join(" ") } };
-        const existing = await prisma.software.findFirst({ where: osWhere });
-        if (!existing) {
-          await prisma.software.create({
-            data: {
-              projectId: equipment.projectId,
-              equipmentId,
-              hardwareId: hardwareId || undefined,
-              name: osName,
-              version: sysinfo.OSVersion || sysinfo.BuildNumber || null,
-              vendor: osName.includes("Windows") ? "Microsoft" : osName.includes("Linux") ? "Linux" : null,
-              swType: "OS",
-            },
-          });
-          autoMapped.software++;
+      // If the upload targeted a specific Hardware row, backfill any form
+      // fields the user hasn't filled in manually. We only touch fields
+      // that are currently null/empty — never overwrite what a person
+      // typed on the inventory form.
+      if (hardwareId) {
+        const hw = await prisma.hardware.findUnique({
+          where: { id: hardwareId },
+          select: {
+            id: true, manufacturer: true, model: true, ipAddress: true, macAddress: true,
+            physicalInterface: true, commProtocols: true,
+            sysSoftwareCategory: true, sysSoftwareVersion: true,
+          },
+        });
+        if (hw) {
+          const patch: Record<string, string | null> = {};
+          const blank = (v: string | null | undefined) => v === null || v === undefined || v === "";
+          if (blank(hw.manufacturer) && sysinfo.Manufacturer) patch.manufacturer = String(sysinfo.Manufacturer);
+          if (blank(hw.model) && sysinfo.Model) patch.model = String(sysinfo.Model);
+          if (blank(hw.ipAddress) && primaryIp) patch.ipAddress = primaryIp;
+          if (blank(hw.macAddress) && primaryMac) patch.macAddress = primaryMac;
+          if (blank(hw.physicalInterface) && ifSummary) patch.physicalInterface = ifSummary;
+          if (blank(hw.commProtocols) && protoSummary) patch.commProtocols = protoSummary;
+          if (blank(hw.sysSoftwareCategory) && sysinfo.OS) patch.sysSoftwareCategory = String(sysinfo.OS).split(" ")[0];
+          if (blank(hw.sysSoftwareVersion) && sysinfo.OSVersion) patch.sysSoftwareVersion = String(sysinfo.OSVersion);
+          if (Object.keys(patch).length > 0) {
+            await prisma.hardware.update({ where: { id: hw.id }, data: patch });
+            autoMapped.hwUpdated = Object.keys(patch).length;
+          }
         }
       }
-      // Auto-register SBOM components — hardwareId 단위 중복 체크
+
+      // Purge previously audit-derived Software on the same target so the
+      // inventory reflects the latest audit rather than an ever-growing
+      // accumulation of old SBOM entries. We only touch rows that carry a
+      // sourceAuditRunId (i.e. auto-registered) — hand-entered Software
+      // stays put. The scope is the specific hardware when the upload
+      // targeted one, otherwise the whole equipment.
+      const replaceScope: Record<string, unknown> = hardwareId
+        ? { hardwareId, sourceAuditRunId: { not: null } }
+        : { equipmentId, sourceAuditRunId: { not: null } };
+      const replaceRes = await prisma.software.deleteMany({ where: replaceScope });
+      autoMapped.replaced = replaceRes.count;
+
+      // Auto-register OS as Software
+      if (sysinfo.OS) {
+        const osName = String(sysinfo.OS).split(" ").slice(0, 4).join(" ");
+        await prisma.software.create({
+          data: {
+            projectId: equipment.projectId,
+            equipmentId,
+            hardwareId: hardwareId || undefined,
+            name: osName,
+            version: sysinfo.OSVersion || sysinfo.BuildNumber || null,
+            vendor: osName.includes("Windows") ? "Microsoft" : osName.includes("Linux") ? "Linux" : null,
+            swType: "OS",
+            sourceAuditRunId: run.id,
+          },
+        });
+        autoMapped.software++;
+      }
+      // Auto-register SBOM components
       const sbomRaw = data.SBOM ?? data.sbom;
       if (sbomRaw) {
-        const components = (sbomRaw.components ?? sbomRaw) as { name?: string; version?: string; source?: string; type?: string }[];
+        const components = (sbomRaw.components ?? sbomRaw) as { name?: string; version?: string; source?: string; type?: string; publisher?: string }[];
         if (Array.isArray(components)) {
+          // Dedup by name within this upload so we don't try to create two
+          // Software rows with the same name on one HW (e.g. same package
+          // reported by pkg-mgr + application probe).
+          const seen = new Set<string>();
           for (const comp of components.slice(0, 200)) {
             if (!comp.name) continue;
-            const swWhere: Record<string, unknown> = hardwareId
-              ? { hardwareId, name: comp.name }
-              : { equipmentId, name: comp.name };
-            const exists = await prisma.software.findFirst({ where: swWhere });
-            if (!exists) {
-              await prisma.software.create({
-                data: {
-                  projectId: equipment.projectId,
-                  equipmentId,
-                  hardwareId: hardwareId || undefined,
-                  name: comp.name,
-                  version: comp.version || null,
-                  swType: (comp.type === "os" || comp.source === "os") ? "OS" : "APPLICATION",
-                },
-              });
-              autoMapped.software++;
-            }
+            const key = comp.name.toLowerCase();
+            if (seen.has(key)) continue;
+            seen.add(key);
+            await prisma.software.create({
+              data: {
+                projectId: equipment.projectId,
+                equipmentId,
+                hardwareId: hardwareId || undefined,
+                name: comp.name,
+                version: comp.version || null,
+                vendor: comp.publisher || null,
+                swType: (comp.type === "os" || comp.source === "os") ? "OS" : "APPLICATION",
+                sourceAuditRunId: run.id,
+              },
+            });
+            autoMapped.software++;
           }
         }
       }
@@ -348,9 +434,13 @@ export async function GET(request: Request) {
   // ── List runs — hardwareId 필터 지원 ──
   const hardwareIdFilter = searchParams.get("hardwareId");
 
+  // When a hardwareId filter is supplied we still anchor the query to the
+  // equipment (already authorised above). Earlier the filter was applied
+  // standalone, which let a caller supply a hardwareId belonging to a
+  // different equipment / project and have the matching runs returned.
   const runsWhere: Record<string, unknown> = hardwareIdFilter
-    ? { hardwareId: hardwareIdFilter }  // 특정 장치의 결과만
-    : { OR: [{ equipmentId }, { projectId: equipment.projectId, equipmentId: null }] };  // 전체
+    ? { hardwareId: hardwareIdFilter, equipmentId }
+    : { OR: [{ equipmentId }, { projectId: equipment.projectId, equipmentId: null }] };
 
   const runs = await prisma.auditRun.findMany({
     where: runsWhere,
@@ -430,6 +520,10 @@ export async function GET(request: Request) {
 export async function DELETE(request: Request) {
   const user = await getSessionUser();
   if (!user) return apiError("Unauthorized", 401);
+  // Defence-in-depth: SHIPYARD is the read-only viewer role. The later
+  // owner check would already reject them (they can't own equipment) but
+  // rejecting explicitly makes the intent obvious and keeps the 403 clean.
+  if (user.role === "SHIPYARD") return apiError("Read-only role cannot delete audit runs", 403);
 
   const { searchParams } = new URL(request.url);
   const runId = searchParams.get("runId");

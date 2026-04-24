@@ -10,6 +10,7 @@ import {
   heading2,
   bodyText,
   buildTable,
+  buildApprovalBlock,
   wrapDocument,
 } from "./shared";
 
@@ -90,5 +91,6 @@ export function generateCBS(data: DocumentData): Document {
     ...tableSection,
     ...zoneSummary,
     ...typeSummary,
+    ...buildApprovalBlock(),
   ]);
 }

@@ -25,6 +25,19 @@ export async function PATCH(request: Request, { params }: Params) {
     });
     if (!existing) return apiError("Risk entry not found", 404);
 
+    // VENDOR must own the equipment the risk targets. Other roles (SUPPORT,
+    // ADMIN) have full project scope already validated by verifyProjectAccess.
+    if (user.role === "VENDOR" && existing.equipmentId) {
+      const owns = await prisma.equipment.findFirst({
+        where: {
+          id: existing.equipmentId,
+          OR: [{ vendorId: user.id }, { vendors: { some: { id: user.id } } }],
+        },
+        select: { id: true },
+      });
+      if (!owns) return apiError("Forbidden — not your equipment", 403);
+    }
+
     const body = await request.json();
     const { threatId, assetRef, likelihood, impact, mitigation, status } = body;
 
@@ -107,8 +120,23 @@ export async function DELETE(_request: Request, { params }: Params) {
   try {
     const existing = await prisma.riskEntry.findFirst({
       where: { id: riskId, projectId },
+      select: { id: true, equipmentId: true },
     });
     if (!existing) return apiError("Risk entry not found", 404);
+
+    // VENDOR must own the target equipment. verifyProjectAccess only checks
+    // they have some equipment in the project; without this a vendor could
+    // delete another vendor's risks that happen to share the project.
+    if (user.role === "VENDOR" && existing.equipmentId) {
+      const owns = await prisma.equipment.findFirst({
+        where: {
+          id: existing.equipmentId,
+          OR: [{ vendorId: user.id }, { vendors: { some: { id: user.id } } }],
+        },
+        select: { id: true },
+      });
+      if (!owns) return apiError("Forbidden — not your equipment", 403);
+    }
 
     await prisma.riskEntry.delete({ where: { id: riskId } });
 

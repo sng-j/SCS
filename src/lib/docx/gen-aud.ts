@@ -12,6 +12,7 @@ import {
   bodyText,
   bulletItem,
   buildTable,
+  buildApprovalBlock,
   resultLabel,
   wrapDocument,
 } from "./shared";
@@ -168,5 +169,6 @@ export function generateAUD(data: DocumentData): Document {
     ...findings,
     ...categoryDist,
     ...remediations,
+    ...buildApprovalBlock(),
   ]);
 }

@@ -3,7 +3,7 @@
  */
 import { Packer } from "docx";
 import { prisma } from "@/lib/prisma";
-import type { ProjectContext, HardwareRow, SoftwareRow, AssessmentRow, ConnectionRow, AuditRunRow } from "./shared";
+import type { ProjectContext, HardwareRow, SoftwareRow, AssessmentRow, ConnectionRow, AuditRunRow, RiskEntryRow } from "./shared";
 import { generateCBS } from "./gen-cbs";
 import { generateSBOM } from "./gen-sbom";
 import { generateAUD } from "./gen-aud";
@@ -19,6 +19,10 @@ export interface DocumentData {
   assessments: AssessmentRow[];
   connections: ConnectionRow[];
   auditRuns: AuditRunRow[];
+  risks: RiskEntryRow[];
+  /** DFD JSON payload (xyflow format) when scoped to a single equipment; null otherwise. */
+  dfd: { nodes: unknown[]; edges: unknown[] } | null;
+  equipmentId: string | null;
 }
 
 async function fetchDocumentData(projectId: string, equipmentId?: string): Promise<DocumentData> {
@@ -34,7 +38,15 @@ async function fetchDocumentData(projectId: string, equipmentId?: string): Promi
     ? { hardware: { projectId, equipmentId } }
     : { hardware: { projectId } };
 
-  const [project, hardware, software, assessments, connections, auditRuns] = await Promise.all([
+  // Risks are scoped to a specific equipment (see RiskEntry.equipmentId).
+  // For equipment-level docs (E27, IEC-SCR/CSR) pull just that equipment's
+  // risks — otherwise E27-VUL for one piece of equipment would leak risks
+  // from unrelated equipments and break compliance claims.
+  const riskFilter = equipmentId
+    ? { projectId, equipmentId, deletedAt: null }
+    : { projectId, deletedAt: null };
+
+  const [project, hardware, software, assessments, connections, auditRuns, risks, dfdRow] = await Promise.all([
     prisma.project.findUnique({ where: { id: projectId } }),
     prisma.hardware.findMany({
       where: hwFilter,
@@ -58,7 +70,12 @@ async function fetchDocumentData(projectId: string, equipmentId?: string): Promi
       orderBy: [{ hardware: { name: "asc" } }, { checkId: "asc" }],
     }),
     prisma.networkConnection.findMany({
-      where: { projectId },
+      // Scope connections to the equipment (either endpoint is enough) so
+      // E27-TOP for one piece of equipment doesn't list flows from a
+      // completely different equipment in the same vessel.
+      where: equipmentId
+        ? { projectId, OR: [{ fromHw: { equipmentId } }, { toHw: { equipmentId } }] }
+        : { projectId },
       include: {
         fromHw: { select: { id: true, name: true } },
         toHw: { select: { id: true, name: true } },
@@ -68,6 +85,19 @@ async function fetchDocumentData(projectId: string, equipmentId?: string): Promi
       where: equipmentId ? { equipmentId } : { projectId },
       select: { id: true, hardwareId: true, platform: true, results: true, sbomData: true },
     }),
+    prisma.riskEntry.findMany({
+      where: riskFilter,
+      select: {
+        id: true, threatId: true, cveId: true, assetRef: true,
+        likelihood: true, impact: true, riskLevel: true, status: true, mitigation: true,
+      },
+      orderBy: [{ riskLevel: "desc" }, { threatId: "asc" }],
+    }),
+    // DFD is equipment-scoped; project-level docs don't have a single
+    // diagram and fall back to the connection matrix alone.
+    equipmentId
+      ? prisma.dfdDiagram.findUnique({ where: { equipmentId } })
+      : Promise.resolve(null),
   ]);
 
   if (!project) throw new Error("Project not found");
@@ -85,6 +115,17 @@ async function fetchDocumentData(projectId: string, equipmentId?: string): Promi
     assessments: assessments as AssessmentRow[],
     connections: connections as ConnectionRow[],
     auditRuns: auditRuns as AuditRunRow[],
+    risks: risks as RiskEntryRow[],
+    dfd: (() => {
+      if (!dfdRow) return null;
+      try {
+        const parsed = JSON.parse(dfdRow.data) as { nodes?: unknown[]; edges?: unknown[] };
+        return { nodes: parsed.nodes ?? [], edges: parsed.edges ?? [] };
+      } catch {
+        return null;
+      }
+    })(),
+    equipmentId: equipmentId ?? null,
   };
 }
 
@@ -135,7 +176,8 @@ const TEMPLATE_DOCS: Record<string, { title: string; focus: string }> = {
   "NIST-SSA": { title: "System Security Assessment", focus: "nist-system-assessment" },
   // ISO 27001
   "ISO-SOA":   { title: "Statement of Applicability", focus: "iso-soa" },
-  "ISO-RTP":   { title: "Risk Treatment Plan", focus: "risk-policy" },
+  "ISO-RMP":   { title: "Risk Management Policy", focus: "risk-policy" },
+  "ISO-RTP":   { title: "Risk Treatment Plan", focus: "risk-treatment" },
   "ISO-ISMS":  { title: "ISMS Scope and Policy", focus: "iso-isms" },
   "ISO-A5":    { title: "Organizational Controls (A.5)", focus: "iso-a5" },
   "ISO-A7":    { title: "People Controls (A.7)", focus: "iso-a7" },
@@ -143,6 +185,19 @@ const TEMPLATE_DOCS: Record<string, { title: string; focus: string }> = {
   "ISO-CLOUD": { title: "Cloud Services Security Policy", focus: "iso-cloud" },
   "ISO-ICS":   { title: "IEC 27019 OT/ICS Extension", focus: "iso-ics" },
 };
+
+/**
+ * Returns true when the given role is permitted to generate a document of
+ * `docType`. Enforces the division of labour between vendors (E27 only —
+ * equipment-level docs they own) and shipyard personnel / admins (all
+ * standards). Read-only roles (SHIPYARD viewer) are already blocked at the
+ * isWriteRole layer, so we don't need to list them here.
+ */
+export function canGenerateDocType(role: string, docType: string): boolean {
+  if (role === "ADMIN" || role === "SUPPORT") return true;
+  if (role === "VENDOR") return docType.startsWith("E27-");
+  return false;
+}
 
 /** All supported document types with their titles */
 export const ALL_DOC_TYPES: Record<string, string> = {

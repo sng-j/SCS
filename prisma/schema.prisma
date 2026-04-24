@@ -201,6 +201,7 @@ model Equipment {
   hardware          Hardware[]
   software          Software[]
   auditResults      VendorAuditResult[]
+  risks             RiskEntry[]
 
   @@index([projectId])
   @@index([vendorId])
@@ -248,6 +249,12 @@ model Hardware {
   resetPeriodDay      Int?
   typeApprovalCert    String?             @db.Text
   updateLog           String?             @db.Text
+  // Audit-exempt assets: firmware-only devices, vendor-locked appliances,
+  // IP phones, etc. that the SCS audit tools can't target. Exempt HWs are
+  // excluded from the coverage ratio so a fleet with 80% audited +  20%
+  // exempt can still reach 100% "covered" on the dashboard.
+  auditExempt         Boolean             @default(false)
+  auditExemptReason   String?             @db.Text
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
   deletedAt           DateTime?
@@ -286,6 +293,10 @@ model Software {
   firmwareVersion  String?
   resetPeriodDay   Int?
   updateLog        String?     @db.Text
+  // Non-null when this Software row was auto-registered from an audit-tool
+  // upload. Manual entries keep this null so cleanup of audit-derived rows
+  // never accidentally removes a vendor's hand-entered data.
+  sourceAuditRunId String?
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
   deletedAt        DateTime?
@@ -294,12 +305,14 @@ model Software {
   equipment        Equipment?  @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
   hardware         Hardware?   @relation(fields: [hardwareId], references: [id])
   project          Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceAuditRun   AuditRun?   @relation(fields: [sourceAuditRunId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@index([equipmentId])
   @@index([cpe])
   @@index([deletedAt])
   @@index([hardwareId], map: "Software_hardwareId_fkey")
+  @@index([sourceAuditRunId])
 }
 
 model DfdDiagram {
@@ -353,28 +366,29 @@ model Assessment {
 }
 
 model RiskEntry {
-  id         String    @id @default(cuid())
-  projectId  String
-  cveId      String?
-  threatId   String
-  assetRef   String?
-  likelihood Int
-  impact     Int
-  riskLevel  Int
-  mitigation String?   @db.Text
-  // JSON snapshot of the inputs used to compute likelihood/impact at creation time
-  // (CVSS vector, CISA KEV flag, HW category weight, rules applied). Displayed as
-  // a SUPPORT/ADMIN-only hover tooltip so reviewers can audit the auto-calculation
-  // without exposing raw scoring internals to vendors. Recomputed when fields
-  // change via the PATCH route.
-  reasoning  String?   @db.Text
-  status     String    @default("OPEN")
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  deletedAt  DateTime?
-  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id          String     @id @default(cuid())
+  projectId   String
+  // Risks are scoped to a specific equipment so the per-equipment review
+  // screen doesn't leak another equipment's risks. NULL means project-wide
+  // (legacy data before the scope was enforced).
+  equipmentId String?
+  cveId       String?
+  threatId    String
+  assetRef    String?
+  likelihood  Int
+  impact      Int
+  riskLevel   Int
+  mitigation  String?    @db.Text
+  reasoning   String?    @db.Text
+  status      String     @default("OPEN")
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  deletedAt   DateTime?
+  project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  equipment   Equipment? @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
+  @@index([equipmentId])
   @@index([cveId])
   @@index([deletedAt])
 }
@@ -518,6 +532,7 @@ model AuditRun {
   equipment   Equipment? @relation(fields: [equipmentId], references: [id])
   hardware    Hardware?  @relation(fields: [hardwareId], references: [id])
   project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourcedSoftware Software[]
 
   @@index([equipmentId])
   @@index([hardwareId])

@@ -118,12 +118,12 @@ npx next dev -H 0.0.0.0 -p 7000
 
 ## 문서 시스템
 
-38개 문서 타입, 5개 표준:
-- **E27** (13개, 벤더가 생성): CBS, SBOM, AUD, TOP, VUL, ACC, MON, CFG, TST, SDL, MNT, INC, MOC
+40개 문서 타입, 5개 표준:
+- **E27** (15개, 벤더가 생성): CBS, SBOM, AUD, TOP, VUL, ACC, MON, CFG, TST, SDL, MNT, INC, MOC, SEC, PAT
 - **E26** (9개, 조선소가 생성): ZCD, INV, CRA, CSD, CRP, CMP, RAP, SSL, TRA
-- **IEC 62443** (5개), **NIST SP 800** (4개), **ISO 27001** (8개)
+- **IEC 62443** (5개), **NIST SP 800** (4개), **ISO 27001** (9개: SOA, RMP, RTP, ISMS, A5, A7, A8, CLOUD, ICS)
 
-4개는 전용 생성기(CBS/SBOM/AUD/TOP), 나머지 34개는 `gen-template.ts`의 focus 분기로 생성. 모두 실제 DB 데이터(HW/SW/평가/CVE/연결)를 자동 주입한다.
+4개는 전용 생성기(CBS/SBOM/AUD/TOP), 나머지는 `gen-template.ts`의 focus 분기로 생성. 모두 실제 DB 데이터(HW/SW/평가/CVE/연결/리스크)를 자동 주입한다. E27 문서는 VENDOR만, E26/IEC/NIST/ISO는 SUPPORT/ADMIN만 생성 가능 (`src/lib/docx/index.ts`의 `canGenerateDocType`).
 
 ## 보안 주의사항
 

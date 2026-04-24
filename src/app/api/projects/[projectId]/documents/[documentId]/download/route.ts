@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser, verifyProjectAccess, apiError } from "@/lib/auth-helpers";
-import { generateDocx } from "@/lib/docx";
+import { generateDocx, canGenerateDocType } from "@/lib/docx";
 import { generatePdf } from "@/lib/pdf";
 
 export const dynamic = "force-dynamic";
@@ -26,9 +26,29 @@ export async function GET(request: Request, { params }: Params) {
 
   if (!document) return apiError("Document not found", 404);
 
+  // Role-scoped generation: vendors download only their own E27 docs; other
+  // standards stay with shipyard / admin roles.
+  if (!canGenerateDocType(user.role, document.docType)) {
+    return apiError("Your role is not permitted to download this document type", 403);
+  }
+
   const { searchParams } = new URL(request.url);
   const format = searchParams.get("format") || "docx";
-  const equipmentId = searchParams.get("equipmentId") || undefined;
+  const equipmentIdParam = searchParams.get("equipmentId") || undefined;
+
+  // Guard against arbitrary equipmentId — verify it belongs to this project.
+  // Without this a caller with project access could pass someone else's
+  // equipment and fetchDocumentData would gladly scope to that equipment's
+  // assets / risks / DFD instead of the document's own scope.
+  let equipmentId: string | undefined;
+  if (equipmentIdParam) {
+    const eq = await prisma.equipment.findFirst({
+      where: { id: equipmentIdParam, projectId },
+      select: { id: true },
+    });
+    if (!eq) return apiError("equipmentId does not belong to this project", 400);
+    equipmentId = eq.id;
+  }
 
   try {
     if (format === "pdf") {
@@ -58,7 +78,9 @@ export async function GET(request: Request, { params }: Params) {
       },
     });
   } catch (e) {
-    const message = e instanceof Error ? e.message : "Failed to generate document";
-    return apiError(message, 500);
+    // Don't leak internal error text (could expose enum values, DB state).
+    // Log server-side, return a stable user-facing message.
+    console.error("[documents.download] generation failed:", e);
+    return apiError("Failed to generate document. Please contact support if this persists.", 500);
   }
 }

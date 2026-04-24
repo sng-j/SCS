@@ -11,6 +11,7 @@ import {
   heading2,
   bodyText,
   buildTable,
+  buildApprovalBlock,
   wrapDocument,
 } from "./shared";
 
@@ -51,11 +52,13 @@ export function generateTOP(data: DocumentData): Document {
 
   const hwPerZone: (Paragraph | Table)[] = [heading1("3. Assets per Zone")];
 
+  let zoneIdx = 0;
   zoneGroups.forEach((assets, zoneId) => {
     const zoneDef = MARITIME_ZONES.find((z) => z.id === zoneId);
     const zoneName = zoneDef ? zoneDef.label : zoneId;
 
-    hwPerZone.push(heading2(`3.x ${zoneName}`));
+    zoneIdx++;
+    hwPerZone.push(heading2(`3.${zoneIdx} ${zoneName}`));
     hwPerZone.push(
       buildTable(
         ["Asset Name", "Type", "IP Address", "Location"],
@@ -118,15 +121,65 @@ export function generateTOP(data: DocumentData): Document {
     connectionMap.push(bodyText("No network connections have been registered. Please define connections in the DFD editor."));
   }
 
-  // DFD Diagram Reference
-  const dfdRef: (Paragraph | Table)[] = [
-    heading1("6. DFD Diagram Reference"),
-    bodyText(
-      "The detailed Data Flow Diagram (DFD) is maintained in the system's interactive DFD editor " +
-      "and should be exported separately as a PNG/PDF image for inclusion in the final submission package. " +
-      "The DFD visually represents network topology, security zones, trust boundaries, and data flows."
-    ),
-  ];
+  // DFD Diagram — embedded as node/edge tables when we have the equipment's
+  // diagram in the DB. docx can't render arbitrary SVG inline cheaply, so we
+  // emit a readable structured representation instead of telling the
+  // reviewer "look elsewhere". The interactive diagram remains in the app.
+  const dfdRef: (Paragraph | Table)[] = [heading1("6. Data Flow Diagram")];
+  if (data.dfd && Array.isArray(data.dfd.nodes) && data.dfd.nodes.length > 0) {
+    type DfdNode = { id: string; type?: string; data?: { label?: string }; position?: { x: number; y: number } };
+    type DfdEdge = { id?: string; source: string; target: string; label?: string; data?: { label?: string } };
+    const nodes = data.dfd.nodes as DfdNode[];
+    const edges = (data.dfd.edges as DfdEdge[]) ?? [];
+
+    dfdRef.push(bodyText(
+      `The DFD for this equipment comprises ${nodes.length} node(s) and ${edges.length} edge(s). ` +
+      `Each node is one CBS asset or external interface; each edge is a data / signal flow between them. ` +
+      `The interactive diagram lives in the DFD editor — this table is the authoritative text form.`
+    ));
+
+    dfdRef.push(heading2("6.1 DFD Nodes"));
+    dfdRef.push(
+      buildTable(
+        ["#", "Node ID", "Type", "Label"],
+        nodes.map((n, i) => [
+          String(i + 1),
+          n.id,
+          n.type || "default",
+          n.data?.label || n.id,
+        ]),
+      ),
+    );
+
+    if (edges.length > 0) {
+      const nameById = new Map<string, string>();
+      for (const n of nodes) nameById.set(n.id, n.data?.label || n.id);
+      dfdRef.push(heading2("6.2 DFD Flows (Edges)"));
+      dfdRef.push(
+        buildTable(
+          ["#", "From", "To", "Label"],
+          edges.map((e, i) => [
+            String(i + 1),
+            nameById.get(e.source) || e.source,
+            nameById.get(e.target) || e.target,
+            e.label || e.data?.label || "—",
+          ]),
+        ),
+      );
+    }
+
+    dfdRef.push(bodyText(
+      "For visual review, export the diagram to PNG/PDF from the DFD editor and attach the file to this document for the submission package."
+    ));
+  } else if (data.equipmentId) {
+    dfdRef.push(bodyText(
+      "No DFD has been drawn for this equipment yet. Open the DFD editor to create one — it will be embedded (as node/edge tables) on the next generation."
+    ));
+  } else {
+    dfdRef.push(bodyText(
+      "The DFD is embedded only when this document is generated with an equipment scope. Generate from a specific equipment to include its diagram."
+    ));
+  }
 
   return wrapDocument("E27-TOP: Network Topology Description", project, [
     ...cover,
@@ -136,5 +189,6 @@ export function generateTOP(data: DocumentData): Document {
     ...connSection,
     ...connectionMap,
     ...dfdRef,
+    ...buildApprovalBlock(),
   ]);
 }

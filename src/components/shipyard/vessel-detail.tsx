@@ -14,6 +14,7 @@ import { useLocaleStore } from "@/stores/locale-store";
 import { tx } from "@/lib/i18n";
 import { showToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
+import { riskSeverity, RISK_SEVERITY_COLORS } from "@/lib/risk-severity";
 import { DfdEditor } from "@/components/dfd/dfd-editor";
 import { RiskReasoningHover, parseReasoning, canSeeRiskReasoning } from "@/components/risk/risk-reasoning-hover";
 import {
@@ -46,6 +47,8 @@ interface HwItem {
   ipAddress: string | null;
   zone: string | null;
   category: string | null;
+  auditExempt?: boolean;
+  auditExemptReason?: string | null;
   software: { id: string; name: string; version: string | null }[];
 }
 interface SwItem {
@@ -519,6 +522,7 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           threatId: riskForm.threatId.trim(),
+          equipmentId: eq.id,
           assetRef: riskForm.assetRef.trim() || undefined,
           likelihood: riskForm.likelihood,
           impact: riskForm.impact,
@@ -545,10 +549,14 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
   const autoGenerateFromCve = async () => {
     setAutoGenBusy(true);
     try {
-      const res = await fetch(`/api/projects/${projectId}/risks/generate-from-cve`, { method: "POST" });
+      const res = await fetch(`/api/projects/${projectId}/risks/generate-from-cve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ equipmentId: eq.id }),
+      });
       if (res.ok) {
         const out = await res.json();
-        const r = await fetch(`/api/projects/${projectId}/risks`);
+        const r = await fetch(`/api/projects/${projectId}/risks?equipmentId=${eq.id}`);
         if (r.ok) setRisks(await r.json());
         showToast.success(tx(locale,
           `Generated ${out.created ?? 0} risk(s) from CVE matches`,
@@ -645,7 +653,7 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
       safe(fetch(`/api/projects/${projectId}/hardware?equipmentId=${eq.id}`)),
       safe(fetch(`/api/projects/${projectId}/assessments`)),
       safe(fetch(`/api/projects/${projectId}/documents?equipmentId=${eq.id}`)),
-      safe(fetch(`/api/projects/${projectId}/risks`)),
+      safe(fetch(`/api/projects/${projectId}/risks?equipmentId=${eq.id}`)),
       safe(fetch(`/api/projects/${projectId}/test-procedure?equipmentId=${eq.id}`)),
       safe(fetch(`/api/projects/${projectId}/software?equipmentId=${eq.id}`)),
       safe(fetch(`/api/projects/${projectId}/cve-matches`)),
@@ -1023,11 +1031,11 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
                   <p className="text-[13px] font-semibold text-gray-900">{doc.title || doc.docType}</p>
                   <p className="text-[11px] text-gray-400">{doc.docType} · v{doc.version}</p>
                 </div>
-                <button onClick={() => window.open(`/api/projects/${projectId}/documents/${doc.id}/preview`, "_blank")}
+                <button onClick={() => window.open(`/api/projects/${projectId}/documents/${doc.id}/preview?equipmentId=${eq.id}`, "_blank")}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors">
                   <Eye size={12} /> {tx(locale, "Preview", "미리보기", "プレビュー")}
                 </button>
-                <button onClick={() => window.open(`/api/projects/${projectId}/documents/${doc.id}/download`, "_blank")}
+                <button onClick={() => window.open(`/api/projects/${projectId}/documents/${doc.id}/download?equipmentId=${eq.id}`, "_blank")}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors">
                   <Download size={12} /> {tx(locale, "Download", "다운로드", "DL")}
                 </button>
@@ -1176,24 +1184,21 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
                   {(["CRITICAL", "HIGH", "MEDIUM", "LOW"] as const).map((level) => {
                     const count = risks.filter((r) => {
                       const score = r.riskLevel || r.likelihood * r.impact;
-                      if (level === "CRITICAL") return score >= 20;
-                      if (level === "HIGH") return score >= 10 && score < 20;
-                      if (level === "MEDIUM") return score >= 5 && score < 10;
-                      return score < 5;
+                      return riskSeverity(score) === level;
                     }).length;
-                    const colors = { CRITICAL: "#DA1E28", HIGH: "#EB6200", MEDIUM: "#F1C21B", LOW: "#24A148" };
+                    const color = RISK_SEVERITY_COLORS[level];
                     return (
-                      <div key={level} className="text-center px-3 py-2 rounded-lg border border-gray-200" style={{ background: `${colors[level]}08` }}>
-                        <p className="text-[18px] font-bold" style={{ color: colors[level] }}>{count}</p>
-                        <p className="text-[9px] font-bold" style={{ color: colors[level] }}>{level}</p>
+                      <div key={level} className="text-center px-3 py-2 rounded-lg border border-gray-200" style={{ background: `${color}08` }}>
+                        <p className="text-[18px] font-bold" style={{ color }}>{count}</p>
+                        <p className="text-[9px] font-bold" style={{ color }}>{level}</p>
                       </div>
                     );
                   })}
                 </div>
                 {risks.map((r) => {
                   const score = r.riskLevel || r.likelihood * r.impact;
-                  const level = score >= 20 ? "CRITICAL" : score >= 10 ? "HIGH" : score >= 5 ? "MEDIUM" : "LOW";
-                  const colors: Record<string, string> = { CRITICAL: "#DA1E28", HIGH: "#EB6200", MEDIUM: "#F1C21B", LOW: "#24A148" };
+                  const level = riskSeverity(score);
+                  const colors = RISK_SEVERITY_COLORS;
                   const statusColors: Record<string, string> = { OPEN: "#DA1E28", MITIGATED: "#24A148", ACCEPTED: "#0F62FE", TRANSFERRED: "#8D8D8D" };
                   const parsed = canSeeReasoning ? parseReasoning(r.reasoning) : null;
                   const showHover = !!parsed;
@@ -1679,7 +1684,7 @@ function AssetReviewPanel({
         <AuditRunsList
           auditRuns={auditRuns}
           hwCveMatches={hwCveMatches}
-          hardware={hardware.map((h) => ({ id: h.id, name: h.name }))}
+          hardware={hardware.map((h) => ({ id: h.id, name: h.name, auditExempt: h.auditExempt, auditExemptReason: h.auditExemptReason }))}
           locale={locale}
         />
       )}

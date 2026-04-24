@@ -16,6 +16,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { useLocaleStore } from "@/stores/locale-store";
 import { tx } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { riskSeverity, RISK_SEVERITY_COLORS } from "@/lib/risk-severity";
 import {
   CveBadge,
   emptySeverity,
@@ -56,6 +57,7 @@ interface Hardware {
   location?: string | null; purpose?: string | null; category?: string | null;
   protectionMethod?: string | null; commProtocols?: string | null; physicalInterface?: string | null;
   sysSoftwareCategory?: string | null; sysSoftwareVersion?: string | null;
+  auditExempt?: boolean; auditExemptReason?: string | null;
   software?: { id: string; name: string; version: string | null }[];
   _count?: { cveMatches: number };
 }
@@ -202,7 +204,7 @@ export default function ViewerEquipmentPage() {
       safe(fetch(`/api/projects/${projectId}/software?equipmentId=${equipmentId}`)),
       safe(fetch(`/api/projects/${projectId}/assessments?equipmentId=${equipmentId}`)),
       safe(fetch(`/api/projects/${projectId}/documents?equipmentId=${equipmentId}`)),
-      safe(fetch(`/api/projects/${projectId}/risks`)),
+      safe(fetch(`/api/projects/${projectId}/risks?equipmentId=${equipmentId}`)),
       safe(fetch(`/api/projects/${projectId}/cve-matches`)),
       safe(fetch(`/api/vendor/audit-tools/upload?equipmentId=${equipmentId}`)),
       safe(fetch(`/api/projects/${projectId}/submissions`)),
@@ -342,9 +344,14 @@ export default function ViewerEquipmentPage() {
     cveAggregate.unknown += c.unknown;
   }
 
+  // Keep coverage math aligned with AuditRunsList: exempt hardware is
+  // excluded from both numerator and denominator so a fleet that marks
+  // firmware-only or vendor-locked appliances as exempt can still reach
+  // 100% coverage instead of being stuck below the target forever.
   const auditedHwIds = new Set(auditRuns.map((r) => r.hardwareId).filter(Boolean) as string[]);
-  const auditedCount = hardware.filter((h) => auditedHwIds.has(h.id)).length;
-  const auditPct = hardware.length > 0 ? Math.round((auditedCount / hardware.length) * 100) : 0;
+  const auditedCount = hardware.filter((h) => !h.auditExempt && auditedHwIds.has(h.id)).length;
+  const totalAuditable = hardware.filter((h) => !h.auditExempt).length;
+  const auditPct = totalAuditable > 0 ? Math.round((auditedCount / totalAuditable) * 100) : 0;
 
   const missingCpe = software.filter((s) => !s.cpe).length;
   const openCriticalRisks = risks.filter((r) => r.status === "OPEN" && r.riskLevel >= 20);
@@ -374,12 +381,12 @@ export default function ViewerEquipmentPage() {
       `보안 점검 실패 ${assessFail}건`,
       `セキュリティチェック失敗 ${assessFail}件`),
   });
-  if (auditPct < 100 && hardware.length > 0) attention.push({
+  if (auditPct < 100 && totalAuditable > 0) attention.push({
     key: "audit-gap", severity: "high", icon: Shield,
     label: tx(locale,
-      `${hardware.length - auditedCount} HW not audited (${auditPct}% coverage)`,
-      `미감사 HW ${hardware.length - auditedCount}건 (커버리지 ${auditPct}%)`,
-      `未監査HW ${hardware.length - auditedCount}件 (カバレッジ${auditPct}%)`),
+      `${totalAuditable - auditedCount} HW not audited (${auditPct}% coverage)`,
+      `미감사 HW ${totalAuditable - auditedCount}건 (커버리지 ${auditPct}%)`,
+      `未監査HW ${totalAuditable - auditedCount}件 (カバレッジ${auditPct}%)`),
   });
   if (openHighRisks.length > 0) attention.push({
     key: "risk-high", severity: "high", icon: AlertCircle,
@@ -564,7 +571,7 @@ export default function ViewerEquipmentPage() {
             <span className="text-[22px] font-extrabold tabular-nums" style={{ color: signalColor(auditPct) }}>
               {auditedCount}
             </span>
-            <span className="text-[12px] text-text-tertiary">/ {hardware.length}</span>
+            <span className="text-[12px] text-text-tertiary">/ {totalAuditable}</span>
           </div>
           <div className="mt-1.5 h-1 w-full rounded-full bg-border/50 overflow-hidden">
             <div className="h-full transition-[width] duration-500" style={{ width: `${auditPct}%`, backgroundColor: signalColor(auditPct) }} />
@@ -928,8 +935,8 @@ export default function ViewerEquipmentPage() {
           ) : (
             <div className="divide-y divide-border">
               {[...risks].sort((a, b) => b.riskLevel - a.riskLevel).map((r) => {
-                const level = r.riskLevel >= 20 ? "CRITICAL" : r.riskLevel >= 12 ? "HIGH" : r.riskLevel >= 6 ? "MEDIUM" : "LOW";
-                const colors: Record<string, string> = { CRITICAL: "#DA1E28", HIGH: "#EB6200", MEDIUM: "#F1C21B", LOW: "#24A148" };
+                const level = riskSeverity(r.riskLevel);
+                const colors = RISK_SEVERITY_COLORS;
                 const statusColors: Record<string, string> = { OPEN: "#DA1E28", MITIGATED: "#24A148", ACCEPTED: "#0F62FE", TRANSFERRED: "#8D8D8D" };
                 return (
                   <div key={r.id} className="flex items-start gap-3 px-5 py-3">
@@ -962,7 +969,7 @@ export default function ViewerEquipmentPage() {
         <AccordionSection
           id="audit"
           num="04"
-          title={tx(locale, `Audit — ${auditedCount}/${hardware.length} · ${auditPct}%`, `감사 결과 — ${auditedCount}/${hardware.length} · ${auditPct}%`, `監査 — ${auditedCount}/${hardware.length} · ${auditPct}%`)}
+          title={tx(locale, `Audit — ${auditedCount}/${totalAuditable} · ${auditPct}%`, `감사 결과 — ${auditedCount}/${totalAuditable} · ${auditPct}%`, `監査 — ${auditedCount}/${totalAuditable} · ${auditPct}%`)}
           icon={Shield}
           open={openSections.has("audit")}
           onToggle={() => toggleSection("audit")}
@@ -972,7 +979,7 @@ export default function ViewerEquipmentPage() {
             <AuditRunsList
               auditRuns={auditRuns}
               hwCveMatches={hwCveMatches}
-              hardware={hardware.map((h) => ({ id: h.id, name: h.name }))}
+              hardware={hardware.map((h) => ({ id: h.id, name: h.name, auditExempt: h.auditExempt, auditExemptReason: h.auditExemptReason }))}
               locale={locale}
             />
           </div>
@@ -1246,7 +1253,7 @@ function TopRisksStrip({ risks, locale }: { risks: Risk[]; locale: string }) {
     .sort((a, b) => b.riskLevel - a.riskLevel)
     .slice(0, 3);
   if (top.length === 0) return null;
-  const colors: Record<string, string> = { CRITICAL: "#DA1E28", HIGH: "#EB6200", MEDIUM: "#F1C21B", LOW: "#24A148" };
+  const colors = RISK_SEVERITY_COLORS;
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
@@ -1263,7 +1270,7 @@ function TopRisksStrip({ risks, locale }: { risks: Risk[]; locale: string }) {
         </div>
         <ul className="divide-y divide-border/60">
           {top.map((r) => {
-            const level = r.riskLevel >= 20 ? "CRITICAL" : r.riskLevel >= 12 ? "HIGH" : "MEDIUM";
+            const level = riskSeverity(r.riskLevel);
             return (
               <li key={r.id} className="flex items-center gap-3 px-4 py-3">
                 {/* Score pill — huge, instantly readable */}

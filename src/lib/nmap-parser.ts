@@ -46,11 +46,6 @@ function getAttr(el: Element, attr: string): string {
   return el.getAttribute(attr) || "";
 }
 
-function getChildText(parent: Element, tag: string): string {
-  const child = parent.querySelector(tag);
-  return child?.textContent?.trim() || "";
-}
-
 // ─── Parse nmap XML ─────────────────────────────────────────────────────────
 
 export function parseNmapXml(xmlText: string): NmapEnrichedResult {
@@ -66,7 +61,6 @@ export function parseNmapXml(xmlText: string): NmapEnrichedResult {
   const nmaprun = doc.querySelector("nmaprun");
   const startTs = nmaprun ? getAttr(nmaprun, "start") : "";
   const scanDate = startTs ? new Date(parseInt(startTs) * 1000).toISOString() : new Date().toISOString();
-  const scanArgs = nmaprun ? getAttr(nmaprun, "args") : "";
 
   const hostElements = doc.querySelectorAll("host");
   const hosts: ScpHost[] = [];

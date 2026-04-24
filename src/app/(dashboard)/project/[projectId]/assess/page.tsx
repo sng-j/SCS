@@ -27,6 +27,7 @@ import { tx } from "@/lib/i18n";
 import { showToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { RiskReasoningHover, parseReasoning, canSeeRiskReasoning, type ReasoningPayload } from "@/components/risk/risk-reasoning-hover";
+import { riskSeverity } from "@/lib/risk-severity";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -99,6 +100,10 @@ export default function AssessPage() {
 
   const saveRef = useRef<HTMLDivElement>(null);
 
+  // React compiler can't auto-memoize this handler because of the nested
+  // closure over `assessments` inside the optimistic-update setter. The
+  // manual useCallback is intentional — bypass the compiler warning.
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const handleSave = useCallback(async (hwId: string, checkId: string, field: string, value: string) => {
     // result 변경 → 해당 SC에 assessment가 존재하는 HW만 일괄 적용
     // (오딧 미업로드 HW에는 새로 만들지 않음)
@@ -304,7 +309,7 @@ export default function AssessPage() {
         ) : tab === "society" ? (
           <SocietyChecklistTab locale={locale} assessments={assessments} anchorHwId={anchorHwId} />
         ) : (
-          <RiskTab projectId={projectId} canEdit={canEdit} locale={locale} userRole={userRole} />
+          <RiskTab projectId={projectId} equipmentId={equipmentId} canEdit={canEdit} locale={locale} userRole={userRole} />
         )}
 
       </motion.div>
@@ -753,15 +758,10 @@ const RISK_COLORS: Record<string, { bg: string; text: string }> = {
   NEGLIGIBLE: { bg: "#E0E0E0", text: "#8D8D8D" },
 };
 
-function getRiskLabel(score: number): string {
-  if (score >= 20) return "CRITICAL";
-  if (score >= 12) return "HIGH";
-  if (score >= 6)  return "MEDIUM";
-  if (score >= 2)  return "LOW";
-  return "NEGLIGIBLE";
-}
+// Delegate to the single source of truth in @/lib/risk-severity.
+const getRiskLabel = (score: number): string => riskSeverity(score);
 
-function RiskTab({ projectId, canEdit, locale, userRole }: { projectId: string; canEdit: boolean; locale: string; userRole: string }) {
+function RiskTab({ projectId, equipmentId, canEdit, locale, userRole }: { projectId: string; equipmentId: string | null; canEdit: boolean; locale: string; userRole: string }) {
   const canSeeReasoning = canSeeRiskReasoning(userRole);
   const [risks, setRisks] = useState<RiskEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -790,10 +790,11 @@ function RiskTab({ projectId, canEdit, locale, userRole }: { projectId: string; 
 
   const fetchRisks = useCallback(() => {
     setLoading(true);
-    fetch(`/api/projects/${projectId}/risks`)
+    const q = equipmentId ? `?equipmentId=${equipmentId}` : "";
+    fetch(`/api/projects/${projectId}/risks${q}`)
       .then(async (r) => { if (r.ok) { const d = await r.json(); setRisks(Array.isArray(d) ? d : []); } })
       .finally(() => setLoading(false));
-  }, [projectId]);
+  }, [projectId, equipmentId]);
 
   useEffect(() => { fetchRisks(); }, [fetchRisks]);
 
@@ -803,7 +804,7 @@ function RiskTab({ projectId, canEdit, locale, userRole }: { projectId: string; 
     try {
       const res = await fetch(`/api/projects/${projectId}/risks`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ threatId: form.threatId.trim(), threatCategory: form.threatCategory || undefined, scenario: form.scenario || undefined, assetRef: form.assetRef.trim() || undefined, likelihood: parseInt(form.likelihood), impact: parseInt(form.impact), mitigation: form.mitigation.trim() || undefined, status: form.status, treatment: form.treatment }),
+        body: JSON.stringify({ threatId: form.threatId.trim(), equipmentId: equipmentId || undefined, threatCategory: form.threatCategory || undefined, scenario: form.scenario || undefined, assetRef: form.assetRef.trim() || undefined, likelihood: parseInt(form.likelihood), impact: parseInt(form.impact), mitigation: form.mitigation.trim() || undefined, status: form.status, treatment: form.treatment }),
       });
       if (res.ok) { showToast.success(tx(locale, "Risk added", "리스크 추가됨", "リスク追加済み")); setAddOpen(false); setForm({ threatId: "", threatCategory: "", scenario: "", assetRef: "", likelihood: "3", impact: "3", mitigation: "", status: "OPEN", treatment: "Mitigate" }); fetchRisks(); }
       else { const d = await res.json(); showToast.error(d.error || "Failed"); }

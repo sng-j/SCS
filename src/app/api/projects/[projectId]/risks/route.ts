@@ -8,8 +8,14 @@ interface Params {
   params: Promise<{ projectId: string }>;
 }
 
-/** GET /api/projects/[projectId]/risks — list all risk entries */
-export async function GET(_request: Request, { params }: Params) {
+/**
+ * GET /api/projects/[projectId]/risks
+ * List risks for a project. Pass `?equipmentId=<id>` to restrict to one
+ * equipment (used by equipment review screens so they don't leak risks from
+ * other equipments). Without the param we return the full project register
+ * (used by the project-level risk tab).
+ */
+export async function GET(request: Request, { params }: Params) {
   const user = await getSessionUser();
   if (!user) return apiError("Unauthorized", 401);
 
@@ -17,8 +23,11 @@ export async function GET(_request: Request, { params }: Params) {
   const hasAccess = await verifyProjectAccess(user.id, projectId, user.role, user.shipyardId);
   if (!hasAccess) return apiError("Forbidden", 403);
 
+  const { searchParams } = new URL(request.url);
+  const equipmentId = searchParams.get("equipmentId");
+
   const risks = await prisma.riskEntry.findMany({
-    where: { projectId },
+    where: { projectId, ...(equipmentId ? { equipmentId } : {}) },
     orderBy: [{ riskLevel: "desc" }, { createdAt: "desc" }],
   });
 
@@ -39,7 +48,7 @@ export async function POST(request: Request, { params }: Params) {
 
   try {
     const body = await request.json();
-    const { threatId, assetRef, likelihood, impact, mitigation, status } = body;
+    const { threatId, equipmentId, assetRef, likelihood, impact, mitigation, status } = body;
 
     if (!threatId) {
       return apiError("threatId is required", 400);
@@ -69,9 +78,31 @@ export async function POST(request: Request, { params }: Params) {
     });
     if (!project) return apiError("Project not found", 404);
 
+    // If equipmentId is supplied, it must belong to this project — otherwise
+    // a crafted request could plant a risk on another project's equipment.
+    // VENDOR additionally must own that equipment; SUPPORT/ADMIN have
+    // project-wide scope so the plain project membership check is enough.
+    if (equipmentId) {
+      const eqWhere: Record<string, unknown> = { id: equipmentId, projectId };
+      if (user.role === "VENDOR") {
+        eqWhere.OR = [{ vendorId: user.id }, { vendors: { some: { id: user.id } } }];
+      }
+      const eq = await prisma.equipment.findFirst({
+        where: eqWhere,
+        select: { id: true },
+      });
+      if (!eq) return apiError(
+        user.role === "VENDOR"
+          ? "equipmentId does not belong to you or this project"
+          : "equipmentId does not belong to this project",
+        403,
+      );
+    }
+
     const riskEntry = await prisma.riskEntry.create({
       data: {
         projectId,
+        equipmentId: equipmentId || null,
         threatId,
         assetRef: assetRef || null,
         likelihood: likelihoodNum,

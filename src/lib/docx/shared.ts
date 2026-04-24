@@ -16,7 +16,6 @@ import {
   PageBreak,
   Footer,
   Header,
-  type ISectionOptions,
 } from "docx";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -82,6 +81,52 @@ export interface AuditRunRow {
   platform: string | null;
   results: unknown;
   sbomData: unknown;
+}
+
+export interface RiskEntryRow {
+  id: string;
+  threatId: string;
+  cveId: string | null;
+  assetRef: string | null;
+  likelihood: number;
+  impact: number;
+  riskLevel: number;
+  status: string;
+  mitigation: string | null;
+}
+
+// Canonical 5×5 → severity mapping lives in one shared module so the same
+// score can't render as two different labels across docx / preview / UI.
+// Re-exported here so existing `shared.ts` importers keep working.
+export { riskSeverity as riskSeverityLabel } from "@/lib/risk-severity";
+
+// Canonical IACS UR E27 Rev.2 Security Capability titles. Treat this as the
+// single source of truth — every E27 document should cross-reference the
+// same labels so that SC-# citations match across CBS, SBOM, AUD, VUL, ACC,
+// MON, CFG, TST, SDL, MNT, INC, MOC, SEC, and PAT documents.
+export const E27_SC_TITLES: Record<string, string> = {
+  "SC-1":  "Identification & Authentication Control",
+  "SC-2":  "Account Management",
+  "SC-3":  "Use Control (Least Privilege)",
+  "SC-4":  "Session Control",
+  "SC-5":  "Network Segmentation",
+  "SC-6":  "Boundary Protection",
+  "SC-7":  "Audit Log & Monitoring",
+  "SC-8":  "Communication Integrity",
+  "SC-9":  "Information Confidentiality",
+  "SC-10": "Malicious Code Protection",
+  "SC-11": "System Integrity",
+  "SC-12": "Mobile Code & Removable Media Control",
+  "SC-13": "Software / Firmware Integrity & Updates",
+};
+
+/**
+ * Build a bulleted list of SC references for the "Applicable Security
+ * Capabilities" section of an E27 document. Accepts short IDs like
+ * `["SC-1","SC-7"]` and renders `SC-1: Identification & Authentication Control`.
+ */
+export function scReferenceLines(scIds: string[]): string[] {
+  return scIds.map((id) => `${id}: ${E27_SC_TITLES[id] || "(unknown SC)"}`);
 }
 
 // ─── Style constants ────────────────────────────────────────────────────────
@@ -212,11 +257,21 @@ export function bulletItem(text: string): Paragraph {
 
 // ─── Data table ─────────────────────────────────────────────────────────────
 
+/**
+ * Build a data table. When `rows` is empty we still build a one-row table
+ * that renders a hyphen across the columns so generated documents do not
+ * end up with a lonely header over blank space — classification society
+ * reviewers flag that as incomplete. Callers that want a fully hidden
+ * section should guard on `rows.length === 0` themselves.
+ */
 export function buildTable(
   headers: string[],
   rows: string[][],
   colWidths?: number[],
 ): Table {
+  if (rows.length === 0) {
+    rows = [[...Array(headers.length)].map(() => "—")];
+  }
   const headerRow = new TableRow({
     tableHeader: true,
     children: headers.map(
@@ -261,6 +316,30 @@ export function buildTable(
     borders: TABLE_BORDERS,
     rows: [headerRow, ...dataRows],
   });
+}
+
+/**
+ * Build the approval/signature block every compliance document should end
+ * with. Classification societies (KR/DNV/LR) require a prepared-by /
+ * reviewed-by / approved-by row at minimum. We leave the names blank so
+ * the issuing party fills them on print.
+ */
+export function buildApprovalBlock(): (Paragraph | Table)[] {
+  return [
+    heading2("Approval & Signatures"),
+    new Paragraph({
+      spacing: { after: 120 },
+      children: [new TextRun({ text: "This document is considered effective once all signatures below are completed.", size: 20, color: "525252" })],
+    }),
+    buildTable(
+      ["Role", "Name", "Title / Organization", "Date", "Signature"],
+      [
+        ["Prepared by", "", "", "", ""],
+        ["Reviewed by", "", "", "", ""],
+        ["Approved by", "", "", "", ""],
+      ],
+    ),
+  ];
 }
 
 // ─── Result badge text ──────────────────────────────────────────────────────

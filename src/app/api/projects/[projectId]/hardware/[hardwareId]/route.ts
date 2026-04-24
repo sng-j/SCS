@@ -33,7 +33,7 @@ export async function PATCH(request: Request, { params }: Params) {
       name, type, manufacturer, model, ipAddress, macAddress, zone, location,
       brand, identifier, category, physicalInterface, commProtocols,
       logicalLocation, purpose, protectionMethod, sysSoftwareCategory, sysSoftwareVersion,
-      typeApprovalCert, updateLog,
+      typeApprovalCert, updateLog, auditExempt, auditExemptReason,
     } = body;
 
     const hardware = await prisma.hardware.update({
@@ -59,6 +59,10 @@ export async function PATCH(request: Request, { params }: Params) {
         ...(sysSoftwareVersion !== undefined && { sysSoftwareVersion: sysSoftwareVersion?.trim() || null }),
         ...(typeApprovalCert !== undefined && { typeApprovalCert: typeApprovalCert?.trim() || null }),
         ...(updateLog !== undefined && { updateLog: updateLog?.trim() || null }),
+        ...(auditExempt !== undefined && { auditExempt: Boolean(auditExempt) }),
+        ...(auditExemptReason !== undefined && {
+          auditExemptReason: typeof auditExemptReason === "string" ? (auditExemptReason.trim() || null) : null,
+        }),
       },
     });
 

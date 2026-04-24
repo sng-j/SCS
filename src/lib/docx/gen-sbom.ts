@@ -10,6 +10,7 @@ import {
   heading2,
   bodyText,
   buildTable,
+  buildApprovalBlock,
   wrapDocument,
 } from "./shared";
 
@@ -162,5 +163,6 @@ export function generateSBOM(data: DocumentData): Document {
     ...vendorSection,
     ...cveSection,
     ...auditSwSection,
+    ...buildApprovalBlock(),
   ]);
 }

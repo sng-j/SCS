@@ -543,7 +543,10 @@ export default function InventoryPage() {
                         <AuditRunsList
                           auditRuns={auditRuns}
                           hwCveMatches={hwCveMatches}
-                          hardware={hardware.map((h) => ({ id: h.id, name: h.name }))}
+                          hardware={hardware.map((h) => ({ id: h.id, name: h.name, auditExempt: h.auditExempt, auditExemptReason: h.auditExemptReason }))}
+                          projectId={projectId}
+                          canEdit={canEdit}
+                          onExemptChanged={fetchAssets}
                           locale={locale}
                           emptyHintKo="업로드된 점검 결과가 없습니다. HW 행에서 .scsaudit 파일을 업로드하세요."
                           emptyHintEn="No audit runs. Upload .scsaudit files from the HW table."
@@ -1602,7 +1605,11 @@ function HwSlidePanel({ hw, swList, locale, canEdit, onClose, onDelete, onAddSw,
                 <p className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider flex items-center gap-1.5">
                   <Shield size={11} className="text-brand" />
                   {tx(locale, "Audit Runs", "보안 점검 결과", "セキュリティ監査結果")}
-                  <span className="font-mono text-[10px] tabular-nums text-text-tertiary">({auditRuns.length})</span>
+                  <span className="font-mono text-[10px] tabular-nums text-text-tertiary">
+                    {auditRuns.length > 1
+                      ? tx(locale, `latest 1 · total ${auditRuns.length}`, `최신 1 · 이력 ${auditRuns.length}`, `最新 1 · 履歴 ${auditRuns.length}`)
+                      : `(${auditRuns.length})`}
+                  </span>
                 </p>
                 <ChevronDown size={14} className={cn("text-text-tertiary transition-transform", auditOpen && "rotate-180")} />
               </button>
@@ -1626,7 +1633,15 @@ function HwSlidePanel({ hw, swList, locale, canEdit, onClose, onDelete, onAddSw,
                       </div>
                     ) : (
                       <div className="mt-3 space-y-3">
-                        {auditRuns.map((run) => {
+                        {/* Render only the most recent run per HW. Older
+                            runs stay in the DB for audit trail but get
+                            collapsed to a one-line hint, same rule as in
+                            AuditRunsList. */}
+                        {(() => {
+                          const sorted = [...auditRuns].sort((a, b) =>
+                            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+                          );
+                          const run = sorted[0];
                           const e27 = buildE27(run.results);
                           const report = run.results as Parameters<typeof AuditResultViewer>[0]["report"];
                           const sysinfo = report?.SystemInfo || {};
@@ -1635,16 +1650,26 @@ function HwSlidePanel({ hw, swList, locale, canEdit, onClose, onDelete, onAddSw,
                             year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
                           });
                           return (
-                            <AuditResultViewer
-                              key={run.id}
-                              e27={e27}
-                              report={report}
-                              cveMatches={hwCveMatches}
-                              deviceName={deviceName}
-                              runDate={runDate}
-                            />
+                            <>
+                              <AuditResultViewer
+                                key={run.id}
+                                e27={e27}
+                                report={report}
+                                cveMatches={hwCveMatches}
+                                deviceName={deviceName}
+                                runDate={runDate}
+                              />
+                              {sorted.length > 1 && (
+                                <p className="text-[10px] text-text-tertiary italic text-center">
+                                  {tx(locale,
+                                    `+${sorted.length - 1} earlier run(s) retained in history`,
+                                    `이전 점검 ${sorted.length - 1}회 · 이력에만 보관`,
+                                    `以前の監査 ${sorted.length - 1} 回 · 履歴に保存`)}
+                                </p>
+                              )}
+                            </>
                           );
-                        })}
+                        })()}
                       </div>
                     )}
                   </motion.div>

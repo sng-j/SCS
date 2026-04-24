@@ -258,17 +258,38 @@ function Get-PatchStatus {
 }
 function Get-NetworkSettings {
     $adapters=@()
+    $ifaces=@()
     try{
+        # Build the same `interfaces` shape the Linux audit emits — name,
+        # mac, state, and a CIDR-formatted addrs[] — so the SCS backend
+        # only has to deal with one payload layout for IP / MAC backfill
+        # into the inventory form.
         $adapters=@(Get-NetAdapter -EA SilentlyContinue|ForEach-Object{
             [PSCustomObject]@{Name=$_.Name;Status=($_.Status -as [string]);MacAddress=$_.MacAddress;
                 LinkSpeed=($_.LinkSpeed -as [string]);MediaType=$_.MediaType;InterfaceDescription=$_.InterfaceDescription}
         })
+        $ipMap=@{}
+        foreach($ip in (Get-NetIPAddress -EA SilentlyContinue|Where-Object{$_.IPAddress -and $_.IPAddress -notlike "169.254.*" -and $_.IPAddress -notlike "fe80*"})){
+            $key=$ip.InterfaceAlias
+            if(-not $ipMap.ContainsKey($key)){ $ipMap[$key]=@() }
+            $ipMap[$key] += "$($ip.IPAddress)/$($ip.PrefixLength)"
+        }
+        foreach($a in $adapters){
+            $ifaces += [PSCustomObject]@{
+                name    = $a.Name
+                mac     = ($a.MacAddress -replace "-",":")
+                state   = if($a.Status -eq "Up"){"up"}else{"down"}
+                addrs   = @($ipMap[$a.Name])
+                mtu     = ""
+            }
+        }
     }catch{}
     return @{
         SMBv1Disabled=(GR "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" "SMB1") -eq 0
         LMAuthLevel=GR "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" "LmCompatibilityLevel"
         NullSessionBlocked=(GR "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" "RestrictAnonymous") -ge 1
         Adapters=$adapters
+        interfaces=$ifaces
     }
 }
 function Get-RunningServices {
@@ -293,10 +314,26 @@ function Get-SystemInfo {
                 Size_GB=[Math]::Round($_.Size/1GB,1);Interface=$_.InterfaceType;MediaType=$_.MediaType}
         })
     }catch{}
+    # Pull BIOS / baseboard detail so Manufacturer/Model backfill is more
+    # accurate on systems where Win32_ComputerSystem reports generic values
+    # (e.g. "System manufacturer" / "System Product Name" on OEM builds).
+    $bios=$null; $board=$null
+    try{$bios=Get-CimInstance Win32_BIOS -EA SilentlyContinue}catch{}
+    try{$board=Get-CimInstance Win32_BaseBoard -EA SilentlyContinue}catch{}
+
     return @{
+        # Platform field makes platform detection symmetric with the Linux
+        # tool — previously we relied on sniffing `OS` for "Windows", which
+        # works but breaks on localised builds.
+        Platform="windows"
         ComputerName=$env:COMPUTERNAME; OS=$os.Caption; OSVersion=$os.Version; OSBuild=$os.BuildNumber
         Architecture=$os.OSArchitecture; LastBoot=($os.LastBootUpTime -as [string])
         Manufacturer=$cs.Manufacturer; Model=$cs.Model; TotalRAM_GB=[Math]::Round($cs.TotalPhysicalMemory/1GB,2)
+        BoardManufacturer=if($board){$board.Manufacturer}else{""}
+        BoardProduct=if($board){$board.Product}else{""}
+        BoardSerial=if($board){$board.SerialNumber}else{""}
+        BIOSVendor=if($bios){$bios.Manufacturer}else{""}
+        BIOSVersion=if($bios){$bios.SMBIOSBIOSVersion}else{""}
         Domain=$cs.Domain; AuditTime=(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
         VolumeSerial=$volSerial; Volumes=$allVols; Disks=$disks
     }

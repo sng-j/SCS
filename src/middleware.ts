@@ -95,8 +95,10 @@ export default auth((req) => {
     return applySecurityHeaders(NextResponse.redirect(loginUrl));
   }
 
-  // Force password change if required
-  const needsPasswordChange = (req.auth?.user as any)?.needsPasswordChange;
+  // Force password change if required — session user shape is extended in
+  // auth.ts via module augmentation but middleware bundle has a narrower
+  // view, so we read via a typed cast rather than any.
+  const needsPasswordChange = (req.auth?.user as { needsPasswordChange?: boolean } | undefined)?.needsPasswordChange;
   const isForcePasswordChangePage = pathname.startsWith("/force-password-change");
   // Allow API calls to the password change route even if password change is required
   const isPasswordApi = pathname === "/api/user/password";

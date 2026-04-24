@@ -12,7 +12,6 @@ export function useRoleGuard(allowedRoles: string[]): { allowed: boolean; loadin
   const { data: session, status } = useSession();
   const router = useRouter();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const role = session?.user?.role || "VENDOR";
   const loading = status === "loading";
   const allowed = allowedRoles.includes(role);
