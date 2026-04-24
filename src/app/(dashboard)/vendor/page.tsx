@@ -254,13 +254,13 @@ function EquipmentRow({ eq, locale, index, hasTemplates, onImportDone, onSaveTem
     try {
       const text = await file.text();
       let json: unknown;
-      try { json = JSON.parse(text); } catch { showToast.error("Invalid JSON"); return; }
+      try { json = JSON.parse(text); } catch { showToast.error(tx(locale, "Invalid JSON file", "유효하지 않은 JSON 파일", "無効なJSONファイル")); return; }
       const res = await fetch("/api/vendor/export", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ equipmentId: eq.id, data: json }),
       });
       if (res.ok) { showToast.success(tx(locale, "Data imported", "데이터 가져오기 완료", "インポート完了")); onImportDone(); }
-      else { const d = await res.json(); showToast.error(d.error || "Import failed"); }
+      else { const d = await res.json(); showToast.error(d.error || tx(locale, "Import failed", "가져오기 실패", "インポート失敗")); }
     } finally { setImporting(false); if (fileRef.current) fileRef.current.value = ""; }
   }
 

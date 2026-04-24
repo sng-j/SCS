@@ -40,7 +40,12 @@ interface Vendor {
   email: string;
   phone: string | null;
   isActive: boolean;
-  _count?: { vendorEquipments: number };
+  // Keep the relation name aligned with /api/shipyard/vendors — it returns
+  // `_count.assignedEquipments` (the multi-vendor join). The old UI field
+  // `vendorEquipments` pointed at a different Prisma relation and always
+  // came back undefined, which is why the vendor list showed "기자재 0" for
+  // every vendor even when equipment was actually assigned.
+  _count?: { assignedEquipments: number };
 }
 
 const TABS = ["vendors"] as const;
@@ -330,7 +335,7 @@ function VendorsTab({ locale }: { locale: string }) {
                     <p className="text-body-sm font-semibold text-text">{v.name}</p>
                     <p className="text-body-xs text-text-tertiary">{v.email}{v.company ? ` · ${v.company}` : ""}</p>
                   </div>
-                  <span className="text-body-xs text-text-tertiary hidden sm:block">{tx(locale, "Eq.", "기자재", "機器")} {v._count?.vendorEquipments ?? 0}</span>
+                  <span className="text-body-xs text-text-tertiary hidden sm:block">{tx(locale, "Eq.", "기자재", "機器")} {v._count?.assignedEquipments ?? 0}</span>
                   <button
                     onClick={(e) => { e.stopPropagation(); handleToggle(v.id, v.isActive); }}
                     disabled={toggling === v.id}

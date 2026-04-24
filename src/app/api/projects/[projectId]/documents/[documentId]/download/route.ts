@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser, verifyProjectAccess, apiError } from "@/lib/auth-helpers";
-import { generateDocx, canGenerateDocType } from "@/lib/docx";
+import { generateDocx, canViewDocType } from "@/lib/docx";
 import { generatePdf } from "@/lib/pdf";
 
 export const dynamic = "force-dynamic";
@@ -26,9 +26,9 @@ export async function GET(request: Request, { params }: Params) {
 
   if (!document) return apiError("Document not found", 404);
 
-  // Role-scoped generation: vendors download only their own E27 docs; other
-  // standards stay with shipyard / admin roles.
-  if (!canGenerateDocType(user.role, document.docType)) {
+  // Read-side gate: viewers (SHIPYARD) and admins/support can see every
+  // document; vendors are scoped to their own E27 submission types.
+  if (!canViewDocType(user.role, document.docType)) {
     return apiError("Your role is not permitted to download this document type", 403);
   }
 

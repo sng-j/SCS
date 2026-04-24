@@ -563,7 +563,7 @@ export function AuditResultViewer({ e27, report, cveMatches, deviceName, runDate
                                       animate={{ scale: [1, 1.15, 1] }}
                                       transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
                                       className="inline-flex items-center text-safety-high"
-                                      title="Exploit available"
+                                      title={tx(locale, "Exploit available", "익스플로잇 공개됨", "エクスプロイト公開済み")}
                                     >
                                       <Zap size={10} strokeWidth={2.75} />
                                     </motion.span>

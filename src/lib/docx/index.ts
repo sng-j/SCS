@@ -187,14 +187,27 @@ const TEMPLATE_DOCS: Record<string, { title: string; focus: string }> = {
 };
 
 /**
- * Returns true when the given role is permitted to generate a document of
- * `docType`. Enforces the division of labour between vendors (E27 only —
- * equipment-level docs they own) and shipyard personnel / admins (all
- * standards). Read-only roles (SHIPYARD viewer) are already blocked at the
- * isWriteRole layer, so we don't need to list them here.
+ * Returns true when the given role is permitted to GENERATE (create /
+ * regenerate / delete) a document of `docType`. Enforces the division of
+ * labour between vendors (E27 only) and shipyard personnel / admins (all
+ * standards). Read-only roles (SHIPYARD viewer) are not generators.
  */
 export function canGenerateDocType(role: string, docType: string): boolean {
   if (role === "ADMIN" || role === "SUPPORT") return true;
+  if (role === "VENDOR") return docType.startsWith("E27-");
+  return false;
+}
+
+/**
+ * Returns true when the given role may READ (preview / download) a document
+ * of `docType`. Distinct from `canGenerateDocType` because the SHIPYARD
+ * viewer is explicitly allowed to inspect every document in their yard's
+ * scope, even though they cannot create any. Earlier revisions reused the
+ * generate check here and accidentally blocked the viewer from reading
+ * their own submission package.
+ */
+export function canViewDocType(role: string, docType: string): boolean {
+  if (role === "ADMIN" || role === "SUPPORT" || role === "SHIPYARD") return true;
   if (role === "VENDOR") return docType.startsWith("E27-");
   return false;
 }

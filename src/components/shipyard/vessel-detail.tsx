@@ -45,8 +45,20 @@ interface HwItem {
   manufacturer: string | null;
   model: string | null;
   ipAddress: string | null;
+  macAddress?: string | null;
   zone: string | null;
+  location?: string | null;
   category: string | null;
+  purpose?: string | null;
+  brand?: string | null;
+  identifier?: string | null;
+  logicalLocation?: string | null;
+  additionalIps?: string | null;
+  protectionMethod?: string | null;
+  physicalInterface?: string | null;
+  commProtocols?: string | null;
+  sysSoftwareCategory?: string | null;
+  sysSoftwareVersion?: string | null;
   auditExempt?: boolean;
   auditExemptReason?: string | null;
   software: { id: string; name: string; version: string | null }[];
@@ -651,7 +663,12 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
     const safe = (p: Promise<Response>) => p.catch(() => null);
     Promise.all([
       safe(fetch(`/api/projects/${projectId}/hardware?equipmentId=${eq.id}`)),
-      safe(fetch(`/api/projects/${projectId}/assessments`)),
+      // Assessment fetch MUST be equipment-scoped — the review screen shows
+      // one piece of equipment at a time, but the unscoped call returned
+      // every assessment in the vessel and the stat card showed project-
+      // wide totals instead of the current equipment's (vendor-entered)
+      // results.
+      safe(fetch(`/api/projects/${projectId}/assessments?equipmentId=${eq.id}`)),
       safe(fetch(`/api/projects/${projectId}/documents?equipmentId=${eq.id}`)),
       safe(fetch(`/api/projects/${projectId}/risks?equipmentId=${eq.id}`)),
       safe(fetch(`/api/projects/${projectId}/test-procedure?equipmentId=${eq.id}`)),
@@ -749,7 +766,10 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
   const swCount = hardware.reduce((s, h) => s + (h.software?.length || 0), 0);
   const scPassed = assessments.filter((a) => a.result === "PASS").length;
   const scFailed = assessments.filter((a) => a.result === "FAIL").length;
-  const scTotal = assessments.length || 13;
+  // Show the real number of assessed checks. The old "|| 13" fallback was a
+  // leftover that made equipments with no assessments read as "0/13",
+  // visually implying 13 pending checks that didn't actually exist.
+  const scTotal = assessments.length;
 
   const handleReview = async (action: "APPROVED" | "REVISION_REQUESTED") => {
     setSubmitting(true);
@@ -815,7 +835,23 @@ function EquipmentReviewView({ eq, project, projectId, locale, onBack }: {
         <MiniStat label={tx(locale, "Software", "소프트웨어", "SW")} value={swCount} unit={tx(locale, "", "개", "")} ok={swCount > 0} />
         <MiniStat label="DFD" value={eq.dfdDiagram ? tx(locale, "Created", "생성됨", "作成済") : tx(locale, "None", "미생성", "未作成")} ok={!!eq.dfdDiagram} />
         <MiniStat label={tx(locale, "Assessment", "보안평가", "評価")} value={`${scPassed}/${scTotal}`} ok={scPassed === scTotal && scTotal > 0} warn={scFailed > 0} />
-        <MiniStat label={tx(locale, "Test Proc.", "테스트절차", "テスト手順")} value={testProc ? `${(testProc.hwGroups?.reduce((s, g) => s + g.hwItems.length, 0) || 0) + (testProc.fnItems?.length || 0)}${tx(locale, "", "건", "件")}` : "—"} ok={!!testProc && ((testProc.hwGroups?.some(g => g.hwItems.length > 0)) || (testProc.fnItems?.length > 0))} />
+        {(() => {
+          // Test-procedure API auto-creates an empty row for every (project,
+          // equipment) pair, so showing "—" when `testProc` is null just
+          // means the fetch raced with the first render — not that the user
+          // skipped the step. Collapse both null and empty into "0건" so the
+          // card is consistent with Documents/Hardware counts beside it.
+          const tpItemCount = testProc
+            ? (testProc.hwGroups?.reduce((s, g) => s + g.hwItems.length, 0) || 0) + (testProc.fnItems?.length || 0)
+            : 0;
+          return (
+            <MiniStat
+              label={tx(locale, "Test Proc.", "테스트절차", "テスト手順")}
+              value={`${tpItemCount}${tx(locale, "", "건", "件")}`}
+              ok={tpItemCount > 0}
+            />
+          );
+        })()}
         <MiniStat label={tx(locale, "Documents", "문서", "文書")} value={`${documents.length}${tx(locale, "", "건", "件")}`} ok={documents.length > 0} />
       </div>
 
@@ -1605,11 +1641,16 @@ function AssetReviewPanel({
                       transition={{ duration: 0.18 }}
                       className="overflow-hidden border-t border-gray-100"
                     >
+                      {/* Mirror of the vendor HW form, read-only. Same
+                          section grouping/labels so the reviewer's eye
+                          lands on the same block the vendor filled in. */}
+                      <HwDetailMirror hw={hw} locale={locale} />
                       {swList.length === 0 ? (
                         <p className="px-4 py-3 text-[11px] text-gray-400 italic">
                           {tx(locale, "No linked SW", "연결된 SW 없음", "リンクされたSWなし")}
                         </p>
                       ) : (
+                        <HwSwCollapse count={swList.length} locale={locale}>
                         <div className="divide-y divide-gray-100">
                           {swList.map((sw) => {
                             const swCve = cveBySwId.get(sw.id);
@@ -1646,6 +1687,7 @@ function AssetReviewPanel({
                             );
                           })}
                         </div>
+                        </HwSwCollapse>
                       )}
                     </motion.div>
                   )}
@@ -1765,6 +1807,88 @@ function MitigationEditor({
       <p className="text-[9px] text-text-tertiary mt-0.5">
         {tx(locale, "⌘+Enter to save · Esc to cancel", "⌘+Enter 저장 · Esc 취소", "⌘+Enter 保存 · Esc キャンセル")}
       </p>
+    </div>
+  );
+}
+
+// ─── Read-only mirror of the vendor HW form ────────────────────────────────
+// Same section order + labels as the vendor input dialog so reviewers see
+// exactly the shape the vendor submitted, without edit/delete affordances.
+function HwDetailMirror({ hw, locale }: { hw: HwItem; locale: string }) {
+  const Section = ({ label, children }: { label: string; children: React.ReactNode }) => (
+    <section className="px-4 py-3 border-b border-gray-100 last:border-b-0">
+      <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-gray-400 mb-2">{label}</p>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">{children}</dl>
+    </section>
+  );
+  const Row = ({ label, value }: { label: string; value: string | null | undefined }) => (
+    <>
+      <dt className="text-gray-400 font-medium">{label}</dt>
+      <dd className="text-gray-700 font-mono text-right truncate">{value || "—"}</dd>
+    </>
+  );
+  return (
+    <div className="bg-surface-secondary/30">
+      <Section label={tx(locale, "Identification (E27 Required)", "기본 정보 (E27 필수)", "基本情報 (E27必須)")}>
+        <Row label={tx(locale, "Manufacturer", "제조사", "製造元")} value={hw.manufacturer} />
+        <Row label={tx(locale, "Model / Type", "모델/타입", "モデル/タイプ")} value={hw.model} />
+        <Row label={tx(locale, "Functionality / Purpose", "기능/용도", "機能/用途")} value={hw.purpose} />
+        {hw.brand && <Row label={tx(locale, "Brand", "브랜드", "ブランド")} value={hw.brand} />}
+        {hw.identifier && <Row label={tx(locale, "Identifier", "식별자", "識別子")} value={hw.identifier} />}
+      </Section>
+      <Section label={tx(locale, "Shipyard Managed (Optional)", "조선소 관리 항목 (선택)", "造船所管理 (任意)")}>
+        <Row label={tx(locale, "E27 Category", "E27 카테고리", "E27カテゴリ")} value={hw.category} />
+        <Row label={tx(locale, "Access Control", "접근통제", "アクセス制御")} value={hw.zone} />
+      </Section>
+      <Section label={tx(locale, "Technical Specification (E27 Required)", "기술 사양 (E27 필수)", "技術仕様 (E27必須)")}>
+        <Row label={tx(locale, "Physical Interfaces", "물리적 인터페이스", "物理インターフェース")} value={hw.physicalInterface} />
+        <Row label={tx(locale, "Communication Protocols", "통신 프로토콜", "通信プロトコル")} value={hw.commProtocols} />
+      </Section>
+      <Section label={tx(locale, "System Software (E27 Recommended)", "시스템 SW (E27 권장)", "システムSW (E27推奨)")}>
+        <Row label={tx(locale, "Name / Type", "종류", "名称/タイプ")} value={hw.sysSoftwareCategory} />
+        <Row label={tx(locale, "Version", "버전", "バージョン")} value={hw.sysSoftwareVersion} />
+      </Section>
+      <Section label={tx(locale, "Network (Optional)", "네트워크 (선택)", "ネットワーク (任意)")}>
+        <Row label={tx(locale, "IP Address", "IP 주소", "IPアドレス")} value={hw.ipAddress} />
+        <Row label={tx(locale, "MAC Address", "MAC 주소", "MACアドレス")} value={hw.macAddress} />
+        {hw.additionalIps && <Row label={tx(locale, "Additional IPs", "추가 IP", "追加IP")} value={hw.additionalIps} />}
+        <Row label={tx(locale, "Location", "설치 위치", "設置場所")} value={hw.location} />
+        {hw.logicalLocation && <Row label={tx(locale, "Logical Location", "논리 위치", "論理位置")} value={hw.logicalLocation} />}
+        {hw.protectionMethod && <Row label={tx(locale, "Protection Method", "보호 수단", "保護手段")} value={hw.protectionMethod} />}
+      </Section>
+    </div>
+  );
+}
+
+// ─── Collapsible SW list inside an HW expansion ─────────────────────────────
+// An 80-row flat list was making reviewers scroll forever; collapse by
+// default when the list is long so the HW detail block remains scannable.
+function HwSwCollapse({ count, locale, children }: { count: number; locale: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(count <= 15);
+  return (
+    <div className="border-t border-gray-100">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center gap-2 px-4 py-2 hover:bg-surface-secondary/30 transition-colors"
+      >
+        <ChevronDown size={13} className={cn("text-gray-400 shrink-0 transition-transform", !open && "-rotate-90")} strokeWidth={2.25} />
+        <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-gray-500">
+          {tx(locale, `Installed Software (${count})`, `설치 소프트웨어 (${count})`, `インストール済みSW (${count})`)}
+        </span>
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="overflow-hidden"
+          >
+            {children}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

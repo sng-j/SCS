@@ -477,7 +477,7 @@ function AdminShipyardProjectView() {
                           <div className="min-w-0">
                             <h2 className="text-[16px] font-bold text-text">{g.group.name}</h2>
                             <p className="text-[12px] text-text-tertiary mt-0.5">
-                              {g.group.shipowner || "—"} · {g.vessels.length}{locale === "ko" ? "척 호선" : " vessels"}
+                              {g.group.shipowner || "—"} · {g.vessels.length}{tx(locale, " vessels", "척 호선", " 隻")}
                             </p>
                           </div>
                           <ChevronRight size={18} className={cn("text-text-tertiary transition-transform shrink-0 ml-2", isGroupOpen && "rotate-90")} />
@@ -492,13 +492,13 @@ function AdminShipyardProjectView() {
                       <div className="flex items-center gap-5 mt-4 pt-3 border-t border-border">
                         <div className="flex items-center gap-1.5">
                           <Ship size={13} className="text-brand" />
-                          <span className="text-[12px] text-text-tertiary">{locale === "ko" ? "호선" : "Vessels"}</span>
+                          <span className="text-[12px] text-text-tertiary">{tx(locale, "Vessels", "호선", "船舶")}</span>
                           <span className="text-[13px] font-bold text-text">{g.vessels.length}</span>
                         </div>
                         <div className="w-px h-4 bg-border" />
                         <div className="flex items-center gap-1.5">
                           <Package size={13} className="text-indigo-600" />
-                          <span className="text-[12px] text-text-tertiary">{locale === "ko" ? "기자재" : "Equipment"}</span>
+                          <span className="text-[12px] text-text-tertiary">{tx(locale, "Equipment", "기자재", "機材")}</span>
                           <span className="text-[13px] font-bold text-text">{totalEq}</span>
                         </div>
                         <div className="w-px h-4 bg-border" />
@@ -575,7 +575,10 @@ function ProjectCard({ project, locale, onDelete }: { project: ProjectData; loca
           <div className="bg-white rounded-xl p-6 w-full max-w-[380px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-[15px] font-bold text-red-600 mb-2">{tx(locale, "Delete Vessel", "호선 삭제", "船舶削除")}</h3>
             <p className="text-[12px] text-text-secondary mb-4">
-              {locale === "ko" ? `"${project.vesselName}" 호선과 소속 기자재를 모두 삭제합니다.` : `Delete "${project.vesselName}" and all its equipment.`}
+              {tx(locale,
+                `Delete "${project.vesselName}" and all its equipment.`,
+                `"${project.vesselName}" 호선과 소속 기자재를 모두 삭제합니다.`,
+                `"${project.vesselName}" と配下の機材をすべて削除します。`)}
             </p>
             <div className="flex justify-end gap-2">
               <button onClick={() => setConfirmDelete(false)} className="px-4 py-2 rounded-lg text-[12px] font-medium text-text-tertiary hover:bg-surface-secondary">{tx(locale, "Cancel", "취소", "キャンセル")}</button>
@@ -612,7 +615,7 @@ function ProjectCard({ project, locale, onDelete }: { project: ProjectData; loca
           {/* Stat chips */}
           <div className="flex flex-wrap gap-1.5 mb-3">
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-brand-lighter text-[10px] font-semibold text-brand">
-              <Package size={10} /> {eqCount} {locale === "ko" ? "기자재" : "eq"}
+              <Package size={10} /> {eqCount} {tx(locale, "eq", "기자재", "機材")}
             </span>
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-[10px] font-semibold text-blue-700">
               <Cpu size={10} /> {hwCount} HW
@@ -743,7 +746,10 @@ function DeleteGroupButton({ groupId, groupName, locale, onDeleted }: {
           <div className="bg-white rounded-xl p-6 w-full max-w-[380px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-[15px] font-bold text-red-600 mb-2">{tx(locale, "Delete Project", "프로젝트 삭제", "プロジェクト削除")}</h3>
             <p className="text-[12px] text-text-secondary mb-4">
-              {locale === "ko" ? `"${groupName}" 프로젝트와 소속 호선, 기자재를 모두 삭제합니다. 되돌릴 수 없습니다.` : `Delete "${groupName}" and all its vessels and equipment. This cannot be undone.`}
+              {tx(locale,
+                `Delete "${groupName}" and all its vessels and equipment. This cannot be undone.`,
+                `"${groupName}" 프로젝트와 소속 호선, 기자재를 모두 삭제합니다. 되돌릴 수 없습니다.`,
+                `"${groupName}" プロジェクトと配下の船舶・機材をすべて削除します。元に戻せません。`)}
             </p>
             <div className="flex justify-end gap-2">
               <button onClick={() => setConfirm(false)} className="px-4 py-2 rounded-lg text-[12px] font-medium text-text-tertiary hover:bg-surface-secondary">{tx(locale, "Cancel", "취소", "キャンセル")}</button>

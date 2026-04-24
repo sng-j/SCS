@@ -80,6 +80,154 @@ def make_cpe(pub, name, ver):
     if not n: return ''
     return f'cpe:2.3:a:{p}:{n}:{v}:*:*:*:*:*:*:*'
 
+# ─────────────────────────────────────────────────────────────────────
+# CPE DICTIONARY — curated mapping from common package / product names to
+# their canonical NVD (vendor, product) pair. The server-side CVE matcher
+# prefers exact CPE matches and falls back to noisy name heuristics when
+# CPE is blank; populating CPE at audit time is the single biggest lever
+# for matching accuracy. Add rows as new common software appears on
+# customer fleets. Keys are lowercase — the lookup lowercases the input.
+# Values: (cpe_vendor, cpe_product[, cpe_part]). cpe_part defaults to 'a'.
+# ─────────────────────────────────────────────────────────────────────
+CPE_MAP = {
+    # — Web / reverse proxy —
+    'nginx':               ('nginx', 'nginx'),
+    'apache2':             ('apache', 'http_server'),
+    'apache2-bin':         ('apache', 'http_server'),
+    'httpd':               ('apache', 'http_server'),
+    'lighttpd':            ('lighttpd', 'lighttpd'),
+    'caddy':               ('caddyserver', 'caddy'),
+    'haproxy':             ('haproxy', 'haproxy'),
+    'varnish':             ('varnish_cache_project', 'varnish_cache'),
+    'squid':               ('squid-cache', 'squid'),
+    # — Databases —
+    'mysql':               ('mysql', 'mysql'),
+    'mysql-server':        ('mysql', 'mysql'),
+    'mysql-client':        ('mysql', 'mysql'),
+    'mariadb':             ('mariadb', 'mariadb'),
+    'mariadb-server':      ('mariadb', 'mariadb'),
+    'postgresql':          ('postgresql', 'postgresql'),
+    'postgresql-server':   ('postgresql', 'postgresql'),
+    'mongodb':             ('mongodb', 'mongodb'),
+    'mongodb-server':      ('mongodb', 'mongodb'),
+    'mongod':              ('mongodb', 'mongodb'),
+    'redis':               ('redis', 'redis'),
+    'redis-server':        ('redis', 'redis'),
+    'memcached':           ('memcached', 'memcached'),
+    'elasticsearch':       ('elastic', 'elasticsearch'),
+    'kibana':              ('elastic', 'kibana'),
+    'influxdb':            ('influxdata', 'influxdb'),
+    # — TLS / SSH —
+    'openssh':             ('openbsd', 'openssh'),
+    'openssh-server':      ('openbsd', 'openssh'),
+    'openssh-client':      ('openbsd', 'openssh'),
+    'openssh-sftp-server': ('openbsd', 'openssh'),
+    'openssl':             ('openssl', 'openssl'),
+    'libssl3':             ('openssl', 'openssl'),
+    'libssl1.1':           ('openssl', 'openssl'),
+    'gnutls':              ('gnu', 'gnutls'),
+    'libgnutls30':         ('gnu', 'gnutls'),
+    # — Runtime / languages —
+    'python':              ('python', 'python'),
+    'python3':             ('python', 'python'),
+    'python3.12':          ('python', 'python'),
+    'python3.11':          ('python', 'python'),
+    'php':                 ('php', 'php'),
+    'php8.1':              ('php', 'php'),
+    'php8.2':              ('php', 'php'),
+    'ruby':                ('ruby-lang', 'ruby'),
+    'perl':                ('perl', 'perl'),
+    'node':                ('nodejs', 'node.js'),
+    'nodejs':              ('nodejs', 'node.js'),
+    'npm':                 ('npmjs', 'npm'),
+    'go':                  ('golang', 'go'),
+    'golang':              ('golang', 'go'),
+    'golang-go':           ('golang', 'go'),
+    'rustc':               ('rust-lang', 'rust'),
+    'openjdk-17':          ('oracle', 'openjdk'),
+    'openjdk-11':          ('oracle', 'openjdk'),
+    'openjdk-8':           ('oracle', 'openjdk'),
+    'java':                ('oracle', 'jre'),
+    # — Containers / orchestration —
+    'docker':              ('docker', 'docker'),
+    'docker-ce':           ('docker', 'docker'),
+    'docker.io':           ('docker', 'docker'),
+    'containerd':          ('linuxfoundation', 'containerd'),
+    'podman':              ('podman_project', 'podman'),
+    'kubectl':             ('kubernetes', 'kubernetes'),
+    'kubelet':             ('kubernetes', 'kubernetes'),
+    # — Mail / DNS —
+    'postfix':             ('postfix', 'postfix'),
+    'dovecot':             ('dovecot', 'dovecot'),
+    'exim4':               ('exim', 'exim'),
+    'bind9':               ('isc', 'bind'),
+    'unbound':             ('nlnetlabs', 'unbound'),
+    'dnsmasq':             ('thekelleys', 'dnsmasq'),
+    # — File / share / remote —
+    'samba':               ('samba', 'samba'),
+    'vsftpd':              ('vsftpd_project', 'vsftpd'),
+    'proftpd':             ('proftpd', 'proftpd'),
+    'rsync':               ('samba', 'rsync'),
+    'openvpn':             ('openvpn', 'openvpn'),
+    'wireguard':           ('wireguard', 'wireguard'),
+    # — Utilities / tools —
+    'curl':                ('haxx', 'curl'),
+    'libcurl4':            ('haxx', 'curl'),
+    'wget':                ('gnu', 'wget'),
+    'git':                 ('git-scm', 'git'),
+    'subversion':          ('apache', 'subversion'),
+    'bash':                ('gnu', 'bash'),
+    'sudo':                ('sudo_project', 'sudo'),
+    'cron':                ('cron_project', 'cron'),
+    # — Monitoring / security —
+    'fail2ban':            ('fail2ban', 'fail2ban'),
+    'clamav':              ('clamav', 'clamav'),
+    'rkhunter':            ('rkhunter', 'rkhunter'),
+    'zabbix-agent':        ('zabbix', 'zabbix'),
+    'prometheus':          ('prometheus', 'prometheus'),
+    'grafana':             ('grafana', 'grafana'),
+    # — System base (OS part = 'o') —
+    'systemd':             ('systemd_project', 'systemd'),
+    'linux':               ('linux', 'linux_kernel', 'o'),
+    'linux-image':         ('linux', 'linux_kernel', 'o'),
+    'glibc':               ('gnu', 'glibc'),
+    'libc6':               ('gnu', 'glibc'),
+    # — Windows-side common apps (matched by DisplayName keyword) —
+    'google chrome':       ('google', 'chrome'),
+    'mozilla firefox':     ('mozilla', 'firefox'),
+    'microsoft edge':      ('microsoft', 'edge_chromium'),
+    '7-zip':               ('7-zip', '7-zip'),
+    'winrar':              ('rarlab', 'winrar'),
+    'putty':               ('putty', 'putty'),
+    'vlc':                 ('videolan', 'vlc_media_player'),
+    'vlc media player':    ('videolan', 'vlc_media_player'),
+    'notepad++':           ('notepad-plus-plus', 'notepad\\+\\+'),
+    'adobe acrobat reader dc': ('adobe', 'acrobat_reader_dc'),
+    'windows 10':          ('microsoft', 'windows_10', 'o'),
+    'windows 11':          ('microsoft', 'windows_11', 'o'),
+    'windows server 2022': ('microsoft', 'windows_server_2022', 'o'),
+    'windows server 2019': ('microsoft', 'windows_server_2019', 'o'),
+}
+
+def resolve_cpe(name, ver):
+    """Look up a package/product name in CPE_MAP; return a canonical CPE
+    string if found, otherwise ''. Version is lowercased and stripped to
+    the first dotted-numeric chunk by make_cpe's sanitiser, which is the
+    form NVD uses for most entries."""
+    if not name: return ''
+    key = name.lower().strip()
+    entry = CPE_MAP.get(key)
+    if not entry:
+        # common suffix strip (e.g. "python3-pip" -> no match, but "python3" does)
+        base = re.split(r'[:\s]', key)[0]
+        if base != key:
+            entry = CPE_MAP.get(base)
+    if not entry: return ''
+    vendor, product = entry[0], entry[1]
+    part = entry[2] if len(entry) > 2 else 'a'
+    v = re.sub(r'[^a-z0-9_.\\-]', '', (ver or '').lower().replace(' ', '_')) or '*'
+    return f'cpe:2.3:{part}:{vendor}:{product}:{v}:*:*:*:*:*:*:*'
+
 def make_purl(name, ver, pub='', pkg_type='generic'):
     from urllib.parse import quote as uq
     n  = uq(name.replace(' ', '_'), safe='')
@@ -437,7 +585,7 @@ def sbom_src1_pkgmgr(pkg_mgr):
             result.append({'name': name, 'version': ver, 'publisher': pub,
                            'install_date': '', 'install_location': '',
                            'source': 'dpkg', 'type': 'library',
-                           'cpe': make_cpe(pub, name, ver),
+                           'cpe': (resolve_cpe(name, ver) or make_cpe(pub, name, ver)),
                            'purl': f'pkg:deb/debian/{name}@{ver}' if ver else f'pkg:deb/debian/{name}'})
     elif pkg_mgr == 'rpm':
         raw = run("rpm -qa --queryformat '%{NAME}|%{VERSION}|%{VENDOR}|%{INSTALLTIME:date}\\n' 2>/dev/null")
@@ -449,7 +597,7 @@ def sbom_src1_pkgmgr(pkg_mgr):
             result.append({'name': name, 'version': norm_ver(ver), 'publisher': pub,
                            'install_date': idate, 'install_location': '',
                            'source': 'rpm', 'type': 'library',
-                           'cpe': make_cpe(pub, name, ver),
+                           'cpe': (resolve_cpe(name, ver) or make_cpe(pub, name, ver)),
                            'purl': f'pkg:rpm/{name}@{ver}' if ver else f'pkg:rpm/{name}'})
     elif pkg_mgr == 'pacman':
         raw = run("pacman -Q 2>/dev/null")
@@ -461,7 +609,7 @@ def sbom_src1_pkgmgr(pkg_mgr):
             result.append({'name': name, 'version': norm_ver(ver), 'publisher': '',
                            'install_date': '', 'install_location': '',
                            'source': 'pacman', 'type': 'library',
-                           'cpe': make_cpe('', name, ver),
+                           'cpe': (resolve_cpe(name, ver) or make_cpe('', name, ver)),
                            'purl': f'pkg:arch/{name}@{ver}'})
     return result
 
@@ -574,7 +722,7 @@ def sbom_src5_applications():
         result.append({'name': name, 'version': ver, 'publisher': vendor,
                        'install_date': '', 'install_location': path,
                        'source': 'application', 'type': 'application',
-                       'cpe': make_cpe(vendor, name, ver),
+                       'cpe': (resolve_cpe(name, ver) or make_cpe(vendor, name, ver)),
                        'purl': make_purl(name, ver, vendor)})
     return result
 
@@ -588,7 +736,7 @@ def sbom_src2_flatpak_snap():
         result.append({'name': name, 'version': norm_ver(ver), 'publisher': '',
                        'install_date': '', 'install_location': '',
                        'source': 'flatpak', 'type': 'application',
-                       'cpe': make_cpe('', name, ver), 'purl': make_purl(name, ver)})
+                       'cpe': (resolve_cpe(name, ver) or make_cpe('', name, ver)), 'purl': make_purl(name, ver)})
     sn = run("snap list 2>/dev/null")
     for line in sn.splitlines()[1:]:
         parts = line.split()
@@ -622,7 +770,7 @@ def sbom_src3_services():
             result.append({'name': svc, 'version': ver, 'publisher': '',
                            'install_date': '', 'install_location': exe or '',
                            'source': 'service', 'type': 'library',
-                           'cpe': make_cpe('', svc, ver), 'purl': make_purl(svc, ver)})
+                           'cpe': (resolve_cpe(svc, ver) or make_cpe('', svc, ver)), 'purl': make_purl(svc, ver)})
     return result
 
 def sbom_src4_elf():
@@ -651,7 +799,7 @@ def sbom_src4_elf():
                     result.append({'name': name, 'version': ver, 'publisher': '',
                                    'install_date': '', 'install_location': entry.path,
                                    'source': 'elf-metadata', 'type': 'application',
-                                   'cpe': make_cpe('', name, ver), 'purl': make_purl(name, ver)})
+                                   'cpe': (resolve_cpe(name, ver) or make_cpe('', name, ver)), 'purl': make_purl(name, ver)})
             except Exception: continue
     return result
 

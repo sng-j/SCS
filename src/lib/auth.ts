@@ -90,20 +90,31 @@ function ipToNum(ip: string): number | null {
 export async function getClientIP(): Promise<string> {
   try {
     const hdrs = await headers();
-    // Use the rightmost IP from x-forwarded-for (closest to the server)
-    // to prevent client-side spoofing when behind a reverse proxy.
-    // If no proxy, fall back to x-real-ip or cf-connecting-ip.
+    // X-Forwarded-For convention: `client, proxy1, proxy2, …`. The LEFTMOST
+    // entry is the original client; each hop appends its own address to the
+    // right. Earlier revisions took rightmost, which — when deployed behind
+    // CloudFront / ALB / nginx — returned the CDN's outbound IP. Those IPs
+    // rotate inside AWS, so the auto-registered whitelist entry no longer
+    // matched on the NEXT login and the user got a generic
+    // INVALID_CREDENTIALS on a correct password.
+    //
+    // If a specific deployment needs spoofing protection (client controls
+    // the header), terminate at a trusted proxy that overwrites XFF — e.g.
+    // nginx `real_ip_from` + `real_ip_header`. Trusting leftmost here is
+    // the standard default when XFF is already trustworthy.
     const forwardedFor = hdrs.get("x-forwarded-for");
     let ip: string;
     if (forwardedFor) {
       const ips = forwardedFor.split(",").map((s) => s.trim()).filter(Boolean);
-      // Last entry is appended by our reverse proxy (most trustworthy)
-      ip = ips[ips.length - 1] || "unknown";
+      ip = ips[0] || "unknown";
     } else {
       ip = hdrs.get("x-real-ip") || hdrs.get("cf-connecting-ip") || "unknown";
     }
     // Strip IPv4-mapped IPv6 prefix (::ffff:192.168.1.1 -> 192.168.1.1)
     if (ip.startsWith("::ffff:")) ip = ip.substring(7);
+    // Normalise IPv6 loopback to IPv4 so dev hits ::1 and 127.0.0.1 don't
+    // alternately fail the whitelist.
+    if (ip === "::1") ip = "127.0.0.1";
     return ip;
   } catch {
     return "unknown";
@@ -144,6 +155,12 @@ async function isLockedOut(email: string): Promise<boolean> {
 // In dev (HTTP), secure cookies can't be set/read, which breaks CSRF and session.
 // Enable `secure` only in production so HTTPS is required there.
 const SECURE_COOKIES = process.env.NODE_ENV === "production";
+
+// Hard session lifetime (seconds). NextAuth also uses this for the JWT `exp`
+// and the cookie Max-Age, but because the `jwt` callback re-signs on every
+// request, we also enforce a ceiling against `token.loginAt` so the session
+// really does end at 2h-since-login.
+const SESSION_MAX_AGE_SEC = 2 * 60 * 60;
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   cookies: {
@@ -271,6 +288,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.shipyardId = user.shipyardId;
         token.company = user.company;
         token.needsPasswordChange = user.needsPasswordChange;
+        // Pin the original login moment so sliding-window re-signing can't
+        // extend a session past its hard ceiling (SESSION_MAX_AGE_SEC).
+        token.loginAt = Date.now();
+      } else if (token.id && !token.loginAt) {
+        // Legacy session minted before loginAt tracking — grace it in so it
+        // starts counting down from now rather than forcing a mass logout.
+        token.loginAt = Date.now();
+      }
+      // Hard ceiling: reject tokens whose original login is older than the
+      // configured session max-age, regardless of how many times the token
+      // has been refreshed in the meantime. Without this check, the DB-
+      // refresh path below re-signs the token on every request and the
+      // cookie's `exp` slides forever.
+      if (token.loginAt && Date.now() - (token.loginAt as number) > SESSION_MAX_AGE_SEC * 1000) {
+        token.id = "" as string;
+        return token;
       }
       // Refresh user fields from DB so admin-side changes (name, role, company,
       // shipyard reassignment) propagate into the session without re-login.
@@ -300,6 +333,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return token;
     },
     async session({ session, token }) {
+      // If the jwt callback cleared `token.id` (expired ceiling, deactivated
+      // account), surface an empty session so middleware treats the request
+      // as unauthenticated and redirects to /login.
+      if (!token.id) {
+        return { ...session, user: undefined as unknown as typeof session.user, expires: new Date(0).toISOString() };
+      }
       if (session.user) {
         session.user.id = token.id;
         session.user.role = token.role;
@@ -315,6 +354,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   session: {
     strategy: "jwt",
-    maxAge: 2 * 60 * 60, // 2 hours
+    maxAge: SESSION_MAX_AGE_SEC,
   },
 });

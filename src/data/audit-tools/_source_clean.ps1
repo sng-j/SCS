@@ -147,6 +147,95 @@ function Make-CPE([string]$pub,[string]$name,[string]$ver) {
     return "cpe:2.3:a:${p}:${n}:${v}:*:*:*:*:*:*:*"
 }
 
+# ============================================================
+# CPE DICTIONARY — curated mapping from common Windows product
+# display names (registry / AppX) to their canonical NVD
+# (vendor, product) pair. Populating CPE at audit time lets the
+# SCS dashboard hit its exact-match CVE path instead of the noisy
+# name heuristic. Keys are lowercase; partial-prefix match handles
+# versioned names like "Google Chrome 120.0.6099.218".
+# Keep in sync with CPE_MAP in linux_audit.py.
+# ============================================================
+$script:CPE_MAP = @{
+    "google chrome"                  = @("google","chrome")
+    "mozilla firefox"                = @("mozilla","firefox")
+    "microsoft edge"                 = @("microsoft","edge_chromium")
+    "7-zip"                          = @("7-zip","7-zip")
+    "winrar"                         = @("rarlab","winrar")
+    "putty"                          = @("putty","putty")
+    "vlc media player"               = @("videolan","vlc_media_player")
+    "notepad++"                      = @("notepad-plus-plus","notepad++")
+    "adobe acrobat reader dc"        = @("adobe","acrobat_reader_dc")
+    "adobe acrobat reader"           = @("adobe","acrobat_reader_dc")
+    "wireshark"                      = @("wireshark","wireshark")
+    "git"                            = @("git-scm","git")
+    "git for windows"                = @("git-scm","git")
+    "node.js"                        = @("nodejs","node.js")
+    "python"                         = @("python","python")
+    "python 3"                       = @("python","python")
+    "java"                           = @("oracle","jre")
+    "java(tm)"                       = @("oracle","jre")
+    "openjdk"                        = @("oracle","openjdk")
+    "mysql"                          = @("mysql","mysql")
+    "mysql server"                   = @("mysql","mysql")
+    "postgresql"                     = @("postgresql","postgresql")
+    "mariadb"                        = @("mariadb","mariadb")
+    "mongodb"                        = @("mongodb","mongodb")
+    "redis"                          = @("redis","redis")
+    "nginx"                          = @("nginx","nginx")
+    "apache http server"             = @("apache","http_server")
+    "apache tomcat"                  = @("apache","tomcat")
+    "docker desktop"                 = @("docker","desktop")
+    "openssh"                        = @("openbsd","openssh")
+    "openssl"                        = @("openssl","openssl")
+    "filezilla"                      = @("filezilla-project","filezilla_client")
+    "teamviewer"                     = @("teamviewer","teamviewer")
+    "anydesk"                        = @("anydesk","anydesk")
+    "zoom"                           = @("zoom","zoom")
+    "microsoft teams"                = @("microsoft","teams")
+    "vmware workstation"             = @("vmware","workstation")
+    "virtualbox"                     = @("oracle","vm_virtualbox")
+    "openvpn"                        = @("openvpn","openvpn")
+}
+# Separate part map for entries that are OS ('o') instead of app ('a').
+$script:CPE_OS_MAP = @{
+    "windows 10"                     = @("microsoft","windows_10")
+    "windows 11"                     = @("microsoft","windows_11")
+    "windows server 2019"            = @("microsoft","windows_server_2019")
+    "windows server 2022"            = @("microsoft","windows_server_2022")
+    "windows server 2016"            = @("microsoft","windows_server_2016")
+}
+
+function Resolve-CPE([string]$name,[string]$ver) {
+    # Curated-map lookup. Returns a canonical cpe:2.3 string or "" when
+    # the display name isn't in the dictionary, so callers can fall back
+    # to Make-CPE.
+    if(-not $name){ return "" }
+    $key = $name.ToLower().Trim()
+    # Direct hit.
+    $entry = $script:CPE_MAP[$key]; $part = "a"
+    if(-not $entry){
+        $entry = $script:CPE_OS_MAP[$key]
+        if($entry){ $part = "o" }
+    }
+    # Prefix match: "Google Chrome 120.x" -> "google chrome".
+    if(-not $entry){
+        foreach($k in $script:CPE_MAP.Keys){
+            if($key.StartsWith($k + " ")){ $entry = $script:CPE_MAP[$k]; break }
+        }
+    }
+    if(-not $entry){
+        foreach($k in $script:CPE_OS_MAP.Keys){
+            if($key.StartsWith($k + " ")){ $entry = $script:CPE_OS_MAP[$k]; $part = "o"; break }
+        }
+    }
+    if(-not $entry){ return "" }
+    $vendor = $entry[0]; $product = $entry[1]
+    $v = ($ver.ToLower() -replace "\s+","_" -replace "[^a-z0-9_.\-]","")
+    if(-not $v){ $v = "*" }
+    return "cpe:2.3:${part}:${vendor}:${product}:${v}:*:*:*:*:*:*:*"
+}
+
 function Make-PURL([string]$nm,[string]$ver,[string]$pub) {
     # pkg:generic/vendor/name@version
     $n = [Uri]::EscapeDataString(($nm -replace "\s+","_"))
@@ -370,7 +459,7 @@ function Get-RegistrySoftware {
                         InstallDate=($_.InstallDate -as [string])
                         InstallLocation=($_.InstallLocation -as [string])
                         Source="registry-$arch"; Type="application"
-                        CPE=(Make-CPE $pub $nm $ver)
+                        CPE=$(if($r=Resolve-CPE $nm $ver){$r}else{Make-CPE $pub $nm $ver})
                         PURL=(Make-PURL $nm $ver $pub)
                     }
                 }
@@ -393,7 +482,7 @@ function Get-AppXSoftware {
                 Name=$nm; Version=$ver; Publisher=$pub; InstallDate=""
                 InstallLocation=($_.InstallLocation -as [string])
                 Source="appx-msix"; Type="application"
-                CPE=(Make-CPE $pub $nm $ver); PURL=(Make-PURL $nm $ver $pub)
+                CPE=$(if($r=Resolve-CPE $nm $ver){$r}else{Make-CPE $pub $nm $ver}); PURL=(Make-PURL $nm $ver $pub)
             }
         }
     }catch{}
@@ -424,7 +513,7 @@ function Get-ServiceDriverSoftware {
                     $result+=[PSCustomObject]@{
                         Name=$pnm;Version=$ver;Publisher=$pub;InstallDate="";InstallLocation=$exe
                         Source="service";Type="library"
-                        CPE=(Make-CPE $pub $pnm $ver);PURL=(Make-PURL $pnm $ver $pub)
+                        CPE=$(if($r=Resolve-CPE $pnm $ver){$r}else{Make-CPE $pub $pnm $ver});PURL=(Make-PURL $pnm $ver $pub)
                     }
                 }
             }catch{}
@@ -451,7 +540,7 @@ function Get-ServiceDriverSoftware {
                 $result+=[PSCustomObject]@{
                     Name=$dname;Version=$ver;Publisher=$pub;InstallDate="";InstallLocation=$exe
                     Source="driver";Type="firmware"
-                    CPE=(Make-CPE $pub $dname $ver);PURL=(Make-PURL $dname $ver $pub)
+                    CPE=$(if($r=Resolve-CPE $dname $ver){$r}else{Make-CPE $pub $dname $ver});PURL=(Make-PURL $dname $ver $pub)
                 }
             }
         }
@@ -481,7 +570,7 @@ function Get-ExeMetadataSoftware {
                             InstallDate=$_.LastWriteTime.ToString("yyyyMMdd")
                             InstallLocation=$_.FullName
                             Source="exe-metadata";Type="application"
-                            CPE=(Make-CPE $pub $pnm $ver);PURL=(Make-PURL $pnm $ver $pub)
+                            CPE=$(if($r=Resolve-CPE $pnm $ver){$r}else{Make-CPE $pub $pnm $ver});PURL=(Make-PURL $pnm $ver $pub)
                         }
                     }
                 }catch{}

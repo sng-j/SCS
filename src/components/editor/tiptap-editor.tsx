@@ -16,6 +16,8 @@ import {
   Redo,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useLocaleStore } from "@/stores/locale-store";
+import { tx } from "@/lib/i18n";
 
 interface TipTapEditorProps {
   content: string;
@@ -28,6 +30,7 @@ export function TipTapEditor({
   onChange,
   editable = true,
 }: TipTapEditorProps) {
+  const { locale } = useLocaleStore();
   const editor = useEditor({
     extensions: [StarterKit],
     content,
@@ -70,14 +73,14 @@ export function TipTapEditor({
           <ToolbarButton
             onClick={() => editor.chain().focus().toggleBold().run()}
             active={editor.isActive("bold")}
-            title="Bold"
+            title={tx(locale, "Bold", "굵게", "太字")}
           >
             <Bold size={15} />
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().toggleItalic().run()}
             active={editor.isActive("italic")}
-            title="Italic"
+            title={tx(locale, "Italic", "기울임", "斜体")}
           >
             <Italic size={15} />
           </ToolbarButton>
@@ -89,7 +92,7 @@ export function TipTapEditor({
               editor.chain().focus().toggleHeading({ level: 1 }).run()
             }
             active={editor.isActive("heading", { level: 1 })}
-            title="Heading 1"
+            title={tx(locale, "Heading 1", "제목 1", "見出し1")}
           >
             <Heading1 size={15} />
           </ToolbarButton>
@@ -98,7 +101,7 @@ export function TipTapEditor({
               editor.chain().focus().toggleHeading({ level: 2 }).run()
             }
             active={editor.isActive("heading", { level: 2 })}
-            title="Heading 2"
+            title={tx(locale, "Heading 2", "제목 2", "見出し2")}
           >
             <Heading2 size={15} />
           </ToolbarButton>
@@ -107,7 +110,7 @@ export function TipTapEditor({
               editor.chain().focus().toggleHeading({ level: 3 }).run()
             }
             active={editor.isActive("heading", { level: 3 })}
-            title="Heading 3"
+            title={tx(locale, "Heading 3", "제목 3", "見出し3")}
           >
             <Heading3 size={15} />
           </ToolbarButton>
@@ -117,14 +120,14 @@ export function TipTapEditor({
           <ToolbarButton
             onClick={() => editor.chain().focus().toggleBulletList().run()}
             active={editor.isActive("bulletList")}
-            title="Bullet List"
+            title={tx(locale, "Bullet List", "글머리 목록", "箇条書き")}
           >
             <List size={15} />
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().toggleOrderedList().run()}
             active={editor.isActive("orderedList")}
-            title="Ordered List"
+            title={tx(locale, "Ordered List", "번호 목록", "番号付きリスト")}
           >
             <ListOrdered size={15} />
           </ToolbarButton>
@@ -134,7 +137,7 @@ export function TipTapEditor({
           <ToolbarButton
             onClick={() => editor.chain().focus().toggleCodeBlock().run()}
             active={editor.isActive("codeBlock")}
-            title="Code"
+            title={tx(locale, "Code block", "코드 블록", "コードブロック")}
           >
             <Code size={15} />
           </ToolbarButton>
@@ -144,14 +147,14 @@ export function TipTapEditor({
           <ToolbarButton
             onClick={() => editor.chain().focus().undo().run()}
             disabled={!editor.can().undo()}
-            title="Undo"
+            title={tx(locale, "Undo", "실행 취소", "元に戻す")}
           >
             <Undo size={15} />
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().redo().run()}
             disabled={!editor.can().redo()}
-            title="Redo"
+            title={tx(locale, "Redo", "다시 실행", "やり直し")}
           >
             <Redo size={15} />
           </ToolbarButton>

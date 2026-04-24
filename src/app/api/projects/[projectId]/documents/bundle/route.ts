@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser, verifyProjectAccess, apiError } from "@/lib/auth-helpers";
-import { generateDocx, canGenerateDocType } from "@/lib/docx";
+import { generateDocx, canViewDocType } from "@/lib/docx";
 import archiver from "archiver";
 import { PassThrough } from "stream";
 
@@ -65,9 +65,10 @@ export async function GET(request: Request, { params }: Params) {
   archive.pipe(passThrough);
 
   // Generate each document the caller is allowed to receive and add to the
-  // archive. Role-scoped: vendors get E27 only, shipyard/admin get the lot.
+  // archive. Read-side gate (canViewDocType): SHIPYARD viewer + SUPPORT +
+  // ADMIN get the full bundle, vendors are limited to their E27 scope.
   for (const doc of documents) {
-    if (!canGenerateDocType(user.role, doc.docType)) continue;
+    if (!canViewDocType(user.role, doc.docType)) continue;
     try {
       const buffer = await generateDocx(projectId, doc.docType, equipmentId);
       const filename = `${doc.docType}_${doc.title.replace(/[^a-zA-Z0-9가-힣_-\s]/g, "").replace(/\s+/g, "_")}.docx`;

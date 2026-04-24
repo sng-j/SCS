@@ -432,7 +432,6 @@ export async function GET(_request: Request, { params }: Params) {
   const { projectId } = await params;
   const hasAccess = await verifyProjectAccess(user.id, projectId, user.role, user.shipyardId);
   if (!hasAccess) return apiError("Forbidden", 403);
-  if (!isWriteRole(user.role)) return apiError("Read-only role cannot modify this resource", 403);
 
   const templates = SYSTEM_TEMPLATES.map((t) => ({
     id: t.id,

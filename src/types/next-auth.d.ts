@@ -27,5 +27,9 @@ declare module "next-auth/jwt" {
     shipyardId: string | null;
     company: string | null;
     needsPasswordChange: boolean;
+    // Epoch ms when the user completed the credentials flow. Used to enforce
+    // a hard session-lifetime ceiling independent of the sliding-window
+    // refresh that NextAuth performs on every request.
+    loginAt?: number;
   }
 }

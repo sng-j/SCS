@@ -5,6 +5,7 @@ import { getSessionUser, apiError } from "@/lib/auth-helpers";
 import { safeError } from "@/lib/safe-log";
 import { deriveAuditPin } from "@/lib/audit-pin";
 import { buildE27, type E27Item } from "@/lib/audit-e27";
+import { autoMatchCveForSoftware } from "@/lib/cve-auto-match";
 
 export const dynamic = "force-dynamic";
 
@@ -241,14 +242,19 @@ export async function POST(request: Request) {
         if (hw) {
           const patch: Record<string, string | null> = {};
           const blank = (v: string | null | undefined) => v === null || v === undefined || v === "";
+          // Design-time specs: fill only when empty (don't clobber manual entries).
           if (blank(hw.manufacturer) && sysinfo.Manufacturer) patch.manufacturer = String(sysinfo.Manufacturer);
           if (blank(hw.model) && sysinfo.Model) patch.model = String(sysinfo.Model);
           if (blank(hw.ipAddress) && primaryIp) patch.ipAddress = primaryIp;
           if (blank(hw.macAddress) && primaryMac) patch.macAddress = primaryMac;
           if (blank(hw.physicalInterface) && ifSummary) patch.physicalInterface = ifSummary;
           if (blank(hw.commProtocols) && protoSummary) patch.commProtocols = protoSummary;
-          if (blank(hw.sysSoftwareCategory) && sysinfo.OS) patch.sysSoftwareCategory = String(sysinfo.OS).split(" ")[0];
-          if (blank(hw.sysSoftwareVersion) && sysinfo.OSVersion) patch.sysSoftwareVersion = String(sysinfo.OSVersion);
+          // OS fields: ALWAYS refresh from audit. These describe what's
+          // actually running on the host, and an audit is authoritative for
+          // that. A stale "Centos 6.1" left over from a previous OS lie —
+          // we'd rather show the real Ubuntu string the scanner observed.
+          if (sysinfo.OS) patch.sysSoftwareCategory = String(sysinfo.OS).split(" ")[0];
+          if (sysinfo.OSVersion) patch.sysSoftwareVersion = String(sysinfo.OSVersion);
           if (Object.keys(patch).length > 0) {
             await prisma.hardware.update({ where: { id: hw.id }, data: patch });
             autoMapped.hwUpdated = Object.keys(patch).length;
@@ -268,10 +274,15 @@ export async function POST(request: Request) {
       const replaceRes = await prisma.software.deleteMany({ where: replaceScope });
       autoMapped.replaced = replaceRes.count;
 
+      // Track every Software row we create from this audit so we can kick
+      // off CVE auto-matching once at the end (rather than per-insert which
+      // would hold the connection longer).
+      const createdSwIds: string[] = [];
+
       // Auto-register OS as Software
       if (sysinfo.OS) {
         const osName = String(sysinfo.OS).split(" ").slice(0, 4).join(" ");
-        await prisma.software.create({
+        const osSw = await prisma.software.create({
           data: {
             projectId: equipment.projectId,
             equipmentId,
@@ -283,6 +294,7 @@ export async function POST(request: Request) {
             sourceAuditRunId: run.id,
           },
         });
+        createdSwIds.push(osSw.id);
         autoMapped.software++;
       }
       // Auto-register SBOM components
@@ -299,7 +311,7 @@ export async function POST(request: Request) {
             const key = comp.name.toLowerCase();
             if (seen.has(key)) continue;
             seen.add(key);
-            await prisma.software.create({
+            const sw = await prisma.software.create({
               data: {
                 projectId: equipment.projectId,
                 equipmentId,
@@ -311,9 +323,26 @@ export async function POST(request: Request) {
                 sourceAuditRunId: run.id,
               },
             });
+            createdSwIds.push(sw.id);
             autoMapped.software++;
           }
         }
+      }
+
+      // Kick off CVE auto-matching for every software row we just created.
+      // Without this the audit's SBOM lands in the inventory but never
+      // grows the CVE / risk registers, leaving reviewers with a silent
+      // "80 SW, 0 CVE" that looks misleadingly clean. Run in parallel; the
+      // matcher swallows its own errors so one bad row never blocks the
+      // rest. Full payload can be ~200 rows so we cap concurrency crudely
+      // with a simple batching loop.
+      const BATCH = 8;
+      for (let i = 0; i < createdSwIds.length; i += BATCH) {
+        await Promise.all(
+          createdSwIds.slice(i, i + BATCH).map((swId) =>
+            autoMatchCveForSoftware(swId, equipment.projectId),
+          ),
+        );
       }
     } catch (mapErr) {
       safeError("Auto-map error (non-fatal)", mapErr);
@@ -339,22 +368,24 @@ export async function POST(request: Request) {
           // 전부 통과 → PASS, 전부 실패 → FAIL, 일부만 → PARTIAL
           const result = passCount === totalCount ? "PASS" : passCount === 0 ? "FAIL" : "PARTIAL";
           const evidenceLines = group.items.map((i) => `${i.pass ? "O" : "X"} ${i.item}: ${i.detail}`).join("\n");
-          await prisma.assessment.upsert({
-            where: { hardwareId_checkId: { hardwareId, checkId: sc } },
-            create: {
-              hardwareId,
-              checkId: sc,
-              standard: "E27",
-              result,
-              evidence: evidenceLines,
-              note: `Auto: ${passCount}/${totalCount} (${detectedPlatform})`,
-            },
-            update: {
-              result,
-              evidence: evidenceLines,
-              note: `Auto: ${passCount}/${totalCount} (${detectedPlatform})`,
-            },
+          const note = `Auto: ${passCount}/${totalCount} (${detectedPlatform})`;
+          // Do NOT use prisma.assessment.upsert here: the soft-delete
+          // extension leaves `deletedAt` set on previously-tombstoned rows,
+          // so an upsert would happily update a soft-deleted row and leave
+          // deletedAt populated, making the new result invisible to
+          // `findMany` (which injects deletedAt: null). Instead, reset the
+          // row explicitly via updateMany (which targets ANY row matching
+          // the composite unique, tombstoned or not) and fall back to
+          // create when nothing existed yet.
+          const updated = await prisma.assessment.updateMany({
+            where: { hardwareId, checkId: sc },
+            data: { result, evidence: evidenceLines, note, standard: "E27", deletedAt: null },
           });
+          if (updated.count === 0) {
+            await prisma.assessment.create({
+              data: { hardwareId, checkId: sc, standard: "E27", result, evidence: evidenceLines, note },
+            });
+          }
         }
       } catch {
         // Non-blocking

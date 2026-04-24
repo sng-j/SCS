@@ -48,13 +48,25 @@ interface SubmissionEvent {
   notes: string | null; reviewNote: string | null;
 }
 interface ChangeEventItem {
-  id: string; subject: string; kind: string; actor: string | null;
-  resolvedAt: string | null; createdAt: string;
+  id: string;
+  // Raw fields from the ChangeEvent Prisma model — earlier revisions read
+  // `subject / kind / actor` on this shape but those keys never exist on
+  // the server response, which is why the Activity timeline showed dots
+  // with just timestamps and no label.
+  entityType: string;
+  entityId: string;
+  changeType: string;
+  severity: string;
+  changedBy: string;
+  resolvedAt: string | null;
+  createdAt: string;
 }
 interface Hardware {
   id: string; name: string; type: string; manufacturer: string | null; model: string | null;
   ipAddress: string | null; macAddress?: string | null; zone: string | null;
   location?: string | null; purpose?: string | null; category?: string | null;
+  brand?: string | null; identifier?: string | null; additionalIps?: string | null;
+  logicalLocation?: string | null;
   protectionMethod?: string | null; commProtocols?: string | null; physicalInterface?: string | null;
   sysSoftwareCategory?: string | null; sysSoftwareVersion?: string | null;
   auditExempt?: boolean; auditExemptReason?: string | null;
@@ -754,16 +766,55 @@ export default function ViewerEquipmentPage() {
                         className="overflow-hidden"
                       >
                         <div className="px-5 pb-4 bg-surface-secondary/30">
-                          <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] pt-3">
+                          {/* Read-only mirror of the vendor HW form —
+                              same section order (Identification →
+                              Shipyard → E27 Required → E27 Recommended →
+                              Network → Other) so operators reviewing the
+                              asset see the exact layout the vendor filled
+                              in. Write actions are hidden entirely; the
+                              field labels and grouping stay identical so
+                              the manual page references map 1:1. */}
+                          <DetailSection
+                            label={tx(locale, "Identification (E27 Required)", "기본 정보 (E27 필수)", "基本情報 (E27必須)")}
+                          >
                             <DetailRow label={tx(locale, "Manufacturer", "제조사", "製造元")} value={hw.manufacturer} />
-                            <DetailRow label={tx(locale, "Model", "모델", "モデル")} value={hw.model} />
-                            <DetailRow label="IP" value={hw.ipAddress} />
-                            <DetailRow label="MAC" value={hw.macAddress} />
-                            <DetailRow label={tx(locale, "Zone", "존", "ゾーン")} value={hw.zone} />
-                            <DetailRow label={tx(locale, "Location", "위치", "場所")} value={hw.location} />
-                            <DetailRow label={tx(locale, "Category", "카테고리", "カテゴリ")} value={hw.category} />
-                            <DetailRow label={tx(locale, "Purpose", "용도", "用途")} value={hw.purpose} />
-                          </dl>
+                            <DetailRow label={tx(locale, "Model / Type", "모델/타입", "モデル/タイプ")} value={hw.model} />
+                            <DetailRow label={tx(locale, "Functionality / Purpose", "기능/용도", "機能/用途")} value={hw.purpose} />
+                            {hw.brand && <DetailRow label={tx(locale, "Brand", "브랜드", "ブランド")} value={hw.brand} />}
+                            {hw.identifier && <DetailRow label={tx(locale, "Identifier", "식별자", "識別子")} value={hw.identifier} />}
+                          </DetailSection>
+
+                          <DetailSection
+                            label={tx(locale, "Shipyard Managed (Optional)", "조선소 관리 항목 (선택)", "造船所管理 (任意)")}
+                          >
+                            <DetailRow label={tx(locale, "E27 Category", "E27 카테고리", "E27カテゴリ")} value={hw.category} />
+                            <DetailRow label={tx(locale, "Access Control", "접근통제", "アクセス制御")} value={hw.zone} />
+                          </DetailSection>
+
+                          <DetailSection
+                            label={tx(locale, "Technical Specification (E27 Required)", "기술 사양 (E27 필수)", "技術仕様 (E27必須)")}
+                          >
+                            <DetailRow label={tx(locale, "Physical Interfaces", "물리적 인터페이스", "物理インターフェース")} value={hw.physicalInterface} />
+                            <DetailRow label={tx(locale, "Communication Protocols", "통신 프로토콜", "通信プロトコル")} value={hw.commProtocols} />
+                          </DetailSection>
+
+                          <DetailSection
+                            label={tx(locale, "System Software (E27 Recommended)", "시스템 SW (E27 권장)", "システムSW (E27推奨)")}
+                          >
+                            <DetailRow label={tx(locale, "Name / Type", "종류", "名称/タイプ")} value={hw.sysSoftwareCategory} />
+                            <DetailRow label={tx(locale, "Version", "버전", "バージョン")} value={hw.sysSoftwareVersion} />
+                          </DetailSection>
+
+                          <DetailSection
+                            label={tx(locale, "Network (Optional)", "네트워크 (선택)", "ネットワーク (任意)")}
+                          >
+                            <DetailRow label={tx(locale, "IP Address", "IP 주소", "IPアドレス")} value={hw.ipAddress} />
+                            <DetailRow label={tx(locale, "MAC Address", "MAC 주소", "MACアドレス")} value={hw.macAddress} />
+                            {hw.additionalIps && <DetailRow label={tx(locale, "Additional IPs", "추가 IP", "追加IP")} value={hw.additionalIps} />}
+                            <DetailRow label={tx(locale, "Location", "설치 위치", "設置場所")} value={hw.location} />
+                            {hw.logicalLocation && <DetailRow label={tx(locale, "Logical Location", "논리 위치", "論理位置")} value={hw.logicalLocation} />}
+                            {hw.protectionMethod && <DetailRow label={tx(locale, "Protection Method", "보호 수단", "保護手段")} value={hw.protectionMethod} />}
+                          </DetailSection>
                           {hw.software && hw.software.length > 0 && (
                             <div className="mt-3 pt-3 border-t border-border">
                               <p className="text-[10px] font-bold uppercase tracking-wider text-text-tertiary mb-1.5">
@@ -786,7 +837,20 @@ export default function ViewerEquipmentPage() {
               );
             })}
 
-            {/* SW rows */}
+            {/* SW list — wrapped in its own collapsible because 80+ rows
+                flattened under HW cards made the viewer scroll impossible.
+                Each HW card already previews its Installed Software chips
+                when expanded; this section is for operators who want the
+                full flat inventory. */}
+          </div>
+          <InnerCollapse
+            label={tx(locale,
+              `Full software list (${software.length})`,
+              `전체 소프트웨어 (${software.length})`,
+              `ソフトウェア一覧 (${software.length})`)}
+            defaultOpen={false}
+          >
+            <div className="divide-y divide-border">
             {software.map((sw) => {
               const isExpanded = expandedSw === sw.id;
               const swCve = cveBySwId.get(sw.id);
@@ -842,12 +906,13 @@ export default function ViewerEquipmentPage() {
                 </div>
               );
             })}
-            {hardware.length === 0 && software.length === 0 && (
-              <div className="py-6 text-center text-[12px] text-text-tertiary">
-                {tx(locale, "No inventory registered", "등록된 자산 없음", "資産未登録")}
-              </div>
-            )}
-          </div>
+            </div>
+          </InnerCollapse>
+          {hardware.length === 0 && software.length === 0 && (
+            <div className="py-6 text-center text-[12px] text-text-tertiary">
+              {tx(locale, "No inventory registered", "등록된 자산 없음", "資産未登録")}
+            </div>
+          )}
         </AccordionSection>
 
         {/* Assessment */}
@@ -1152,6 +1217,62 @@ function DetailRow({ label, value }: { label: string; value: string | null | und
   );
 }
 
+// Grouped block of label/value pairs, mirroring the vendor HwDialog's
+// section layout (Identification / Shipyard / Technical / System SW /
+// Network / Other). Used in the viewer so reviewers see the same shape
+// as the form the vendor submits, just without input controls.
+function DetailSection({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <section className="mt-3 first:mt-0 pt-3 first:pt-3 border-t border-border first:border-t-0">
+      <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-text-tertiary mb-2">{label}</p>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">{children}</dl>
+    </section>
+  );
+}
+
+// Secondary collapse inside an AccordionSection. Used for long supplementary
+// lists (e.g. the 80-row flat software inventory) that would otherwise
+// flood the parent section with a single scroll-forever list.
+function InnerCollapse({
+  label,
+  defaultOpen = false,
+  children,
+}: {
+  label: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="border-t border-border">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center gap-2 px-5 py-2.5 hover:bg-surface-secondary/30 transition-colors"
+      >
+        <ChevronRight
+          size={13}
+          className={cn("text-text-tertiary shrink-0 transition-transform", open && "rotate-90")}
+          strokeWidth={2.25}
+        />
+        <span className="text-[11px] font-bold uppercase tracking-wider text-text-tertiary">{label}</span>
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            {children}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 // ─── Equipment Identity Card ─────────────────────────────────────────────────
 
 function EquipmentIdentityCard({ equipment, locale }: { equipment: Equipment; locale: string }) {
@@ -1394,14 +1515,40 @@ function ActivityTimeline({
       color,
     });
   }
+  // Map raw ChangeEvent to something readable. Entity + action is the most
+  // useful summary ("Hardware updated", "Document created") — the row's
+  // severity drives the icon colour so reviewers scan priority quickly.
+  const entityLabel = (type: string) => {
+    if (locale === "ko") return ({
+      HARDWARE: "하드웨어", SOFTWARE: "소프트웨어", ASSESSMENT: "보안평가",
+      DOCUMENT: "문서", RISK: "리스크", EQUIPMENT: "기자재",
+      DFD: "DFD", SUBMISSION: "제출", AUDIT_RUN: "감사결과",
+    } as Record<string, string>)[type] || type;
+    if (locale === "ja") return ({
+      HARDWARE: "ハードウェア", SOFTWARE: "ソフトウェア", ASSESSMENT: "評価",
+      DOCUMENT: "文書", RISK: "リスク", EQUIPMENT: "機材",
+      DFD: "DFD", SUBMISSION: "提出", AUDIT_RUN: "監査結果",
+    } as Record<string, string>)[type] || type;
+    return type;
+  };
+  const actionLabel = (type: string) => {
+    if (locale === "ko") return ({ CREATE: "추가", UPDATE: "변경", DELETE: "삭제" } as Record<string, string>)[type] || type;
+    if (locale === "ja") return ({ CREATE: "追加", UPDATE: "変更", DELETE: "削除" } as Record<string, string>)[type] || type;
+    return ({ CREATE: "created", UPDATE: "updated", DELETE: "deleted" } as Record<string, string>)[type] || type;
+  };
   for (const c of changes) {
+    const sev = c.severity || "LOW";
+    const color =
+      sev === "HIGH" || sev === "CRITICAL" ? "#DA1E28" :
+      sev === "MEDIUM" ? "#EB6200" : "#0F62FE";
     entries.push({
       kind: "change",
       at: c.createdAt,
-      label: c.subject,
-      meta: [c.kind, c.actor].filter(Boolean).join(" · "),
+      label: `${entityLabel(c.entityType)} ${actionLabel(c.changeType)}`,
+      meta: [sev, c.resolvedAt ? tx(locale, "resolved", "조치 완료", "解決済") : tx(locale, "open", "미조치", "未解決")]
+        .filter(Boolean).join(" · "),
       icon: c.resolvedAt ? CheckCircle : AlertCircle,
-      color: c.resolvedAt ? "#24A148" : "#EB6200",
+      color: c.resolvedAt ? "#24A148" : color,
     });
   }
   entries.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());

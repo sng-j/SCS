@@ -189,7 +189,7 @@ function BulkUploadGrid({ locale, endpoint, payloadKey, columns, onSuccess, onCa
         }
       } else {
         const d = await res.json().catch(() => ({}));
-        showToast.error((d as { error?: string }).error || "Upload failed");
+        showToast.error((d as { error?: string }).error || tx(locale, "Upload failed", "업로드 실패", "アップロード失敗"));
       }
     } finally {
       setUploading(false);
@@ -2682,7 +2682,7 @@ function DocFormatsTab({ locale }: { locale: string }) {
       showToast.error(tx(locale, "Code, standard, title are required", "코드, 표준, 제목은 필수입니다", "コード、標準、タイトルは必須です"));
       return;
     }
-    try { JSON.parse(form.sections); } catch { showToast.error("sections JSON invalid"); return; }
+    try { JSON.parse(form.sections); } catch { showToast.error(tx(locale, "Invalid JSON in sections", "섹션 JSON이 유효하지 않습니다", "セクションJSONが無効です")); return; }
 
     setSaving(true);
     try {
@@ -2700,7 +2700,7 @@ function DocFormatsTab({ locale }: { locale: string }) {
         fetchFormats();
       } else {
         const d = await res.json().catch(() => ({}));
-        showToast.error((d as { error?: string }).error || "Failed");
+        showToast.error((d as { error?: string }).error || tx(locale, "Operation failed", "작업 실패", "操作失敗"));
       }
     } finally { setSaving(false); }
   };
@@ -2853,7 +2853,7 @@ function SocietyKbTab({ locale }: { locale: string }) {
         fetchItems();
       } else {
         const d = await res.json().catch(() => ({}));
-        showToast.error((d as { error?: string }).error || "Failed");
+        showToast.error((d as { error?: string }).error || tx(locale, "Operation failed", "작업 실패", "操作失敗"));
       }
     } finally { setSaving(false); }
   };
