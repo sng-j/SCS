@@ -256,7 +256,14 @@ function VendorsTab({ locale }: { locale: string }) {
           if (eqRes.ok) {
             const eqs = await eqRes.json();
             for (const eq of (Array.isArray(eqs) ? eqs : [])) {
-              if (eq.vendor?.id === vendor.id) {
+              // Equipment carries a multi-vendor relation (`vendors[]`). The
+              // old `eq.vendor?.id` check matched only the legacy single-
+              // vendor foreign key, so newer multi-vendor assignments never
+              // surfaced in the drawer and it always said "No equipment".
+              const vendorIds: string[] = Array.isArray(eq.vendors)
+                ? eq.vendors.map((v: { id: string }) => v.id)
+                : [];
+              if (vendorIds.includes(vendor.id) || eq.vendor?.id === vendor.id) {
                 allEquipments.push({
                   id: eq.id,
                   name: eq.name,

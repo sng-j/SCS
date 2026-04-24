@@ -546,7 +546,12 @@ function UsersTab({ locale }: { locale: string }) {
           if (eqRes.ok) {
             const eqs = await eqRes.json();
             for (const eq of (Array.isArray(eqs) ? eqs : [])) {
-              if (eq.vendor?.id === vendor.id) {
+              // Multi-vendor relation: equipment may list the vendor in
+              // `vendors[]` rather than via the legacy single `vendor` FK.
+              const vendorIds: string[] = Array.isArray(eq.vendors)
+                ? eq.vendors.map((v: { id: string }) => v.id)
+                : [];
+              if (vendorIds.includes(vendor.id) || eq.vendor?.id === vendor.id) {
                 allEquipments.push({
                   id: eq.id, name: eq.name, status: eq.status,
                   project: { id: p.id, vesselName: p.vesselName },

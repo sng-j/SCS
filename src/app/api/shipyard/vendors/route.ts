@@ -29,7 +29,10 @@ export async function GET() {
       isActive: true,
       createdAt: true,
       shipyard: { select: { id: true, name: true } },
-      _count: { select: { assignedEquipments: true } },
+      // Filter out tombstoned equipment — the soft-delete extension only
+      // intercepts top-level operations, so nested `_count` would otherwise
+      // include deleted rows and inflate the badge vs. the detail drawer.
+      _count: { select: { assignedEquipments: { where: { deletedAt: null } } } },
     },
     orderBy: { createdAt: "desc" },
   });
